@@ -1,0 +1,132 @@
+{
+  "alphas": {
+    "corners": 1.0,
+    "corners_first_half": 1.0,
+    "red_cards": 0.1,
+    "shots": 1.0,
+    "shots_on_target": 0.1,
+    "yellow_cards": 0.1,
+    "yellow_cards_first_half": 1.0
+  },
+  "dispersions": {
+    "corners": 0.9660494647956706,
+    "corners_first_half": 1.0675077015842587,
+    "red_cards": 0.5783939789137932,
+    "shots": 0.4748740369314678,
+    "shots_on_target": 0.29191318523062704,
+    "yellow_cards": 0.0010319491592509914,
+    "yellow_cards_first_half": 0.0001
+  },
+  "market_lines": {
+    "away_corners_over_4_5": [
+      "corners",
+      "away",
+      4
+    ],
+    "away_shots_over_10_5": [
+      "shots",
+      "away",
+      10
+    ],
+    "cards_total_over_2_5": [
+      "yellow_cards",
+      "total",
+      2
+    ],
+    "corners_total_over_9_5": [
+      "corners",
+      "total",
+      9
+    ],
+    "first_half_cards_over_1_5": [
+      "yellow_cards_first_half",
+      "total",
+      1
+    ],
+    "first_half_corners_over_4_5": [
+      "corners_first_half",
+      "total",
+      4
+    ],
+    "home_corners_over_4_5": [
+      "corners",
+      "home",
+      4
+    ],
+    "home_shots_over_10_5": [
+      "shots",
+      "home",
+      10
+    ],
+    "red_card_yes": [
+      "red_cards",
+      "total",
+      0
+    ],
+    "shots_on_target_total_over_7_5": [
+      "shots_on_target",
+      "total",
+      7
+    ],
+    "shots_total_over_22_5": [
+      "shots",
+      "total",
+      22
+    ]
+  },
+  "metrics": [
+    {
+      "first_half_only": false,
+      "name": "corners",
+      "safe_default": 4.5,
+      "source_field": "corners"
+    },
+    {
+      "first_half_only": true,
+      "name": "corners_first_half",
+      "safe_default": 2.2,
+      "source_field": "corners"
+    },
+    {
+      "first_half_only": false,
+      "name": "yellow_cards",
+      "safe_default": 1.8,
+      "source_field": "yellow_cards"
+    },
+    {
+      "first_half_only": true,
+      "name": "yellow_cards_first_half",
+      "safe_default": 0.8,
+      "source_field": "yellow_cards"
+    },
+    {
+      "first_half_only": false,
+      "name": "red_cards",
+      "safe_default": 0.05,
+      "source_field": "red_cards"
+    },
+    {
+      "first_half_only": false,
+      "name": "shots",
+      "safe_default": 10.0,
+      "source_field": "shots"
+    },
+    {
+      "first_half_only": false,
+      "name": "shots_on_target",
+      "safe_default": 3.5,
+      "source_field": "shots_on_target"
+    }
+  ],
+  "model_status": "experimental_shadow_not_promoted",
+  "model_weights": {
+    "corners": 0.5,
+    "corners_first_half": 0.5,
+    "red_cards": 0.6,
+    "shots": 0.6,
+    "shots_on_target": 0.9,
+    "yellow_cards": 0.8,
+    "yellow_cards_first_half": 1.0
+  },
+  "version": "team_count_markets_v2_commercial_shots"
+}

@@ -1,0 +1,7 @@
+{
+  "collected": 31,
+  "command": "python -m pytest -s tests/test_dikamaha_inference.py tests/test_kalman_v2.py tests/test_markov_v1.py tests/test_hawkes_v1.py tests/test_hawkes_v1_integration.py",
+  "contract_tests": "tests/test_dikamaha_inference.py",
+  "failed": 0,
+  "passed": 31
+}

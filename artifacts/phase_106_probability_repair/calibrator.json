@@ -1,0 +1,8 @@
+{
+  "league_shrinkage": 500,
+  "market": "btts",
+  "model": "causal_league_btts_rate",
+  "prior_rate": 0.5,
+  "training_matches": 1000,
+  "version": "btts_league_rate_v1"
+}

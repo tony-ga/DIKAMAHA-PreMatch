@@ -1,0 +1,39 @@
+{
+  "all_gates_pass": false,
+  "any_market_ready": true,
+  "count_gates": {
+    "corners": true,
+    "corners_first_half": true,
+    "red_cards": false,
+    "shots": true,
+    "shots_on_target": true,
+    "yellow_cards": true,
+    "yellow_cards_first_half": false
+  },
+  "enabled_shadow_markets": [
+    "away_corners_over_4_5",
+    "away_shots_over_10_5",
+    "home_corners_over_4_5",
+    "home_shots_over_10_5",
+    "shots_on_target_total_over_7_5"
+  ],
+  "features_strictly_prior": true,
+  "goal_model_modified": false,
+  "market_gates": {
+    "away_corners_over_4_5": true,
+    "away_shots_over_10_5": true,
+    "cards_total_over_2_5": false,
+    "corners_total_over_9_5": false,
+    "first_half_cards_over_1_5": false,
+    "first_half_corners_over_4_5": false,
+    "home_corners_over_4_5": true,
+    "home_shots_over_10_5": true,
+    "red_card_yes": false,
+    "shots_on_target_total_over_7_5": true,
+    "shots_total_over_22_5": false
+  },
+  "player_markets_enabled": false,
+  "router_modified": false,
+  "selection_uses_confirmation": false,
+  "target_match_events_in_features": false
+}

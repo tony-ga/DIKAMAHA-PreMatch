@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "hawkes_disabled_default": true,
+    "hawkes_output_absent": true,
+    "live_audit_passed": true,
+    "markov_context_factor_one": true,
+    "no_migration_attempted": true,
+    "no_postgresql_write_attempted": true,
+    "pre_match_audit_passed": true,
+    "replay_identical": true
+  },
+  "passed": true,
+  "replay_hash": "744caadb90e1bf4d954f144eab90982a78ee6f1ebb443010106c84d9f5d1a50a"
+}

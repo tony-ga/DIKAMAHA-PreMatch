@@ -1,0 +1,46 @@
+name: dikamaha-phase-7-12-prospective-ingestion
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_staging_write:
+        description: "Requiere aprobación externa, manifiesto de fuente y secreto de base staging"
+        required: false
+        default: false
+        type: boolean
+  push:
+    paths:
+      - src/prospective_staging_ingestion.py
+      - src/collect_prospective_signals.py
+      - scripts/run_phase_7_12_prospective_ingestion.py
+      - tests/test_phase_7_12_prospective_ingestion.py
+      - .github/workflows/phase-7-12-prospective-ingestion.yml
+
+jobs:
+  contract-and-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements.staging.txt pytest
+      - name: Compile and test contract
+        run: |
+          python -m py_compile src/prospective_staging_ingestion.py scripts/run_phase_7_12_prospective_ingestion.py
+          python -m pytest -q tests/test_phase_7_12_prospective_ingestion.py
+      - name: Execute no-network dry-run
+        env:
+          DIKAMAHA_PROSPECTIVE_SOURCE_ENABLED: "false"
+          DIKAMAHA_PROSPECTIVE_STAGING_WRITE_ENABLED: "false"
+          DIKAMAHA_PROSPECTIVE_DRY_RUN: "true"
+        run: python scripts/run_phase_7_12_prospective_ingestion.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-12-prospective-ingestion
+          path: artifacts/phase_7_12_prospective_ingestion/
+          if-no-files-found: warn

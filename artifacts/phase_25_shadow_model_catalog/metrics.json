@@ -1,0 +1,8 @@
+{
+  "candidate_status_counts": {
+    "insufficient_coverage": 1,
+    "promising_unconfirmed": 1,
+    "rejected_for_revision": 2
+  },
+  "official_model_count": 8
+}

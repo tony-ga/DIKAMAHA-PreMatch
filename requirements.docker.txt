@@ -1,0 +1,15 @@
+# Runtime HTTP del servicio. Las dependencias numéricas se mantienen aquí
+# para que la imagen sea autónoma y reproducible dentro de sus rangos.
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+numpy>=1.26,<3
+pandas>=2.0,<3
+pydantic>=2.6,<3
+scipy>=1.10,<2
+requests>=2.31,<3
+tenacity>=8.2,<10
+python-dotenv>=1.0,<2
+python-json-logger>=2.0,<4
+SQLAlchemy>=2.0,<3
+joblib>=1.3,<2
+scikit-learn>=1.4,<2

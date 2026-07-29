@@ -1,0 +1,52 @@
+name: dikamaha-phase-7-5-postgres-readonly
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - requirements.staging.txt
+      - src/postgres_readonly_staging.py
+      - scripts/run_phase_7_5_postgres_readonly.py
+      - tests/test_postgres_readonly_staging.py
+      - tests/test_postgres_readonly_staging_integration.py
+      - .github/workflows/phase-7-5-postgres-readonly.yml
+
+jobs:
+  readonly-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DIKAMAHA_STAGING_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install read-only audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.staging.txt pytest
+      - name: Compile and unit tests
+        run: |
+          python -m py_compile src/postgres_readonly_staging.py scripts/run_phase_7_5_postgres_readonly.py
+          python -m pytest -q tests/test_postgres_readonly_staging.py
+      - name: Execute read-only staging audit
+        run: python scripts/run_phase_7_5_postgres_readonly.py
+      - name: Execute PostgreSQL integration tests when configured
+        if: ${{ env.DATABASE_URL != '' }}
+        run: python -m pytest -q --run-postgres tests/test_postgres_readonly_staging_integration.py
+      - name: Assert explicit classification
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          manifest = json.load(open("artifacts/phase_7_5_postgres_readonly_staging/manifest.json"))
+          expected = "postgres_readonly_verified" if os.getenv("DATABASE_URL") else "database_verification_incomplete"
+          assert manifest["decision"] == expected, manifest
+          PY
+      - name: Upload read-only evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-5-postgres-readonly
+          path: artifacts/phase_7_5_postgres_readonly_staging/

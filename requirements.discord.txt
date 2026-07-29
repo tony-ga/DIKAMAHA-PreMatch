@@ -1,0 +1,3 @@
+# Runtime opcional para la interfaz Discord DIKAMAHA.
+-r requirements.runtime.txt
+discord.py>=2.4,<3

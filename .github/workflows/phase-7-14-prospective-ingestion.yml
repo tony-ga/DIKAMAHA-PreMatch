@@ -1,0 +1,32 @@
+name: dikamaha-phase-7-14-prospective-ingestion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - src/prospective_ingestion_v2.py
+      - scripts/run_phase_7_14_prospective_ingestion.py
+      - tests/test_phase_7_14_prospective_ingestion.py
+      - .github/workflows/phase-7-14-prospective-ingestion.yml
+
+jobs:
+  dry-run-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m py_compile src/prospective_ingestion_v2.py scripts/run_phase_7_14_prospective_ingestion.py
+      - run: python -m pytest -q tests/test_phase_7_14_prospective_ingestion.py
+      - name: No-network dry-run
+        env:
+          DIKAMAHA_PROSPECTIVE_SOURCE_ENABLED: 'false'
+        run: python scripts/run_phase_7_14_prospective_ingestion.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dikamaha-phase-7-14-prospective-ingestion
+          path: artifacts/phase_7_14_prospective_ingestion/

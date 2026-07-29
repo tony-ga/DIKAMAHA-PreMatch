@@ -1,0 +1,14 @@
+{
+  "competition_id": "esp.1",
+  "contract_version": "dikamaha_inference_contract_v1",
+  "dixon_coles_version": "dixon_coles_v1",
+  "feature_version": "match_features_v1",
+  "hawkes_enabled": false,
+  "hawkes_official_allowed": false,
+  "hawkes_version": "hawkes_v1",
+  "kalman_experimental": true,
+  "kalman_version": "kalman_v2",
+  "markov_matrix_synthetic": true,
+  "markov_version": "markov_v1",
+  "persistence_enabled": false
+}

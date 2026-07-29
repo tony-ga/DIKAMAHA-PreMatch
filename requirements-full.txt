@@ -1,0 +1,3 @@
+# Instalación local completa: runtime, staging y herramientas de prueba.
+-r requirements.runtime.txt
+-r requirements-dev.txt

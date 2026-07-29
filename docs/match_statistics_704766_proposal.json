@@ -1,0 +1,279 @@
+{
+  "reconciliation_version": "v1",
+  "espn_event_id": 704766,
+  "match_id": 2,
+  "source_priority": [
+    "espn_summary",
+    "derived_play_by_play"
+  ],
+  "confidence_policy": {
+    "source_confidence": "calidad intrínseca del summary ESPN",
+    "reconciliation_confidence": "calidad de la reconciliación final entre fuentes",
+    "has_conflict": "diferencia detectada entre summary y play-by-play",
+    "needs_review": "caso que requiere revisión humana o bloqueo según política"
+  },
+  "teams": {
+    "home": {
+      "team_id": 1,
+      "name": "Real Madrid",
+      "espn_team_id": 86
+    },
+    "away": {
+      "team_id": 2,
+      "name": "Barcelona",
+      "espn_team_id": 83
+    }
+  },
+  "metrics": {
+    "possession_pct": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 41.3,
+        "away": 58.7
+      },
+      "derived": {
+        "home": null,
+        "away": null
+      }
+    },
+    "shots_total": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 9,
+        "away": 15
+      },
+      "derived": {
+        "home": 9,
+        "away": 15
+      }
+    },
+    "shots_on_target": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 4,
+        "away": 7
+      },
+      "derived": {
+        "home": 4,
+        "away": 7
+      }
+    },
+    "fouls": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 15,
+        "away": 17
+      },
+      "derived": {
+        "home": 15,
+        "away": 17
+      }
+    },
+    "yellow_cards": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 2,
+        "away": 5
+      },
+      "derived": {
+        "home": 2,
+        "away": 5
+      }
+    },
+    "red_cards": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 0,
+        "away": 0
+      },
+      "derived": {
+        "home": 0,
+        "away": 0
+      }
+    },
+    "corners": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 10,
+        "away": 3
+      },
+      "derived": {
+        "home": 10,
+        "away": 3
+      }
+    },
+    "saves": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.99,
+        "reconciliation_confidence": 0.99
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 3,
+        "away": 4
+      },
+      "derived": {
+        "home": 3,
+        "away": 4
+      }
+    },
+    "goals": {
+      "primary_source": "espn_summary",
+      "fallback_source": "derived_play_by_play",
+      "precedence": 1,
+      "conflict_policy": "retain_both_and_prefer_espn_summary",
+      "confidence": {
+        "source_confidence": 0.98,
+        "reconciliation_confidence": 0.98
+      },
+      "has_conflict": false,
+      "needs_review": false,
+      "final": {
+        "home": 0,
+        "away": 4
+      },
+      "derived": {
+        "home": 0,
+        "away": 4
+      }
+    }
+  },
+  "v3_example": {
+    "reconciliation_version": "v3",
+    "source_priority": [
+      "espn_summary",
+      "derived_play_by_play"
+    ],
+    "primary_source": "espn_summary",
+    "fallback_source": "derived_play_by_play",
+    "has_conflict": true,
+    "needs_review": false,
+    "reconciliation_status": "accepted",
+    "source_confidence": 1.0,
+    "reconciliation_confidence": 0.9,
+    "metric_conflicts": {
+      "shots_total": {
+        "summary": 15,
+        "derived": 15,
+        "difference": 0,
+        "severity": "none"
+      },
+      "shots_on_target": {
+        "summary": 5,
+        "derived": 5,
+        "difference": 0,
+        "severity": "none"
+      },
+      "fouls": {
+        "summary": 14,
+        "derived": 13,
+        "difference": 1,
+        "severity": "low"
+      },
+      "yellow_cards": {
+        "summary": 2,
+        "derived": 2,
+        "difference": 0,
+        "severity": "none"
+      },
+      "red_cards": {
+        "summary": 0,
+        "derived": null,
+        "difference": null,
+        "severity": "low"
+      },
+      "corners": {
+        "summary": 6,
+        "derived": 4,
+        "difference": 2,
+        "severity": "low"
+      },
+      "saves": {
+        "summary": 4,
+        "derived": null,
+        "difference": null,
+        "severity": "low"
+      },
+      "goals": {
+        "summary": 2,
+        "derived": 2,
+        "difference": 0,
+        "severity": "none"
+      },
+      "possession_pct": {
+        "summary": 48,
+        "derived": null,
+        "difference": null,
+        "severity": "none"
+      }
+    }
+  }
+}

@@ -1,0 +1,347 @@
+{
+  "blocked_match_ids": [
+    704766
+  ],
+  "contract_version": "dikamaha_inference_contract_v1",
+  "forbidden": [
+    "softmax",
+    "odds",
+    "kelly",
+    "database_writes",
+    "markov_in_match_features",
+    "hawkes_in_match_features"
+  ],
+  "layer_order": [
+    "dixon_coles_v1",
+    "kalman_v2",
+    "markov_v1",
+    "hawkes_v1_disabled"
+  ],
+  "models": {
+    "AuditMetadata": {
+      "checks": {
+        "required": true,
+        "type": "dict[str, bool]"
+      },
+      "input_hash": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "output_hash": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "passed": {
+        "required": true,
+        "type": "<class 'bool'>"
+      },
+      "warnings": {
+        "required": false,
+        "type": "tuple[str, ...]"
+      }
+    },
+    "LiveIntensityOutput": {
+      "audit": {
+        "required": true,
+        "type": "<class 'dikamaha_inference.AuditMetadata'>"
+      },
+      "away_state": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "hawkes_applied": {
+        "required": true,
+        "type": "<class 'bool'>"
+      },
+      "home_state": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "lambda_base_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_base_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_hawkes_away": {
+        "required": true,
+        "type": "float | None"
+      },
+      "lambda_hawkes_home": {
+        "required": true,
+        "type": "float | None"
+      },
+      "lambda_markov_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_markov_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "markov_audit": {
+        "required": true,
+        "type": "dict[str, Any]"
+      },
+      "match_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "provenance": {
+        "required": true,
+        "type": "<class 'dikamaha_inference.Provenance'>"
+      },
+      "snapshot_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      }
+    },
+    "LiveSnapshotInput": {
+      "away_team_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "events": {
+        "required": false,
+        "type": "tuple[dict[str, Any], ...]"
+      },
+      "hawkes_enabled": {
+        "required": false,
+        "type": "<class 'bool'>"
+      },
+      "home_team_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "kickoff_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "lambda_base_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_base_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "match_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "official_prediction": {
+        "required": false,
+        "type": "<class 'bool'>"
+      },
+      "snapshot_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "source_hash": {
+        "required": false,
+        "type": "<class 'str'>"
+      }
+    },
+    "PreMatchInput": {
+      "attack_sum": {
+        "required": false,
+        "type": "<class 'float'>"
+      },
+      "away_team_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "competition_id": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "dc_attack_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "dc_attack_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "dc_defense_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "dc_defense_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "defense_sum": {
+        "required": false,
+        "type": "<class 'float'>"
+      },
+      "eligible_for_materialization": {
+        "required": true,
+        "type": "<class 'bool'>"
+      },
+      "feature_cutoff_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "feature_version": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "history_minimum_met": {
+        "required": true,
+        "type": "<class 'bool'>"
+      },
+      "home_advantage": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "home_team_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "kalman_attack_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "kalman_attack_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "kalman_defense_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "kalman_defense_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "kickoff_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "league_intercept": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "match_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "max_goals": {
+        "required": false,
+        "type": "<class 'int'>"
+      },
+      "source_hash": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "tau_dc": {
+        "required": false,
+        "type": "<class 'float'>"
+      }
+    },
+    "PreMatchPrediction": {
+      "audit": {
+        "required": true,
+        "type": "<class 'dikamaha_inference.AuditMetadata'>"
+      },
+      "cutoff_ts": {
+        "required": true,
+        "type": "<class 'str'>"
+      },
+      "lambda_base_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_base_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_dc_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "lambda_dc_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "match_id": {
+        "required": true,
+        "type": "<class 'int'>"
+      },
+      "probability_away": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "probability_btts": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "probability_draw": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "probability_home": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "probability_over_2_5": {
+        "required": true,
+        "type": "<class 'float'>"
+      },
+      "provenance": {
+        "required": true,
+        "type": "<class 'dikamaha_inference.Provenance'>"
+      },
+      "score_matrix": {
+        "required": true,
+        "type": "tuple[tuple[float, ...], ...]"
+      }
+    },
+    "Provenance": {
+      "contract_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "dixon_coles_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "feature_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "hawkes_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "kalman_experimental": {
+        "required": false,
+        "type": "<class 'bool'>"
+      },
+      "kalman_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "markov_matrix_synthetic": {
+        "required": false,
+        "type": "<class 'bool'>"
+      },
+      "markov_version": {
+        "required": false,
+        "type": "<class 'str'>"
+      },
+      "source_hash": {
+        "required": false,
+        "type": "<class 'str'>"
+      }
+    }
+  },
+  "pre_match_markets": [
+    "1x2",
+    "over_2_5",
+    "btts"
+  ]
+}

@@ -1,0 +1,45 @@
+name: dikamaha-phase-6-6-ci-e2e
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - Dockerfile
+      - requirements.docker.txt
+      - src/**
+      - tests/**
+      - scripts/**
+      - .github/workflows/phase-6-6-ci-e2e.yml
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.docker.txt pytest httpx
+      - name: Pytest complete
+        run: python -m pytest -q
+      - name: Execute complete E2E gate
+        env:
+          DIKAMAHA_IMAGE: dikamaha-local:phase-6-6-ci
+        run: python scripts/run_ci_e2e.py
+      - name: Assert CI result
+        run: |
+          python - <<'PY'
+          import json
+          result = json.load(open("artifacts/phase_6_6_ci_e2e/ci_result.json"))
+          assert result["status"] == "ci_e2e_approved", result
+          PY
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-6-6-ci-e2e
+          path: artifacts/phase_6_6_ci_e2e/

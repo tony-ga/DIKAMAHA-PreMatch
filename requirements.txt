@@ -1,0 +1,10 @@
+# Dependencias comunes del predictor y del conector ESPN.
+# Compatible con Python 3.10+ y sin dependencias de servicios externos.
+numpy>=1.26,<3
+pandas>=2.0,<3
+scipy>=1.10,<2
+requests>=2.31,<3
+tenacity>=8.2,<10
+python-dotenv>=1.0,<2
+python-json-logger>=2.0,<4
+pydantic>=2.6,<3

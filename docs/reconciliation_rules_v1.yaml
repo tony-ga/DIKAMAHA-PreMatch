@@ -1,0 +1,288 @@
+version: "v1"
+match_context:
+  espn_event_id: 704766
+  match_id: 2
+  teams:
+    home:
+      internal_team_id: 1
+      espn_team_id: 86
+      name: "Real Madrid"
+    away:
+      internal_team_id: 2
+      espn_team_id: 83
+      name: "Barcelona"
+
+principles:
+  - "Conservar raw_api_responses como fuente inmutable."
+  - "events_ledger almacena todo el play-by-play normalizado, incluso eventos no analíticos."
+  - "events_timeline sólo almacena eventos analíticamente relevantes y con team_id interno resuelto."
+  - "match_statistics se calcula con una mezcla explícita de summary ESPN y derivación controlada desde play-by-play."
+  - "No asumir equivalencias semánticas no verificadas entre play-by-play y estadísticas agregadas."
+
+fields:
+  event_type_raw:
+    preserve: true
+    description: "Tipo original devuelto por ESPN sin pérdida de información."
+  event_type:
+    preserve: true
+    description: "Clasificación normalizada para analítica interna."
+  athlete_ref:
+    preserve: true
+    description: "Referencia estructurada del atleta cuando existe."
+  player_name:
+    preserve: true
+    nullable: true
+    description: "Sólo si existe nombre estructurado; no inferir por heurística."
+  description:
+    preserve: true
+    nullable: true
+    description: "Texto original o resumen textual de la jugada."
+  minute:
+    preserve: true
+    description: "Derivado exclusivamente de clock.value."
+  second:
+    preserve: true
+    description: "Derivado exclusivamente de clock.value."
+
+event_type_rules:
+  goal:
+    classification: "goal"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver primero team_id interno; si scoringPlay=true y team_id es válido, conservar."
+    deduplication_rule: "Evitar doble conteo con goal---header, penalty---scored u otros eventos del mismo espn_play_id o misma clave semántica."
+    var_treatment: "Si existe una anulación VAR posterior, excluir de match_statistics y timeline; conservar en ledger con estado anulado."
+    confidence: "high"
+    final_source: "play_by_play"
+  goal---header:
+    classification: "goal"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno desde el play; conservar sólo si no colisiona con otro gol de la misma secuencia."
+    deduplication_rule: "Colapsar con goal/penalty---scored si representan la misma secuencia de anotación."
+    var_treatment: "Aplicar la misma precedencia VAR que goal."
+    confidence: "high"
+    final_source: "play_by_play"
+  penalty---scored:
+    classification: "goal"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno desde el play."
+    deduplication_rule: "No duplicar con goal u otro evento de la misma jugada."
+    var_treatment: "Si una revisión posterior invalida la acción, excluir de métricas finales."
+    confidence: "high"
+    final_source: "play_by_play"
+  shot-on-target:
+    classification: "shot_on_target"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar en ledger y excluir de timeline."
+    deduplication_rule: "Conservar si el espn_play_id es único."
+    var_treatment: "No aplica salvo revisión anulatoria explícita."
+    confidence: "high"
+    final_source: "play_by_play"
+  shot-off-target:
+    classification: "shot_off_target"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar sólo en ledger."
+    deduplication_rule: "Conservar si el espn_play_id es único."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  shot-blocked:
+    classification: "shot_blocked"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar sólo en ledger."
+    deduplication_rule: "Conservar si el espn_play_id es único."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  shot-hit-woodwork:
+    classification: "shot_hit_woodwork"
+    destination: ["ledger", "match_statistics"]
+    team_id_rule: "Resolver team_id interno si existe; nunca asumir que implica tiro a puerta."
+    deduplication_rule: "Conservar en ledger; no colapsar con shot-on-target salvo evidencia explícita de duplicidad semántica."
+    var_treatment: "Si aparece como revisión/anulación, excluir de métricas finales."
+    confidence: "medium"
+    final_source: "play_by_play"
+  corner-awarded:
+    classification: "corner_candidate"
+    destination: ["ledger", "match_statistics"]
+    team_id_rule: "No asumir que items[*].team.$ref identifica el ejecutor; analizar text, participants y contexto."
+    deduplication_rule: "Colapsar duplicados sólo si comparten equipo, tiempo, periodo y secuencia/identificador ESPN; si persiste duda, conservar en ledger y usar corners del summary ESPN para match_statistics."
+    var_treatment: "Si el corner queda asociado a una jugada anulada, no usarlo en métricas derivadas."
+    confidence: "medium"
+    final_source: "espn_summary_for_match_statistics"
+  foul:
+    classification: "foul"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar en ledger y excluir de timeline."
+    deduplication_rule: "Conservar si el espn_play_id es único."
+    var_treatment: "No aplica salvo anulación explícita."
+    confidence: "high"
+    final_source: "play_by_play"
+  yellow-card:
+    classification: "yellow"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar en ledger."
+    deduplication_rule: "Conservar si el espn_play_id es único; no colapsar amarilla y segunda amarilla sin regla explícita."
+    var_treatment: "Si la tarjeta es anulada, excluir de métricas finales."
+    confidence: "high"
+    final_source: "play_by_play"
+  red-card:
+    classification: "red"
+    destination: ["ledger", "timeline", "match_statistics"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar en ledger."
+    deduplication_rule: "Conservar si el espn_play_id es único; distinguir roja directa y segunda amarilla en una capa futura."
+    var_treatment: "Si la expulsión es anulada, excluir de métricas finales."
+    confidence: "high"
+    final_source: "play_by_play"
+  substitution:
+    classification: "substitution"
+    destination: ["ledger", "timeline"]
+    team_id_rule: "Resolver team_id interno; si falta, conservar en ledger y excluir de timeline."
+    deduplication_rule: "Conservar si el espn_play_id es único."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  deleted-after-review:
+    classification: "var_anulled"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe; no usar en timeline."
+    deduplication_rule: "Conservar una sola vez por espn_play_id."
+    var_treatment: "Marca evento original como anulado; no contribuye a métricas finales."
+    confidence: "high"
+    final_source: "play_by_play"
+  var---referee-decision-cancelled:
+    classification: "var_anulled"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe; no usar en timeline."
+    deduplication_rule: "Conservar una sola vez por espn_play_id."
+    var_treatment: "Es la resolución final de una revisión; prevalece sobre el evento original inválido."
+    confidence: "high"
+    final_source: "play_by_play"
+  save:
+    classification: "save"
+    destination: ["ledger", "match_statistics"]
+    team_id_rule: "Resolver team_id interno si existe; no usar para timeline."
+    deduplication_rule: "Conservar en ledger; no derivar de forma 1:1 como tiro."
+    var_treatment: "No aplica."
+    confidence: "medium"
+    final_source: "espn_summary_for_match_statistics"
+  possession:
+    classification: "possession"
+    destination: ["match_statistics"]
+    team_id_rule: "Usar split agregado de ESPN summary."
+    deduplication_rule: "No derivar del play-by-play."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "espn_summary"
+  assists-shot:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  assist:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  free-kick:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  throw-in:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  blocked-pass:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  offside:
+    classification: "supporting_event"
+    destination: ["ledger"]
+    team_id_rule: "Resolver team_id interno si existe."
+    deduplication_rule: "Conservar en ledger; no clasificar como tiro ni corner."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  kickoff:
+    classification: "control_event"
+    destination: ["ledger"]
+    team_id_rule: "Opcional; no usar en timeline."
+    deduplication_rule: "Conservar una vez por secuencia."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  halftime:
+    classification: "control_event"
+    destination: ["ledger"]
+    team_id_rule: "Opcional; no usar en timeline."
+    deduplication_rule: "Conservar una vez por secuencia."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  start-2nd-half:
+    classification: "control_event"
+    destination: ["ledger"]
+    team_id_rule: "Opcional; no usar en timeline."
+    deduplication_rule: "Conservar una vez por secuencia."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+  end-regular-time:
+    classification: "control_event"
+    destination: ["ledger"]
+    team_id_rule: "Opcional; no usar en timeline."
+    deduplication_rule: "Conservar una vez por secuencia."
+    var_treatment: "No aplica."
+    confidence: "high"
+    final_source: "play_by_play"
+
+match_statistics:
+  reconciliation_version: "v1"
+  sources:
+    espn_summary:
+      fields:
+        - possession
+        - shots
+        - shots_on_target
+        - fouls
+        - yellow_cards
+        - red_cards
+        - corners
+        - saves
+      note: "Fuente primaria para métricas agregadas cuando el play-by-play no ofrece una derivación inequívoca."
+    derived_play_by_play:
+      fields:
+        - goals
+        - shot_on_target
+        - shot_off_target
+        - shot_blocked
+        - shot_hit_woodwork
+        - fouls
+        - yellow_cards
+        - red_cards
+      note: "Usar sólo cuando la regla de clasificación y deduplicación lo permitan."
+    not_available:
+      fields:
+        - xg
+        - pressure
+        - PPDA
+      note: "No se deriva de la fuente actual."
+

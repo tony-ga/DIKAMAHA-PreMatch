@@ -1,0 +1,49 @@
+name: dikamaha-phase-7-4-reverse-proxy
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - Dockerfile
+      - requirements.docker.txt
+      - src/dikamaha_service.py
+      - deploy/phase_7_4/**
+      - tests/test_reverse_proxy_config.py
+      - scripts/run_phase_7_4_reverse_proxy.py
+      - .github/workflows/phase-7-4-reverse-proxy.yml
+
+jobs:
+  reverse-proxy-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.docker.txt pytest httpx
+      - name: Compile and test proxy contract
+        run: |
+          python -m py_compile src/dikamaha_service.py scripts/run_phase_7_4_reverse_proxy.py
+          python -m pytest -q tests/test_reverse_proxy_config.py tests/test_dikamaha_service.py tests/test_dikamaha_inference.py tests/test_hawkes_v1_integration.py
+      - name: Execute local TLS reverse proxy gate
+        run: python scripts/run_phase_7_4_reverse_proxy.py
+      - name: Assert decision
+        run: |
+          python - <<'PY'
+          import json
+          manifest = json.load(open("artifacts/phase_7_4_reverse_proxy/manifest.json"))
+          assert manifest["decision"] in {
+              "reverse_proxy_approved",
+              "reverse_proxy_approved_with_caveats",
+          }, manifest
+          PY
+      - name: Upload reverse proxy evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-4-reverse-proxy
+          path: artifacts/phase_7_4_reverse_proxy/

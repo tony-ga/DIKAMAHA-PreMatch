@@ -1,0 +1,696 @@
+{
+  "components": {
+    "schemas": {
+      "EventRequest": {
+        "additionalProperties": true,
+        "description": "Evento in-play recibido por el endpoint live.",
+        "properties": {
+          "annulled": {
+            "default": false,
+            "title": "Annulled",
+            "type": "boolean"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_ts": {
+            "title": "Event Ts",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "is_control": {
+            "default": false,
+            "title": "Is Control",
+            "type": "boolean"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_ts",
+          "event_type"
+        ],
+        "title": "EventRequest",
+        "type": "object"
+      },
+      "FixtureRequest": {
+        "additionalProperties": false,
+        "description": "Criterios de usuario para localizar un fixture futuro en ESPN.",
+        "properties": {
+          "away_team_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Id"
+          },
+          "away_team_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Away Team Name"
+          },
+          "home_team_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Id"
+          },
+          "home_team_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Team Name"
+          },
+          "kickoff_date": {
+            "pattern": "^\\d{8}$",
+            "title": "Kickoff Date",
+            "type": "string"
+          },
+          "league_slug": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "League Slug",
+            "type": "string"
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Id"
+          }
+        },
+        "required": [
+          "league_slug",
+          "kickoff_date"
+        ],
+        "title": "FixtureRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LiveRequest": {
+        "additionalProperties": false,
+        "description": "Esquema HTTP compatible con `LiveSnapshotInput`.",
+        "properties": {
+          "away_team_id": {
+            "title": "Away Team Id",
+            "type": "integer"
+          },
+          "events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EventRequest"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "hawkes_enabled": {
+            "default": false,
+            "title": "Hawkes Enabled",
+            "type": "boolean"
+          },
+          "hawkes_shadow_mode": {
+            "default": false,
+            "title": "Hawkes Shadow Mode",
+            "type": "boolean"
+          },
+          "home_team_id": {
+            "title": "Home Team Id",
+            "type": "integer"
+          },
+          "kickoff_ts": {
+            "title": "Kickoff Ts",
+            "type": "string"
+          },
+          "lambda_base_away": {
+            "title": "Lambda Base Away",
+            "type": "number"
+          },
+          "lambda_base_home": {
+            "title": "Lambda Base Home",
+            "type": "number"
+          },
+          "match_id": {
+            "title": "Match Id",
+            "type": "integer"
+          },
+          "official_prediction": {
+            "default": false,
+            "title": "Official Prediction",
+            "type": "boolean"
+          },
+          "snapshot_ts": {
+            "title": "Snapshot Ts",
+            "type": "string"
+          },
+          "source_hash": {
+            "default": "",
+            "title": "Source Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "match_id",
+          "home_team_id",
+          "away_team_id",
+          "kickoff_ts",
+          "snapshot_ts",
+          "lambda_base_home",
+          "lambda_base_away"
+        ],
+        "title": "LiveRequest",
+        "type": "object"
+      },
+      "PreMatchRequest": {
+        "additionalProperties": false,
+        "description": "Esquema HTTP compatible con `PreMatchInput`.",
+        "properties": {
+          "attack_sum": {
+            "default": 0.0,
+            "title": "Attack Sum",
+            "type": "number"
+          },
+          "away_team_id": {
+            "title": "Away Team Id",
+            "type": "integer"
+          },
+          "competition_id": {
+            "title": "Competition Id",
+            "type": "string"
+          },
+          "dc_attack_away": {
+            "title": "Dc Attack Away",
+            "type": "number"
+          },
+          "dc_attack_home": {
+            "title": "Dc Attack Home",
+            "type": "number"
+          },
+          "dc_defense_away": {
+            "title": "Dc Defense Away",
+            "type": "number"
+          },
+          "dc_defense_home": {
+            "title": "Dc Defense Home",
+            "type": "number"
+          },
+          "defense_sum": {
+            "default": 0.0,
+            "title": "Defense Sum",
+            "type": "number"
+          },
+          "eligible_for_materialization": {
+            "title": "Eligible For Materialization",
+            "type": "boolean"
+          },
+          "feature_cutoff_ts": {
+            "title": "Feature Cutoff Ts",
+            "type": "string"
+          },
+          "feature_version": {
+            "title": "Feature Version",
+            "type": "string"
+          },
+          "history_minimum_met": {
+            "title": "History Minimum Met",
+            "type": "boolean"
+          },
+          "home_advantage": {
+            "title": "Home Advantage",
+            "type": "number"
+          },
+          "home_team_id": {
+            "title": "Home Team Id",
+            "type": "integer"
+          },
+          "kalman_attack_away": {
+            "title": "Kalman Attack Away",
+            "type": "number"
+          },
+          "kalman_attack_home": {
+            "title": "Kalman Attack Home",
+            "type": "number"
+          },
+          "kalman_defense_away": {
+            "title": "Kalman Defense Away",
+            "type": "number"
+          },
+          "kalman_defense_home": {
+            "title": "Kalman Defense Home",
+            "type": "number"
+          },
+          "kickoff_ts": {
+            "title": "Kickoff Ts",
+            "type": "string"
+          },
+          "league_intercept": {
+            "title": "League Intercept",
+            "type": "number"
+          },
+          "match_id": {
+            "title": "Match Id",
+            "type": "integer"
+          },
+          "max_goals": {
+            "default": 10,
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Max Goals",
+            "type": "integer"
+          },
+          "source_hash": {
+            "default": "",
+            "title": "Source Hash",
+            "type": "string"
+          },
+          "tau_dc": {
+            "default": 0.0,
+            "title": "Tau Dc",
+            "type": "number"
+          }
+        },
+        "required": [
+          "match_id",
+          "home_team_id",
+          "away_team_id",
+          "kickoff_ts",
+          "feature_cutoff_ts",
+          "competition_id",
+          "feature_version",
+          "eligible_for_materialization",
+          "history_minimum_met",
+          "league_intercept",
+          "home_advantage",
+          "dc_attack_home",
+          "dc_defense_home",
+          "dc_attack_away",
+          "dc_defense_away",
+          "kalman_attack_home",
+          "kalman_defense_home",
+          "kalman_attack_away",
+          "kalman_defense_away"
+        ],
+        "title": "PreMatchRequest",
+        "type": "object"
+      },
+      "UpcomingRequest": {
+        "additionalProperties": false,
+        "description": "Solicitud compacta para un partido pr\u00f3ximo por IDs ESPN.",
+        "properties": {
+          "away_team_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Away Team Id",
+            "type": "integer"
+          },
+          "home_team_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Home Team Id",
+            "type": "integer"
+          },
+          "kickoff_ts": {
+            "title": "Kickoff Ts",
+            "type": "string"
+          },
+          "league_slug": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "League Slug",
+            "type": "string"
+          },
+          "match_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Id"
+          }
+        },
+        "required": [
+          "league_slug",
+          "home_team_id",
+          "away_team_id",
+          "kickoff_ts"
+        ],
+        "title": "UpcomingRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "DIKAMAHA Local Inference Service",
+    "version": "dikamaha_local_service_v1.4_fixture_resolver"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "description": "Devuelve estado y flags activos del servicio.",
+        "operationId": "health_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health V1 Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/v1/metrics": {
+      "get": {
+        "description": "Devuelve m\u00e9tricas agregadas del proceso sin datos de requests.",
+        "operationId": "metrics_v1_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Metrics V1 Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics",
+        "tags": [
+          "observability"
+        ]
+      }
+    },
+    "/v1/predict/fixture": {
+      "post": {
+        "description": "Resuelve un fixture ESPN y ejecuta la predicci\u00f3n compacta.",
+        "operationId": "predict_fixture_v1_predict_fixture_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FixtureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Predict Fixture V1 Predict Fixture Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Predict Fixture",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/v1/predict/live": {
+      "post": {
+        "description": "Ejecuta Markov live sin probabilidades ni Hawkes oficial.",
+        "operationId": "predict_live_v1_predict_live_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Predict Live V1 Predict Live Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Predict Live",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/v1/predict/pre-match": {
+      "post": {
+        "description": "Ejecuta inferencia pre-match del contrato vigente.",
+        "operationId": "predict_pre_match_v1_predict_pre_match_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Predict Pre Match V1 Predict Pre Match Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Predict Pre Match",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/v1/predict/upcoming": {
+      "post": {
+        "description": "Predice un partido pr\u00f3ximo desde el snapshot hist\u00f3rico local.",
+        "operationId": "predict_upcoming_v1_predict_upcoming_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpcomingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Predict Upcoming V1 Predict Upcoming Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Predict Upcoming",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/v1/readiness": {
+      "get": {
+        "description": "Indica si la configuraci\u00f3n local permite recibir requests.",
+        "operationId": "readiness_v1_readiness_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Readiness V1 Readiness Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

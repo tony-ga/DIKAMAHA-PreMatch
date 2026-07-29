@@ -1,0 +1,14 @@
+{
+  "external_calls_enabled": false,
+  "hawkes_enabled": false,
+  "mode": "local_dry_run",
+  "official_prediction": false,
+  "persistence_enabled": false,
+  "versions": {
+    "contract": "dikamaha_inference_contract_v1",
+    "dixon_coles": "dixon_coles_v1",
+    "hawkes": "hawkes_v1",
+    "kalman": "kalman_v2",
+    "markov": "markov_v1"
+  }
+}

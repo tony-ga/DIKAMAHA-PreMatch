@@ -1,0 +1,974 @@
+"""Servicio FastAPI local/operativo de inferencia DIKAMAHA v1.
+
+El modo local no abre conexiones externas ni persiste resultados. El modo
+operativo de sólo lectura puede resolver fixtures ESPN, sin escribir datos.
+La configuración es inmutable durante la vida de la aplicación.
+
+Requirements:
+    - fastapi
+    - pydantic
+
+Version: 1.5.0
+Created: 2026-07-15
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hmac
+import logging
+import json
+import math
+import os
+import re
+import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, field as dataclass_field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from statistics import quantiles
+from typing import Any
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+try:
+    from src.dikamaha_inference import (
+        DikamahaInferenceEngine,
+        LiveSnapshotInput,
+        PreMatchInput,
+    )
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from dikamaha_inference import DikamahaInferenceEngine, LiveSnapshotInput, PreMatchInput
+
+try:
+    from src.prematch_shadow_catalog import build_shadow_observation, load_shadow_catalog
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from prematch_shadow_catalog import build_shadow_observation, load_shadow_catalog
+
+try:
+    from src.universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
+    from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
+    from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
+    from src.espn_user_explorer import EspnFootballDataExplorer, explorer_dates
+    from src.espn_fixture_context import default_context_service
+    from src.prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
+    from espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
+    from espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
+    from espn_user_explorer import EspnFootballDataExplorer, explorer_dates
+    from espn_fixture_context import default_context_service
+    from prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
+
+LOGGER = logging.getLogger(__name__)
+SERVICE_VERSION = "dikamaha_local_service_v1.5_data_explorer"
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
+SECURITY_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
+
+
+class RequestGate:
+    """Control thread-safe de concurrencia y rate limit local."""
+
+    def __init__(self, max_concurrent: int, rate_limit: int, window_seconds: int) -> None:
+        """Inicializa los límites operativos in-memory."""
+
+        self._lock = threading.Lock()
+        self._active = 0
+        self._max_concurrent = max_concurrent
+        self._rate_limit = rate_limit
+        self._window_seconds = window_seconds
+        self._requests: dict[str, list[float]] = {}
+
+    def enter(self, client_id: str, now: float) -> str | None:
+        """Reserva capacidad o devuelve el código del rechazo."""
+
+        with self._lock:
+            recent = self._recent(client_id, now)
+            if len(recent) >= self._rate_limit:
+                return "rate_limit_exceeded"
+            if self._active >= self._max_concurrent:
+                return "concurrency_limit_exceeded"
+            recent.append(now)
+            self._requests[client_id] = recent
+            self._active += 1
+        return None
+
+    def leave(self) -> None:
+        """Libera una reserva de concurrencia."""
+
+        with self._lock:
+            self._active = max(0, self._active - 1)
+
+    def _recent(self, client_id: str, now: float) -> list[float]:
+        """Descarta entradas fuera de la ventana."""
+
+        cutoff = now - self._window_seconds
+        return [item for item in self._requests.get(client_id, []) if item >= cutoff]
+
+
+class MetricsStore:
+    """Contadores y latencias acotados en memoria del proceso."""
+
+    def __init__(self, max_samples: int = 1000) -> None:
+        """Inicializa almacenamiento thread-safe y acotado."""
+
+        self._lock = threading.Lock()
+        self._max_samples = max_samples
+        self._requests: dict[str, int] = {}
+        self._status: dict[str, int] = {}
+        self._latencies: dict[str, list[float]] = {}
+        self._counters = {"validation_errors": 0, "pre_match_responses": 0, "live_responses": 0, "hawkes_enabled": 0, "hawkes_disabled": 0, "hawkes_shadow_enabled": 0, "leakage_rejections": 0, "match_704766_rejections": 0}
+
+    def observe(self, endpoint: str, status: int, duration_ms: float, error_code: str | None) -> None:
+        """Registra una request sin almacenar su payload."""
+
+        with self._lock:
+            self._requests[endpoint] = self._requests.get(endpoint, 0) + 1
+            key = f"{endpoint}:{status}"
+            self._status[key] = self._status.get(key, 0) + 1
+            samples = self._latencies.setdefault(endpoint, [])
+            samples.append(round(duration_ms, 3))
+            del samples[:-self._max_samples]
+            if endpoint.endswith(("pre-match", "upcoming", "fixture")) and status < 400:
+                self._counters["pre_match_responses"] += 1
+            if endpoint.endswith("live") and status < 400:
+                self._counters["live_responses"] += 1
+            if error_code == "contract_validation_error":
+                self._counters["validation_errors"] += 1
+            if error_code == "temporal_leakage":
+                self._counters["leakage_rejections"] += 1
+            if error_code == "blocked_match_704766":
+                self._counters["match_704766_rejections"] += 1
+
+    def mark_hawkes(self, enabled: bool, shadow_mode: bool) -> None:
+        """Registra la bandera Hawkes sin registrar eventos."""
+
+        with self._lock:
+            self._counters["hawkes_enabled" if enabled else "hawkes_disabled"] += 1
+            if enabled and shadow_mode:
+                self._counters["hawkes_shadow_enabled"] += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        """Devuelve métricas serializables y agregadas."""
+
+        with self._lock:
+            latency = {key: self._percentiles(values) for key, values in self._latencies.items()}
+            return {"requests_by_endpoint": dict(self._requests), "responses_by_status": dict(self._status), "latency_ms": latency, "counters": dict(self._counters)}
+
+    @staticmethod
+    def _percentiles(values: list[float]) -> dict[str, float | None]:
+        """Calcula p50/p95 sin fallar con muestras pequeñas."""
+
+        if not values:
+            return {"p50": None, "p95": None}
+        if len(values) == 1:
+            return {"p50": values[0], "p95": values[0]}
+        points = quantiles(values, n=100, method="inclusive")
+        return {"p50": points[49], "p95": points[94]}
+
+
+class AsyncPredictionCache:
+    """Caché TTL con single-flight por clave de predicción."""
+
+    def __init__(self, ttl_seconds: float = 300.0, max_entries: int = 256) -> None:
+        """Inicializa una caché acotada sin persistencia."""
+
+        self._ttl = ttl_seconds
+        self._max_entries = max_entries
+        self._values: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    async def get_or_compute(self, key: str, factory: Any) -> dict[str, Any]:
+        """Devuelve una copia vigente o calcula una sola vez por clave."""
+
+        cached = self._get(key)
+        if cached is not None:
+            return cached
+        lock = self._locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            cached = self._get(key)
+            if cached is None:
+                cached = dict(await factory())
+                self._put(key, cached)
+        self._locks.pop(key, None)
+        return dict(cached)
+
+    def _get(self, key: str) -> dict[str, Any] | None:
+        """Lee una entrada vigente y elimina las expiradas."""
+
+        row = self._values.get(key)
+        if row is None:
+            return None
+        if row[0] <= time.monotonic():
+            self._values.pop(key, None)
+            return None
+        return dict(row[1])
+
+    def _put(self, key: str, value: dict[str, Any]) -> None:
+        """Inserta una copia y conserva un número máximo de entradas."""
+
+        if len(self._values) >= self._max_entries:
+            oldest = min(self._values, key=lambda item: self._values[item][0])
+            self._values.pop(oldest, None)
+        self._values[key] = (time.monotonic() + self._ttl, dict(value))
+
+
+def _request_id(request: Request) -> str:
+    """Propaga un request id seguro o genera uno nuevo."""
+
+    candidate = request.headers.get("X-Request-ID", "")
+    return candidate if REQUEST_ID_PATTERN.fullmatch(candidate) else uuid.uuid4().hex
+
+
+def _error_code(detail: str) -> str:
+    """Clasifica errores sin registrar detalles sensibles."""
+
+    if "704766" in detail:
+        return "blocked_match_704766"
+    if "cutoff" in detail or "event_ts" in detail or "snapshot_ts" in detail:
+        return "temporal_leakage"
+    return "contract_validation_error"
+
+
+def _structured_log(request: Request, request_id: str, status: int, duration_ms: float, config: ServiceConfig, error_code: str | None) -> str:
+    """Construye una línea JSON sin cuerpos ni credenciales."""
+
+    payload = {"timestamp_utc": datetime.now(timezone.utc).isoformat(), "request_id": request_id, "endpoint": request.url.path[:128], "method": request.method, "status_code": status, "duration_ms": round(duration_ms, 3), "contract": config.contract_version, "dixon_coles_version": config.dixon_coles_version, "kalman_version": config.kalman_version, "markov_version": config.markov_version, "hawkes_enabled": config.hawkes_enabled, "hawkes_shadow_mode": config.hawkes_shadow_mode}
+    if error_code:
+        payload["error_code"] = error_code
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+@dataclass(frozen=True, slots=True)
+class ServiceConfig:
+    """Configuración inmutable del servicio local u operativo de sólo lectura."""
+
+    mode: str = "local_dry_run"
+    contract_version: str = "dikamaha_inference_contract_v1.2_shadow_catalog"
+    dixon_coles_version: str = "dixon_coles_v1"
+    kalman_version: str = "kalman_v2"
+    markov_version: str = "markov_v1"
+    hawkes_version: str = "hawkes_v1"
+    hawkes_enabled: bool = False
+    hawkes_shadow_mode: bool = False
+    official_prediction: bool = False
+    external_calls_enabled: bool = False
+    persistence_enabled: bool = False
+    authentication_enabled: bool = False
+    api_key: str | None = dataclass_field(default=None, repr=False)
+    max_request_bytes: int = 65536
+    rate_limit_requests: int = 600
+    rate_limit_window_seconds: int = 60
+    inference_timeout_seconds: float = 10.0
+    max_concurrent_requests: int = 16
+    allowed_origins: tuple[str, ...] = ()
+    openapi_local_only: bool = True
+    prematch_snapshot_id: str | None = None
+    prematch_snapshot_root: str | None = None
+
+    def __post_init__(self) -> None:
+        """Rechaza configuraciones incompatibles con el alcance local."""
+
+        if self.mode not in {"local_dry_run", "operational_readonly"}:
+            raise ValueError("Modo de servicio no permitido.")
+        if self.external_calls_enabled and self.mode != "operational_readonly":
+            raise ValueError("Las llamadas externas requieren operational_readonly.")
+        if self.persistence_enabled:
+            raise ValueError("El servicio de inferencia no permite persistencia.")
+        if self.hawkes_enabled != self.hawkes_shadow_mode:
+            raise ValueError("La configuración Hawkes shadow debe activar ambas banderas.")
+        if self.official_prediction and self.hawkes_enabled:
+            raise ValueError("Hawkes shadow no puede activarse para predicciones oficiales.")
+        if self.authentication_enabled and not self.api_key:
+            raise ValueError("La autenticación requiere una API key de runtime.")
+        if self.max_request_bytes < 1024 or self.max_concurrent_requests < 1:
+            raise ValueError("Los límites de request y concurrencia son inválidos.")
+        if self.rate_limit_requests < 1 or self.rate_limit_window_seconds < 1:
+            raise ValueError("La configuración de rate limiting es inválida.")
+        if self.inference_timeout_seconds <= 0:
+            raise ValueError("El timeout de inferencia debe ser positivo.")
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    """Lee una bandera booleana de entorno."""
+
+    value = os.getenv(name)
+    return default if value is None else value.strip().lower() in {"1", "true", "yes"}
+
+
+def service_config_from_env() -> ServiceConfig:
+    """Construye la configuración inmutable sin exponer secretos."""
+
+    origins = tuple(item for item in os.getenv("DIKAMAHA_ALLOWED_ORIGINS", "").split(",") if item)
+    return ServiceConfig(
+        mode=os.getenv("DIKAMAHA_MODE", "local_dry_run"),
+        external_calls_enabled=_env_bool("DIKAMAHA_EXTERNAL_CALLS_ENABLED", False),
+        authentication_enabled=_env_bool("DIKAMAHA_AUTH_ENABLED", False),
+        api_key=os.getenv("DIKAMAHA_API_KEY"),
+        max_request_bytes=int(os.getenv("DIKAMAHA_MAX_REQUEST_BYTES", "65536")),
+        rate_limit_requests=int(os.getenv("DIKAMAHA_RATE_LIMIT_REQUESTS", "600")),
+        rate_limit_window_seconds=int(os.getenv("DIKAMAHA_RATE_LIMIT_WINDOW_SECONDS", "60")),
+        inference_timeout_seconds=float(os.getenv("DIKAMAHA_INFERENCE_TIMEOUT_SECONDS", "10")),
+        max_concurrent_requests=int(os.getenv("DIKAMAHA_MAX_CONCURRENT_REQUESTS", "16")),
+        allowed_origins=origins,
+        prematch_snapshot_id=os.getenv("DIKAMAHA_PREMATCH_SNAPSHOT_ID") or None,
+        prematch_snapshot_root=os.getenv("DIKAMAHA_PREMATCH_SNAPSHOT_ROOT") or None,
+    )
+
+
+def _public_config(config: ServiceConfig) -> dict[str, Any]:
+    """Serializa configuración sin incluir la API key."""
+
+    payload = asdict(config)
+    payload.pop("api_key", None)
+    payload["api_key_configured"] = bool(config.api_key)
+    return payload
+
+
+def _client_id(request: Request) -> str:
+    """Obtiene identidad local sin confiar en cabeceras proxy."""
+
+    return request.client.host if request.client else "local"
+
+
+def _auth_valid(request: Request, config: ServiceConfig) -> bool:
+    """Valida una API key sin comparaciones dependientes del contenido."""
+
+    if not config.authentication_enabled or request.url.path in PUBLIC_PATHS:
+        return True
+    supplied = request.headers.get("X-Dikamaha-Key", "")
+    return bool(config.api_key) and hmac.compare_digest(supplied, config.api_key)
+
+
+def _origin_valid(request: Request, config: ServiceConfig) -> bool:
+    """Aplica una política CORS restrictiva."""
+
+    origin = request.headers.get("Origin")
+    return origin is None or origin in config.allowed_origins
+
+
+def _gate_error(code: str, status: int) -> JSONResponse:
+    """Construye un rechazo de perímetro sin filtrar información."""
+
+    headers = {"X-Error-Code": code}
+    if status in {429, 503}:
+        headers["Retry-After"] = "1"
+    return JSONResponse(
+        status_code=status,
+        content={"detail": {"code": code, "message": "Request rechazado por el perímetro local."}},
+        headers=headers,
+    )
+
+
+def _body_too_large(request: Request, limit: int) -> bool:
+    """Valida Content-Length antes de consumir el cuerpo."""
+
+    value = request.headers.get("content-length")
+    if value is None:
+        return False
+    try:
+        return int(value) > limit
+    except ValueError:
+        return True
+
+
+def _apply_security_headers(response: Any, request: Request, config: ServiceConfig) -> None:
+    """Añade headers defensivos y CORS solo para orígenes permitidos."""
+
+    for key, value in SECURITY_HEADERS.items():
+        response.headers[key] = value
+    origin = request.headers.get("Origin")
+    if origin and origin in config.allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+
+
+class EventRequest(BaseModel):
+    """Evento in-play recibido por el endpoint live."""
+
+    model_config = ConfigDict(extra="allow")
+    event_id: str
+    event_ts: str
+    event_type: str
+    team_id: int | None = None
+    annulled: bool = False
+    is_control: bool = False
+
+
+class PreMatchRequest(BaseModel):
+    """Esquema HTTP compatible con `PreMatchInput`."""
+
+    model_config = ConfigDict(extra="forbid")
+    match_id: int
+    home_team_id: int
+    away_team_id: int
+    kickoff_ts: str
+    feature_cutoff_ts: str
+    competition_id: str
+    feature_version: str
+    eligible_for_materialization: bool
+    history_minimum_met: bool
+    league_intercept: float
+    home_advantage: float
+    dc_attack_home: float
+    dc_defense_home: float
+    dc_attack_away: float
+    dc_defense_away: float
+    kalman_attack_home: float
+    kalman_defense_home: float
+    kalman_attack_away: float
+    kalman_defense_away: float
+    attack_sum: float = 0.0
+    defense_sum: float = 0.0
+    tau_dc: float = 0.0
+    max_goals: int = Field(default=10, ge=1, le=30)
+    source_hash: str = ""
+
+
+class UpcomingRequest(BaseModel):
+    """Solicitud compacta para un partido próximo por IDs ESPN."""
+
+    model_config = ConfigDict(extra="forbid")
+    league_slug: str = Field(min_length=1, max_length=64)
+    home_team_id: int = Field(gt=0)
+    away_team_id: int = Field(gt=0)
+    kickoff_ts: str
+    match_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("league_slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        """Acepta sólo slugs alfanuméricos con puntos o guiones bajos."""
+
+        if not re.fullmatch(r"[A-Za-z0-9._]+", value):
+            raise ValueError("league_slug inválido.")
+        return value
+
+
+class FixtureRequest(BaseModel):
+    """Criterios de usuario para localizar un fixture futuro en ESPN."""
+
+    model_config = ConfigDict(extra="forbid")
+    league_slug: str = Field(min_length=1, max_length=64)
+    kickoff_date: str = Field(pattern=r"^\d{8}$")
+    match_id: int | None = Field(default=None, gt=0)
+    home_team_id: int | None = Field(default=None, gt=0)
+    away_team_id: int | None = Field(default=None, gt=0)
+    home_team_name: str | None = Field(default=None, min_length=1, max_length=120)
+    away_team_name: str | None = Field(default=None, min_length=1, max_length=120)
+
+    @field_validator("league_slug")
+    @classmethod
+    def fixture_slug(cls, value: str) -> str:
+        """Valida el slug ESPN sin permitir rutas o parámetros."""
+
+        if not re.fullmatch(r"[A-Za-z0-9._]+", value):
+            raise ValueError("league_slug inválido.")
+        return value
+
+
+class LiveRequest(BaseModel):
+    """Esquema HTTP compatible con `LiveSnapshotInput`."""
+
+    model_config = ConfigDict(extra="forbid")
+    match_id: int
+    home_team_id: int
+    away_team_id: int
+    kickoff_ts: str
+    snapshot_ts: str
+    lambda_base_home: float
+    lambda_base_away: float
+    events: tuple[EventRequest, ...] = ()
+    official_prediction: bool = False
+    hawkes_enabled: bool = False
+    hawkes_shadow_mode: bool = False
+    source_hash: str = ""
+
+    @field_validator("lambda_base_home", "lambda_base_away")
+    @classmethod
+    def positive_finite(cls, value: float) -> float:
+        """Valida que las intensidades sean finitas y positivas."""
+
+        if value <= 0 or not value < float("inf"):
+            raise ValueError("La intensidad debe ser positiva y finita.")
+        return value
+
+
+def _pre_input(request: PreMatchRequest) -> PreMatchInput:
+    """Convierte el modelo HTTP al contrato matemático."""
+
+    return PreMatchInput(**request.model_dump())
+
+
+def _live_input(request: LiveRequest) -> LiveSnapshotInput:
+    """Convierte el modelo live y sus eventos al contrato matemático."""
+
+    payload = request.model_dump()
+    payload["events"] = tuple(payload["events"])
+    return LiveSnapshotInput(**payload)
+
+
+def _upcoming_input(request: UpcomingRequest) -> UpcomingMatchInput:
+    """Convierte la solicitud compacta al puerto de inferencia universal."""
+
+    return UpcomingMatchInput(**request.model_dump())
+
+
+def _fixture_lookup(request: FixtureRequest) -> FixtureLookup:
+    """Convierte el request HTTP al puerto del resolver ESPN."""
+
+    if not any((request.match_id, request.home_team_id, request.away_team_id, request.home_team_name, request.away_team_name)):
+        raise FixtureResolutionError("fixture_filter_required")
+    return FixtureLookup(**request.model_dump())
+
+
+def _upcoming_catalog(
+    payload: tuple[str, int, str | None],
+) -> list[dict[str, Any]]:
+    """Obtiene fixtures programados próximos desde scoreboards ESPN.
+
+    Args:
+        payload: Slugs, máximo de partidos y fecha opcional.
+
+    Returns:
+        Fixtures ordenados por kickoff UTC y limitados.
+    """
+
+    leagues, limit, selected_date = payload
+    now = datetime.now(timezone.utc)
+    slugs = [item.strip() for item in leagues.split(",") if item.strip()]
+    dates = _upcoming_dates(now, selected_date)
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(slugs)))) as pool:
+        batches = list(pool.map(
+            lambda slug: _league_upcoming(slug, dates, now), slugs[:30]))
+    rows = [row for batch in batches for row in batch]
+    unique = {int(row["match_id"]): row for row in rows}
+    return sorted(unique.values(), key=lambda row: row["kickoff_ts"])[:limit]
+
+
+def _upcoming_dates(
+    now: datetime, selected_date: str | None,
+) -> tuple[str, ...]:
+    """Valida fecha explícita o crea ventana futura de cuatro días."""
+
+    if selected_date is not None:
+        try:
+            datetime.strptime(selected_date, "%Y%m%d")
+        except ValueError as error:
+            raise ValueError("upcoming_date_invalid") from error
+        return (selected_date,)
+    return tuple(
+        (now.date() + timedelta(days=offset)).strftime("%Y%m%d")
+        for offset in range(4))
+
+
+def _league_upcoming(
+    slug: str, dates: tuple[str, ...], now: datetime,
+) -> list[dict[str, Any]]:
+    """Consulta una liga y tolera fallos parciales auditables."""
+
+    provider = EspnProspectiveConnector(EspnConnectorConfig(league=slug))
+    rows: list[dict[str, Any]] = []
+    try:
+        for day in dates:
+            fixtures = scoreboard_fixtures(provider.scoreboard(day), slug)
+            rows.extend(
+                asdict(row) for row in fixtures
+                if _future_fixture(row, now))
+    except EspnConnectorError as error:
+        LOGGER.warning("Catálogo próximo parcial %s: %s", slug, error)
+    return rows
+
+
+def _future_fixture(fixture: Any, now: datetime) -> bool:
+    """Acepta sólo fixtures programados posteriores al instante actual."""
+
+    kickoff = datetime.fromisoformat(fixture.kickoff_ts)
+    return (
+        kickoff > now
+        and fixture.provider_status not in {"post", "final", "completed"}
+    )
+
+
+def _error(detail: str) -> HTTPException:
+    """Construye una respuesta HTTP uniforme para errores de contrato."""
+
+    code = _error_code(detail)
+    return HTTPException(status_code=422, detail={"code": code, "message": detail}, headers={"X-Error-Code": code})
+
+
+def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None = None) -> FastAPI:
+    """Crea la aplicación local con dependencias inyectadas.
+
+    Args:
+        config: Configuración inmutable del servicio.
+
+    Returns:
+        Aplicación FastAPI sin recursos externos.
+    """
+
+    effective = config or service_config_from_env()
+    engine = DikamahaInferenceEngine()
+    try:
+        snapshot_path = resolve_active_snapshot(
+            snapshot_id=effective.prematch_snapshot_id,
+            root=Path(effective.prematch_snapshot_root) if effective.prematch_snapshot_root else None,
+        )
+    except SnapshotRegistryError as error:
+        raise PrematchUnavailableError("active_snapshot_unavailable") from error
+    upcoming_engine = UniversalPrematchEngine(snapshot_path)
+    shadow_catalog = load_shadow_catalog()
+    app = FastAPI(title="DIKAMAHA Local Inference Service", version=SERVICE_VERSION)
+    app.state.service_config = effective
+    app.state.inference_engine = engine
+    app.state.upcoming_engine = upcoming_engine
+    app.state.fixture_resolver = fixture_resolver
+    app.state.data_explorer = EspnFootballDataExplorer()
+    app.state.fixture_context = default_context_service()
+    app.state.shadow_catalog = shadow_catalog
+    app.state.metrics = MetricsStore()
+    app.state.upcoming_cache = AsyncPredictionCache()
+    app.state.request_gate = RequestGate(
+        effective.max_concurrent_requests,
+        effective.rate_limit_requests,
+        effective.rate_limit_window_seconds,
+    )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        """Normaliza errores Pydantic sin devolver payloads en logs."""
+
+        return JSONResponse(status_code=422, content={"detail": {"code": "contract_validation_error", "message": "Request inválido."}}, headers={"X-Error-Code": "contract_validation_error"})
+
+    @app.middleware("http")
+    async def perimeter_middleware(request: Request, call_next: Any) -> Any:
+        """Aplica perímetro, timeout, métricas y logging sin leer payloads."""
+
+        request_id = _request_id(request)
+        started = time.perf_counter()
+        reserved = False
+        response = _preflight_response(request, effective)
+        response = response or _perimeter_rejection(request, effective)
+        if response is None and request.url.path not in PUBLIC_PATHS:
+            code = app.state.request_gate.enter(_client_id(request), time.monotonic())
+            response = _gate_error(code, 429 if code == "rate_limit_exceeded" else 503) if code else None
+            reserved = code is None
+        try:
+            if response is None:
+                response = await _call_with_timeout(request, call_next, effective)
+        finally:
+            if reserved:
+                app.state.request_gate.leave()
+        duration_ms = (time.perf_counter() - started) * 1000.0
+        error_code = response.headers.get("X-Error-Code")
+        app.state.metrics.observe(request.url.path, response.status_code, duration_ms, error_code)
+        response.headers["X-Request-ID"] = request_id
+        _apply_security_headers(response, request, effective)
+        LOGGER.info(_structured_log(request, request_id, response.status_code, duration_ms, effective, error_code))
+        return response
+
+    @app.get("/v1/health", tags=["health"])
+    def health() -> dict[str, Any]:
+        """Devuelve estado y flags activos del servicio."""
+
+        return {"status": "ok", "service_version": SERVICE_VERSION, **_public_config(effective)}
+
+    @app.get("/v1/readiness", tags=["health"])
+    def readiness() -> dict[str, Any]:
+        """Indica si la configuración local permite recibir requests."""
+
+        valid = _configuration_ready(effective)
+        return {"status": "ready" if valid else "not_ready", "ready": valid, "contract_version": effective.contract_version, "hawkes_enabled": effective.hawkes_enabled, "hawkes_shadow_mode": effective.hawkes_shadow_mode, "shadow_catalog_ready": True, "reason": None if valid else "invalid_service_configuration"}
+
+    @app.get("/v1/upcoming", tags=["inference"])
+    async def upcoming_catalog(
+        limit: int = 8, leagues: str | None = None,
+        date: str | None = None,
+    ) -> dict[str, Any]:
+        """Lista partidos futuros para navegación sin IDs manuales."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        selected = leagues or os.getenv("DIKAMAHA_UPCOMING_LEAGUES", "esp.1,eng.1,mex.1")
+        bounded = min(max(int(limit), 1), 20)
+        try:
+            fixtures = await _infer_with_timeout(
+                _upcoming_catalog, (selected, bounded, date),
+                effective.inference_timeout_seconds * 3
+            )
+        except (ValueError, TimeoutError, OSError) as exc:
+            LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
+            raise _error("upcoming_catalog_unavailable") from exc
+        return {"fixtures": fixtures, "count": len(fixtures)}
+
+    @app.get("/v1/explorer/leagues", tags=["explorer"])
+    async def explorer_leagues() -> dict[str, Any]:
+        """Lista ligas disponibles para menús de usuario."""
+
+        rows = app.state.data_explorer.leagues()
+        return {"leagues": rows, "count": len(rows)}
+
+    @app.get("/v1/explorer/dates", tags=["explorer"])
+    async def explorer_date_catalog(
+        mode: str = "past", days: int = 8,
+    ) -> dict[str, Any]:
+        """Genera un calendario compacto pasado o futuro."""
+
+        if mode not in {"past", "future"}:
+            raise _error("invalid_explorer_date_mode")
+        rows = explorer_dates(mode, min(max(days, 1), 14))
+        return {"dates": rows, "count": len(rows), "mode": mode}
+
+    @app.get("/v1/explorer/fixtures", tags=["explorer"])
+    async def explorer_fixtures(
+        league: str, date: str,
+    ) -> dict[str, Any]:
+        """Lista partidos ESPN de la liga y fecha seleccionadas."""
+
+        rows = await _explorer_call(
+            app.state.data_explorer.fixtures, (league, date), effective)
+        return {"fixtures": rows, "count": len(rows)}
+
+    @app.get("/v1/explorer/fixture/context", tags=["explorer"])
+    async def explorer_fixture_context(league: str, event_id: str) -> dict[str, Any]:
+        """Devuelve sólo contexto visual desde snapshots raw-first ya capturados."""
+
+        return await _infer_with_timeout(
+            lambda values: app.state.fixture_context.context(*values), (league, event_id),
+            effective.inference_timeout_seconds)
+
+    @app.get("/v1/explorer/match/plays", tags=["explorer"])
+    async def explorer_match_plays(
+        league: str, match_id: str, competition_id: str,
+        scope: str = "key",
+    ) -> dict[str, Any]:
+        """Devuelve play-by-play paginado y normalizado."""
+
+        if scope not in {"key", "all"}:
+            raise _error("invalid_play_scope")
+        return await _explorer_call(
+            app.state.data_explorer.plays,
+            (league, match_id, competition_id, scope), effective)
+
+    @app.get("/v1/explorer/match/statistics", tags=["explorer"])
+    async def explorer_match_statistics(
+        league: str, match_id: str, competition_id: str,
+    ) -> dict[str, Any]:
+        """Devuelve eventos 1T/2T/total y boxscore final."""
+
+        return await _explorer_call(
+            app.state.data_explorer.statistics,
+            (league, match_id, competition_id), effective)
+
+    @app.get("/v1/explorer/teams", tags=["explorer"])
+    async def explorer_teams(
+        league: str, query: str = "",
+    ) -> dict[str, Any]:
+        """Lista o busca equipos por texto."""
+
+        rows = await _explorer_call(
+            app.state.data_explorer.teams, (league, query), effective)
+        return {"teams": rows[:50], "count": len(rows)}
+
+    @app.get("/v1/explorer/team/roster", tags=["explorer"])
+    async def explorer_team_roster(
+        league: str, team_id: str,
+    ) -> dict[str, Any]:
+        """Devuelve plantilla actual y estadísticas disponibles."""
+
+        return await _explorer_call(
+            app.state.data_explorer.roster, (league, team_id), effective)
+
+    @app.get("/v1/explorer/player", tags=["explorer"])
+    async def explorer_player(
+        league: str, team_id: str, player_id: str,
+    ) -> dict[str, Any]:
+        """Devuelve perfil y acumulados del jugador."""
+
+        return await _explorer_call(
+            app.state.data_explorer.player,
+            (league, team_id, player_id), effective)
+
+    @app.get("/v1/metrics", tags=["observability"])
+    def metrics() -> dict[str, Any]:
+        """Devuelve métricas agregadas del proceso sin datos de requests."""
+
+        return {"service_version": SERVICE_VERSION, "contract_version": effective.contract_version, **app.state.metrics.snapshot()}
+
+    @app.post("/v1/predict/pre-match", tags=["inference"])
+    async def predict_pre_match(request: PreMatchRequest) -> dict[str, Any]:
+        """Ejecuta inferencia pre-match del contrato vigente."""
+
+        try:
+            result = await _infer_with_timeout(
+                engine.predict_pre_match, _pre_input(request), effective.inference_timeout_seconds
+            )
+        except (ValueError, OverflowError, FloatingPointError) as exc:
+            LOGGER.warning("Rechazo pre-match: %s", exc)
+            raise _error(str(exc)) from exc
+        payload = asdict(result)
+        payload["shadow_catalog"] = build_shadow_observation(app.state.shadow_catalog)
+        return payload
+
+    @app.post("/v1/predict/upcoming", tags=["inference"])
+    async def predict_upcoming(request: UpcomingRequest) -> dict[str, Any]:
+        """Predice un partido próximo desde el snapshot histórico local."""
+
+        try:
+            key = json.dumps(request.model_dump(), sort_keys=True)
+
+            async def calculate() -> dict[str, Any]:
+                """Calcula una respuesta sin bloques de presentación."""
+
+                result = await _infer_with_timeout(
+                    upcoming_engine.predict, _upcoming_input(request),
+                    effective.inference_timeout_seconds)
+                return asdict(result)
+
+            payload = await app.state.upcoming_cache.get_or_compute(
+                key, calculate)
+        except (PrematchUnavailableError, ValueError, OverflowError, FloatingPointError) as exc:
+            LOGGER.warning("Rechazo upcoming: %s", exc)
+            raise _error(str(exc)) from exc
+        payload["shadow_catalog"] = build_shadow_observation(app.state.shadow_catalog)
+        return payload
+
+    @app.post("/v1/predict/fixture", tags=["inference"])
+    async def predict_fixture(request: FixtureRequest) -> dict[str, Any]:
+        """Resuelve un fixture ESPN y ejecuta la predicción compacta."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        try:
+            resolver = app.state.fixture_resolver or connector_for_league(request.league_slug)
+            fixture = await _infer_with_timeout(resolver.resolve, _fixture_lookup(request), effective.inference_timeout_seconds)
+            input_data = UpcomingMatchInput(fixture.league_slug, fixture.home_team_id, fixture.away_team_id, fixture.kickoff_ts, fixture.match_id)
+            prediction = await _infer_with_timeout(upcoming_engine.predict, input_data, effective.inference_timeout_seconds)
+        except (FixtureResolutionError, PrematchUnavailableError, ValueError, OverflowError, FloatingPointError) as exc:
+            LOGGER.warning("Rechazo fixture: %s", exc)
+            raise _error(str(exc)) from exc
+        payload = asdict(prediction)
+        payload["fixture"] = asdict(fixture)
+        payload["shadow_catalog"] = build_shadow_observation(app.state.shadow_catalog)
+        return payload
+
+    @app.post("/v1/predict/live", tags=["inference"])
+    async def predict_live(request: LiveRequest) -> dict[str, Any]:
+        """Ejecuta Markov live sin probabilidades ni Hawkes oficial."""
+
+        try:
+            if request.official_prediction and (request.hawkes_enabled or request.hawkes_shadow_mode):
+                raise ValueError("Hawkes shadow no puede activarse para predicciones oficiales.")
+            app.state.metrics.mark_hawkes(request.hawkes_enabled, request.hawkes_shadow_mode)
+            result = await _infer_with_timeout(
+                engine.predict_live, _live_input(request), effective.inference_timeout_seconds
+            )
+        except (ValueError, OverflowError, FloatingPointError) as exc:
+            LOGGER.warning("Rechazo live: %s", exc)
+            raise _error(str(exc)) from exc
+        return asdict(result)
+
+    return app
+
+
+def _configuration_ready(config: ServiceConfig) -> bool:
+    """Comprueba invariantes necesarias para aceptar tráfico."""
+
+    return (
+        config.mode in {"local_dry_run", "operational_readonly"}
+        and (not config.external_calls_enabled or config.mode == "operational_readonly")
+        and not config.persistence_enabled
+        and config.hawkes_enabled == config.hawkes_shadow_mode
+        and not (config.official_prediction and config.hawkes_enabled)
+        and (not config.authentication_enabled or bool(config.api_key))
+    )
+
+
+def _perimeter_rejection(request: Request, config: ServiceConfig) -> JSONResponse | None:
+    """Evalúa autenticación, origen y tamaño declarado."""
+
+    if not _origin_valid(request, config):
+        return _gate_error("origin_not_allowed", 403)
+    if not _auth_valid(request, config):
+        return _gate_error("authentication_required", 401)
+    if _body_too_large(request, config.max_request_bytes):
+        return _gate_error("request_too_large", 413)
+    return None
+
+
+def _preflight_response(request: Request, config: ServiceConfig) -> Response | None:
+    """Responde preflight exclusivamente para orígenes permitidos."""
+
+    if request.method != "OPTIONS":
+        return None
+    if not _origin_valid(request, config) or not request.headers.get("Origin"):
+        return _gate_error("origin_not_allowed", 403)
+    response = Response(status_code=204)
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Dikamaha-Key, X-Request-ID"
+    response.headers["Access-Control-Max-Age"] = "600"
+    return response
+
+
+async def _call_with_timeout(request: Request, call_next: Any, config: ServiceConfig) -> Any:
+    """Ejecuta una request con timeout operativo."""
+
+    try:
+        return await asyncio.wait_for(call_next(request), timeout=config.inference_timeout_seconds + 1.0)
+    except TimeoutError:
+        return _gate_error("inference_timeout", 504)
+
+
+async def _infer_with_timeout(function: Any, payload: Any, timeout: float) -> Any:
+    """Limita la ejecución matemática sin modificar su resultado."""
+
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(function, payload), timeout=timeout)
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail={"code": "inference_timeout", "message": "Inference timeout."},
+            headers={"X-Error-Code": "inference_timeout"},
+        ) from exc
+
+
+async def _explorer_call(
+    function: Any, arguments: tuple[Any, ...], config: ServiceConfig,
+) -> Any:
+    """Ejecuta una consulta ESPN read-only con errores sanitizados."""
+
+    if not config.external_calls_enabled:
+        raise _error("external_calls_disabled")
+    try:
+        return await _infer_with_timeout(
+            lambda values: function(*values), arguments,
+            config.inference_timeout_seconds)
+    except (EspnConnectorError, ValueError, OSError) as exc:
+        LOGGER.warning("Explorador ESPN rechazado: %s", exc)
+        raise _error("explorer_resource_unavailable") from exc
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    logging.basicConfig(level=logging.INFO)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
+
+# Version: 1.5.0
+# Created: 2026-07-15; updated: 2026-07-29

@@ -1,0 +1,6 @@
+{
+  "activation_policy": "explicit_review_required",
+  "candidate_count": 4,
+  "default_mode": "official_only",
+  "version": "shadow_model_catalog_v1"
+}

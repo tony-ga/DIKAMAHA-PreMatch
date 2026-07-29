@@ -1,0 +1,135 @@
+{
+  "activation_policy": "all_candidates_disabled",
+  "candidates": [
+    {
+      "enabled_by_default": false,
+      "metrics": {
+        "actual_rate": 0.6763485477178424,
+        "baseline_log_loss": 0.62981965888655,
+        "feature_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.012421230337005427,
+            0.028253225456436222
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": 0.008372387909259978
+        },
+        "feature_improvement_vs_baseline": 0.008372387909259978,
+        "feature_log_loss": 0.6214472709772901,
+        "markov_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.012199316876985349,
+            0.018759862238109118
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": 0.003260004745435062
+        },
+        "markov_improvement_vs_baseline": 0.0032600047454350617,
+        "markov_log_loss": 0.6265596541411149,
+        "match_count": 241,
+        "positive_events": 163,
+        "support_sufficient": true
+      },
+      "model": "first_half_event_pace_v1",
+      "official_output_allowed": false,
+      "reason": "Mejora puntual sin IC confirmatorio estrictamente positivo.",
+      "source": "phase_22",
+      "status": "promising_unconfirmed"
+    },
+    {
+      "enabled_by_default": false,
+      "metrics": {
+        "actual_rate": 0.6763485477178424,
+        "baseline_log_loss": 0.62981965888655,
+        "fusion_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.025651219126478924,
+            0.022320665846295835
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": -0.0016887996466883907
+        },
+        "fusion_improvement_vs_baseline": -0.0016887996466883907,
+        "fusion_log_loss": 0.6315084585332384,
+        "lineup_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.019448075546972712,
+            0.02214438713060687
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": 0.001570754558932085
+        },
+        "lineup_improvement_vs_baseline": 0.0015707545589320855,
+        "lineup_log_loss": 0.6282489043276179,
+        "match_count": 241,
+        "positive_events": 163,
+        "support_sufficient": true
+      },
+      "model": "prematch_lineup_v1",
+      "official_output_allowed": false,
+      "reason": "La alineaci\u00f3n sola no supera el gate confirmatorio.",
+      "source": "phase_24",
+      "status": "rejected_for_revision"
+    },
+    {
+      "enabled_by_default": false,
+      "metrics": {
+        "actual_rate": 0.6763485477178424,
+        "baseline_log_loss": 0.62981965888655,
+        "fusion_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.025651219126478924,
+            0.022320665846295835
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": -0.0016887996466883907
+        },
+        "fusion_improvement_vs_baseline": -0.0016887996466883907,
+        "fusion_log_loss": 0.6315084585332384,
+        "lineup_bootstrap_vs_baseline": {
+          "ci_95": [
+            -0.019448075546972712,
+            0.02214438713060687
+          ],
+          "improvement_confirmed": false,
+          "mean_improvement": 0.001570754558932085
+        },
+        "lineup_improvement_vs_baseline": 0.0015707545589320855,
+        "lineup_log_loss": 0.6282489043276179,
+        "match_count": 241,
+        "positive_events": 163,
+        "support_sufficient": true
+      },
+      "model": "prematch_lineup_plus_pace_v1",
+      "official_output_allowed": false,
+      "reason": "La fusi\u00f3n degrada al baseline en confirmaci\u00f3n.",
+      "source": "phase_24",
+      "status": "rejected_for_revision"
+    },
+    {
+      "enabled_by_default": false,
+      "metrics": {
+        "confirmation_open_rows": 10,
+        "confirmation_rows": 241
+      },
+      "model": "prematch_open_odds_v1",
+      "official_output_allowed": false,
+      "reason": "Cobertura de cuotas open insuficiente para confirmaci\u00f3n independiente.",
+      "source": "phase_23",
+      "status": "insufficient_coverage"
+    }
+  ],
+  "market_promotion": false,
+  "official_prediction_source": "phase_21_target_model_router",
+  "official_router": {
+    "away_comeback_win": "baseline_temporal_prevalence",
+    "away_reaches_level_after_half": "baseline_temporal_prevalence",
+    "away_recovery_draw_or_win": "baseline_temporal_prevalence",
+    "first_half_goal": "markov_dependent_v2",
+    "home_comeback_win": "baseline_temporal_prevalence",
+    "home_reaches_level_after_half": "baseline_temporal_prevalence",
+    "home_recovery_draw_or_win": "baseline_temporal_prevalence",
+    "second_half_goal": "baseline_temporal_prevalence"
+  },
+  "version": "shadow_model_catalog_v1"
+}

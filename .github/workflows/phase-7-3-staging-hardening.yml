@@ -1,0 +1,48 @@
+name: dikamaha-phase-7-3-staging-hardening
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - Dockerfile
+      - requirements.docker.txt
+      - src/dikamaha_service.py
+      - tests/test_dikamaha_service.py
+      - scripts/run_phase_7_3_staging_hardening.py
+      - .github/workflows/phase-7-3-staging-hardening.yml
+
+jobs:
+  local-staging-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.docker.txt pytest httpx
+      - name: Compile and test service
+        run: |
+          python -m py_compile src/dikamaha_service.py scripts/run_phase_7_3_staging_hardening.py
+          python -m pytest -q tests/test_dikamaha_service.py tests/test_dikamaha_inference.py tests/test_hawkes_v1_integration.py
+      - name: Execute staging hardening and load gate
+        run: python scripts/run_phase_7_3_staging_hardening.py
+      - name: Assert decision
+        run: |
+          python - <<'PY'
+          import json
+          result = json.load(open("artifacts/phase_7_3_staging_hardening/manifest.json"))
+          assert result["decision"] in {
+              "staging_hardening_approved",
+              "staging_hardening_approved_with_caveats",
+          }, result
+          PY
+      - name: Upload staging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-3-staging-hardening
+          path: artifacts/phase_7_3_staging_hardening/

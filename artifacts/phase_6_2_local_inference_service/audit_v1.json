@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "external_calls_disabled": true,
+    "hawkes_disabled": true,
+    "live_audit_passed": true,
+    "no_probabilities_live": true,
+    "openapi_routes_present": true,
+    "persistence_disabled": true,
+    "postgresql_not_accessed": true,
+    "pre_match_audit_passed": true,
+    "replay_identical": true
+  },
+  "notes": [
+    "No se import\u00f3 SQLAlchemy ni se abri\u00f3 conexi\u00f3n externa.",
+    "Kalman es experimental y Markov usa matriz sint\u00e9tica."
+  ],
+  "passed": true
+}

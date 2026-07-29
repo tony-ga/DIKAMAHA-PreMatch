@@ -1,0 +1,165 @@
+# ⚽ Documentación de la API de Fútbol de ESPN (No Oficial)
+
+Esta documentación detalla absolutamente todos los datos sobre fútbol (Soccer) que puedes extraer utilizando la API pública (y no documentada) de ESPN, basándonos en el repositorio `Public-ESPN-API`.
+
+> [!NOTE]
+> **Aviso:** Esta API no es oficial y no requiere autenticación, pero carece de soporte oficial y puede cambiar sin previo aviso. Es recomendable usar caché en tus aplicaciones y respetar los límites de peticiones (Rate Limiting).
+
+## 🌐 URLs Base Principales
+
+Para fútbol (el slug utilizado es `soccer`), los endpoints principales se construyen sobre las siguientes bases:
+
+| API | URL Base | Propósito |
+|---|---|---|
+| **Site API v2** | `https://site.api.espn.com/apis/site/v2/sports/soccer/` | Datos listos para el usuario: marcadores, equipos, posiciones. |
+| **Core API v2** | `https://sports.core.api.espn.com/v2/sports/soccer/` | Datos detallados, eventos, play-by-play, atletas, estadísticas. |
+| **Core API v3** | `https://sports.core.api.espn.com/v3/sports/soccer/` | Esquemas enriquecidos, líderes y listas de atletas activos. |
+| **CDN API** | `https://cdn.espn.com/core/soccer/` | Datos optimizados de partidos en vivo. |
+
+---
+
+## 🏆 Ligas y Competiciones Soportadas
+
+Para acceder a una liga específica, debes reemplazar `{league}` en las URLs con el **slug** correspondiente de la liga. Algunos de los más destacados son:
+
+### 🌍 Internacionales / FIFA
+* **Mundial:** `fifa.world`, `fifa.wwc` (Femenino), Mundiales Sub-20 y Sub-17.
+* **Mundial de Clubes:** `fifa.cwc`, `fifa.intercontinental_cup`.
+* **Amistosos:** `fifa.friendly`, `fifa.friendly.w`.
+* **Juegos Olímpicos:** `fifa.olympics`, `fifa.w.olympics`.
+* **Clasificatorias:** `fifa.worldq` (y por confederaciones: `.uefa`, `.conmebol`, `.concacaf`, etc.).
+
+### 🇪🇺 UEFA (Europa)
+* **Champions League:** `uefa.champions`, `uefa.wchampions` (Femenina).
+* **Europa League:** `uefa.europa`
+* **Conference League:** `uefa.europa.conf`
+* **Supercopa:** `uefa.super_cup`
+* **Eurocopa:** `uefa.euro`, `uefa.weuro` (Femenina)
+* **Nations League:** `uefa.nations`
+
+### 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra
+* **Ligas:** `eng.1` (Premier League), `eng.2` (Championship), `eng.3`, `eng.4`, `eng.5`.
+* **Copas:** `eng.fa` (FA Cup), `eng.league_cup` (Carabao Cup).
+* **Femenino:** `eng.w.1` (Women's Super League).
+
+### 🇪🇸 España
+* **Ligas:** `esp.1` (LaLiga), `esp.2` (LaLiga 2), `esp.w.1` (Liga F).
+* **Copas:** `esp.copa_del_rey`, `esp.super_cup`.
+
+### 🌎 América (CONMEBOL y CONCACAF)
+* **CONMEBOL:** `conmebol.libertadores`, `conmebol.sudamericana`, `conmebol.america` (Copa América).
+* **CONCACAF:** `concacaf.champions`, `concacaf.gold`, `concacaf.nations.league`, `usa.1` (MLS), `mex.1` (Liga MX), `arg.1` (Liga Argentina), `bra.1` (Brasileirão).
+* **Otros:** Colombia (`col.1`), Chile (`chi.1`), Uruguay (`uru.1`), etc.
+
+---
+
+## 📡 Endpoints: Site API v2 (Para Apps y Sitios Web)
+*Esta es la forma más fácil de obtener datos resumidos y útiles.*
+
+**Patrón:** `GET https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/{recurso}`
+
+| Recurso | Descripción |
+|---|---|
+| `/scoreboard` | Marcadores en vivo y partidos programados. Puedes añadir `?dates=YYYYMMDD` para un día específico. |
+| `/teams` | Todos los equipos de la liga. |
+| `/teams/{id}` | Detalles de un equipo específico. |
+| `/teams/{id}/roster` | La plantilla (roster) del equipo. |
+| `/teams/{id}/schedule` | El calendario de partidos del equipo. |
+| `/teams/{id}/injuries` | Reporte de lesiones del equipo. |
+| `/news` | Noticias sobre partidos o transferencias. |
+| `/summary?event={id}` | Reporte completo del partido (eventos, alineaciones, etc). |
+
+> [!WARNING]
+> **Nota sobre la Tabla de Posiciones (Standings):**
+> La ruta `/apis/site/v2/` devuelve un `{}` vacío para las tablas de posiciones. **Debes usar la ruta sin `/site/`**:
+> `https://site.api.espn.com/apis/v2/sports/soccer/{league}/standings`
+
+---
+
+## ⚙️ Endpoints: Core API v2 & v3 (Datos Profundos y Específicos)
+
+**Patrón General:** `https://sports.core.api.espn.com/v2/sports/soccer/leagues/{league}/...`
+*Muchos de estos endpoints soportan los parámetros `?page=1` y `?limit=50`.*
+
+### 📅 Temporadas y Calendario
+* `/calendar`: Obtener las fechas inteligentes, grupos de partidos y semanas disponibles de la liga.
+* `/seasons`: Temporadas jugadas en la liga.
+* `/seasons/{season}/athletes`: Todos los atletas que participaron en esa temporada.
+* `/seasons/{season}/freeagents`: Agentes libres.
+
+### ⚽ Equipos y Atletas
+* `/teams`: Equipos participantes.
+* `/athletes`: Lista general de jugadores (puedes filtrar por `country`, `position`, `active`).
+
+### 🏟️ Eventos (Partidos) y Estadísticas en Vivo
+* `/events/{event}`: Datos de un partido (evento) en específico.
+* `/events/{event}/competitions/{competition}`: Los datos del partido competitivo específico dentro del evento.
+* `/events/{event}/competitions/{competition}/plays`: **Play-by-play** del partido (goles, tarjetas, sustituciones). *¡Usa limit=300!*
+* `/events/{event}/competitions/{competition}/situation`: Situación del partido en tiempo real (quién tiene la posesión, contexto del partido).
+* `/events/{event}/competitions/{competition}/probabilities`: Probabilidades de victoria en vivo.
+* `/events/{event}/competitions/{competition}/odds`: Cuotas y apuestas (Odds).
+* `/events/{event}/competitions/{competition}/officials`: Árbitros del encuentro.
+* `/events/{event}/competitions/{competition}/broadcasts`: Información sobre la transmisión televisiva.
+
+### 🥇 Tablas y Rankings
+* `/standings`: Tabla de clasificación detallada.
+* `/rankings`: Rankings oficiales de la liga.
+* `/venues`: Estadios donde se juega la liga.
+
+### 👑 Líderes y Goleadores (Stats)
+* `/leaders`: Máximos goleadores, asistidores, etc. de la liga actual.
+* `/seasons/{season}/leaders`: Líderes de una temporada pasada en específico.
+
+### 🧬 Atletas Individuales (Core v2/v3)
+La información de atletas individuales está algo limitada en `site.web.api`. Para ver a un jugador específico en fútbol de manera completa, usa:
+* `https://sports.core.api.espn.com/v2/sports/soccer/leagues/{league}/athletes/{id}`
+Para listar jugadores activos usa la **v3**:
+* `https://sports.core.api.espn.com/v3/sports/soccer/{league}/athletes?limit=100&active=true`
+
+---
+
+## ⚡ Datos en Tiempo Real Optimizados (CDN)
+Si necesitas consumir la información durante un partido en vivo de forma masiva (como en un widget), utiliza la CDN (requiere `?xhr=1`):
+
+`GET https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1`
+
+(Reemplaza `eng.1` con la liga que deseas). Esto devolverá un gran "paquete de juego" con los datos que consumen directamente desde el frontend de ESPN.
+
+---
+
+## 📊 Lista Completa de Datos Disponibles en la API
+
+A continuación, un resumen estructurado de **todos los tipos de datos exactos** que puedes extraer si navegas por los distintos endpoints mencionados arriba:
+
+### 1. Datos de Partidos (Eventos) y En Vivo
+*   **Estado del Partido:** Programado, en curso (incluyendo minuto/reloj), medio tiempo, finalizado, pospuesto.
+*   **Play-by-play (Jugada a Jugada):** Goles, tarjetas amarillas, tarjetas rojas, sustituciones, tiros de esquina, penales, fueras de juego, faltas.
+*   **Alineaciones:** Titulares, suplentes, y formaciones tácticas (ej. 4-4-2, 4-3-3).
+*   **Situación de Juego:** Quién tiene la posesión actual, en qué sector de la cancha están jugando.
+*   **Probabilidades:** Porcentaje de probabilidad de victoria del equipo local, visitante o de empate, actualizado en tiempo real.
+*   **Cuotas (Odds):** Cuotas de apuestas de proveedores pre-partido y en vivo.
+*   **Detalles del Evento:** Árbitros asignados, estadio/sede (nombre, capacidad, ciudad), información de la transmisión televisiva por país/región.
+
+### 2. Datos de Equipos
+*   **Información General:** Nombre completo, abreviatura, nombres alternativos, colores oficiales (hexadecimales).
+*   **Multimedia:** URLs de los logotipos y escudos oficiales en alta resolución.
+*   **Plantilla (Roster):** Lista completa de jugadores actuales del primer equipo.
+*   **Estado del Equipo:** Lista de jugadores lesionados o suspendidos.
+*   **Historial y Calendario:** Calendario de la temporada (partidos pasados y futuros), historial de enfrentamientos previos.
+
+### 3. Datos de Jugadores (Atletas)
+*   **Perfil:** Nombre, apellido, fecha de nacimiento, edad, país de nacimiento/nacionalidad, altura, peso, pie hábil (derecho/izquierdo).
+*   **Multimedia:** URLs de fotos o "headshots" oficiales del jugador.
+*   **Estado:** Activo, inactivo, lesionado (motivo de la lesión y fecha estimada de regreso).
+*   **Estadísticas Acumuladas:** Goles totales, asistencias, minutos jugados, tarjetas acumuladas por temporada o torneo.
+*   **Contratos/Transferencias:** Historial de transferencias o condición de agente libre.
+
+### 4. Datos de Competiciones y Ligas
+*   **Clasificación (Standings):** Tablas de posiciones detalladas con puntos, partidos jugados, ganados, empatados, perdidos, diferencia de goles (GF/GC), racha de últimos partidos (ej. W-W-L-D) y récord como local/visitante.
+*   **Fases de Torneos:** Grupos de torneos (como grupos de Champions League) y rondas eliminatorias (bracket).
+*   **Líderes Individuales:** Top goleadores del torneo, máximos asistidores, porteros con más vallas invictas.
+*   **Información Histórica:** Acceso a temporadas pasadas y sus respectivos calendarios y estadísticas.
+
+### 5. Contenido Editorial y Noticias
+*   **Artículos:** Noticias recientes relevantes a una liga, un equipo o un jugador específico.
+*   **Resúmenes:** Enlaces a reportes de partidos y metadatos de videos de resúmenes (highlights) si están disponibles regionalmente.

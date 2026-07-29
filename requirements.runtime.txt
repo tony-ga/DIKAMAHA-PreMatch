@@ -1,0 +1,5 @@
+# Runtime completo local: predictor, ESPN, PostgreSQL y API HTTP.
+-r requirements.txt
+-r requirements.staging.txt
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1

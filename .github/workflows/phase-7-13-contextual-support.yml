@@ -1,0 +1,38 @@
+name: dikamaha-phase-7-13-contextual-support
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - src/contextual_support.py
+      - scripts/run_phase_7_13_contextual_support.py
+      - tests/test_contextual_support.py
+      - .github/workflows/phase-7-13-contextual-support.yml
+
+jobs:
+  contextual-support-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DIKAMAHA_STAGING_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements.staging.txt pytest
+      - name: Compile and unit tests
+        run: |
+          python -m py_compile src/contextual_support.py scripts/run_phase_7_13_contextual_support.py
+          python -m pytest -q tests/test_contextual_support.py tests/test_markov_counterfactual.py
+      - name: Execute read-only evaluation
+        if: env.DATABASE_URL != ''
+        run: python scripts/run_phase_7_13_contextual_support.py
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-13-contextual-support
+          path: artifacts/phase_7_13_contextual_support/
+          if-no-files-found: warn

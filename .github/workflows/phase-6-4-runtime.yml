@@ -1,0 +1,40 @@
+name: dikamaha-phase-6-4-runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - Dockerfile
+      - requirements.docker.txt
+      - src/**
+      - tests/**
+      - scripts/**
+      - .github/workflows/phase-6-4-runtime.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.docker.txt pytest httpx
+      - name: Compile
+        run: python -m py_compile src/dikamaha_service.py src/dikamaha_inference.py scripts/verify_runtime_phase_6_4.py
+      - name: Pytest
+        run: python -m pytest -q tests/test_dikamaha_service.py tests/test_dikamaha_inference.py
+      - name: Runtime and Docker smoke
+        env:
+          DIKAMAHA_IMAGE: dikamaha-local:phase-6-4-ci
+        run: python scripts/verify_runtime_phase_6_4.py
+      - name: Assert smoke result
+        run: |
+          python - <<'PY'
+          import json
+          result = json.load(open("artifacts/phase_6_4_runtime_verification/runtime_result.json"))
+          assert result["status"] == "passed", result
+          assert result["smoke"]["checks"]["health"] is True
+          PY

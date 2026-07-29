@@ -1,0 +1,311 @@
+{
+  "in_play": {
+    "input": {
+      "away_team_id": 2,
+      "events": [
+        {
+          "event_id": "phase-6-1-e1",
+          "event_ts": "2025-01-10T20:08:00+00:00",
+          "event_type": "shot_on_target",
+          "team_id": 1
+        }
+      ],
+      "hawkes_enabled": false,
+      "home_team_id": 1,
+      "kickoff_ts": "2025-01-10T20:00:00+00:00",
+      "lambda_base_away": 1.030454534,
+      "lambda_base_home": 1.7682670514,
+      "match_id": 900001,
+      "official_prediction": false,
+      "snapshot_ts": "2025-01-10T20:10:00+00:00",
+      "source_hash": "synthetic-phase-6-1-live"
+    },
+    "output": {
+      "audit": {
+        "checks": {
+          "context_factor_is_one": true,
+          "events_before_snapshot": true,
+          "hawkes_default_off": true,
+          "markov_independent_of_hawkes": true,
+          "markov_intensities_valid": true,
+          "no_live_probabilities": true
+        },
+        "input_hash": "8c095a282f80ff2d5788d5b6fc803fd30b451251028a19cfbdeaddb69aec334b",
+        "output_hash": "0f202241a84553ba9c74ad8d5f5241e1129b5b20da5327b0d1373f2113d615a4",
+        "passed": true,
+        "warnings": []
+      },
+      "away_state": 0,
+      "hawkes_applied": false,
+      "home_state": 0,
+      "lambda_base_away": 1.030454534,
+      "lambda_base_home": 1.7682670514,
+      "lambda_hawkes_away": null,
+      "lambda_hawkes_home": null,
+      "lambda_markov_away": 1.030454534,
+      "lambda_markov_home": 1.7682670514,
+      "markov_audit": {
+        "context_factor": 1.0,
+        "state_after": {
+          "away_state": 0,
+          "home_state": 0
+        },
+        "state_before": {
+          "away_state": 0,
+          "home_state": 0
+        },
+        "transition_version": "markov_transition_v1",
+        "window_10m": {
+          "away_event_count": 0,
+          "event_count": 1,
+          "events": [
+            {
+              "event_ts": "2025-01-10T20:08:00+00:00",
+              "event_type": "shot_on_target",
+              "team_id": 1
+            }
+          ],
+          "home_event_count": 1,
+          "window_minutes": 10
+        },
+        "window_5m": {
+          "away_event_count": 0,
+          "event_count": 1,
+          "events": [
+            {
+              "event_ts": "2025-01-10T20:08:00+00:00",
+              "event_type": "shot_on_target",
+              "team_id": 1
+            }
+          ],
+          "home_event_count": 1,
+          "window_minutes": 5
+        }
+      },
+      "match_id": 900001,
+      "provenance": {
+        "contract_version": "dikamaha_inference_contract_v1",
+        "dixon_coles_version": "dixon_coles_v1",
+        "feature_version": "match_features_v1",
+        "hawkes_version": "hawkes_v1_disabled",
+        "kalman_experimental": true,
+        "kalman_version": "kalman_v2",
+        "markov_matrix_synthetic": true,
+        "markov_version": "markov_v1",
+        "source_hash": "synthetic-phase-6-1-live"
+      },
+      "snapshot_ts": "2025-01-10T20:10:00+00:00"
+    }
+  },
+  "pre_match": {
+    "input": {
+      "attack_sum": 0.0,
+      "away_team_id": 2,
+      "competition_id": "esp.1",
+      "dc_attack_away": -0.2,
+      "dc_attack_home": 0.2,
+      "dc_defense_away": 0.1,
+      "dc_defense_home": -0.1,
+      "defense_sum": 0.0,
+      "eligible_for_materialization": true,
+      "feature_cutoff_ts": "2025-01-10T19:59:59+00:00",
+      "feature_version": "match_features_v1",
+      "history_minimum_met": true,
+      "home_advantage": 0.15,
+      "home_team_id": 1,
+      "kalman_attack_away": -0.25,
+      "kalman_attack_home": 0.25,
+      "kalman_defense_away": 0.08,
+      "kalman_defense_home": -0.08,
+      "kickoff_ts": "2025-01-10T20:00:00+00:00",
+      "league_intercept": 0.2,
+      "match_id": 900001,
+      "max_goals": 10,
+      "source_hash": "synthetic-phase-6-1-input",
+      "tau_dc": 0.0
+    },
+    "output": {
+      "audit": {
+        "checks": {
+          "cutoff_valid": true,
+          "market_1x2_normalized": true,
+          "no_softmax": true,
+          "no_target_events": true,
+          "score_matrix_normalized": true,
+          "sum_zero": true
+        },
+        "input_hash": "7b4d244674550b712621178816e5717efe643cd3b5477c8b570a515ed9fe7e1a",
+        "output_hash": "ef1ce86261457671d920266cd8db8d1c77e342e7880c910581cbedf3e675acea",
+        "passed": true,
+        "warnings": []
+      },
+      "cutoff_ts": "2025-01-10T19:59:59+00:00",
+      "lambda_base_away": 1.030454533953517,
+      "lambda_base_home": 1.6820276496988864,
+      "lambda_dc_away": 1.1051709180756477,
+      "lambda_dc_home": 1.568312185490169,
+      "match_id": 900001,
+      "probability_away": 0.23177948229926532,
+      "probability_btts": 0.5235304702935745,
+      "probability_draw": 0.24197504655177693,
+      "probability_home": 0.5262454711489578,
+      "probability_over_2_5": 0.5094274161779919,
+      "provenance": {
+        "contract_version": "dikamaha_inference_contract_v1",
+        "dixon_coles_version": "dixon_coles_v1",
+        "feature_version": "match_features_v1",
+        "hawkes_version": "hawkes_v1_disabled",
+        "kalman_experimental": true,
+        "kalman_version": "kalman_v2",
+        "markov_matrix_synthetic": true,
+        "markov_version": "markov_v1",
+        "source_hash": "synthetic-phase-6-1-input"
+      },
+      "score_matrix": [
+        [
+          0.06637196530427554,
+          0.06839329257519623,
+          0.03523808921306019,
+          0.012103749599152126,
+          0.003118090913071093,
+          0.000642610183730674,
+          0.00011036342956499592,
+          1.6246356625415664e-05,
+          2.0926414806106665e-06,
+          2.395968779593847e-07,
+          2.468936892143554e-08
+        ],
+        [
+          0.11163948080664662,
+          0.11503940916542564,
+          0.05927144037892332,
+          0.020358841490805694,
+          0.005244715130060426,
+          0.001080888097013075,
+          0.0001856343400439187,
+          2.7326821050817845e-05,
+          3.5198808312939573e-06,
+          4.0300857350921484e-07,
+          4.152820117947095e-08
+        ],
+        [
+          0.09389034675740386,
+          0.0967497335106347,
+          0.04984810077741403,
+          0.017122067151686036,
+          0.004410877931777863,
+          0.0009090418327032023,
+          0.0001561210463437382,
+          2.2982234292924594e-05,
+          2.9602684409407683e-06,
+          3.389357818541027e-07,
+          3.492579131306402e-08
+        ],
+        [
+          0.05264205309525649,
+          0.054245242288628814,
+          0.027948627930862315,
+          0.009599930123045655,
+          0.0024730728802323343,
+          0.0005096778324465784,
+          8.753330555002963e-05,
+          1.2885584510852366e-05,
+          1.659751122731129e-06,
+          1.900331188503036e-07,
+          1.9582048892062282e-08
+        ],
+        [
+          0.022136347210784568,
+          0.022810499348522244,
+          0.011752591237714247,
+          0.004036836975535006,
+          0.0010399442410678125,
+          0.00021432305165343534,
+          3.680836005117271e-05,
+          5.4184773574463455e-06,
+          6.979368200131323e-07,
+          7.991024006618133e-08,
+          8.234386918551053e-09
+        ],
+        [
+          0.007446789614374894,
+          0.0076735781215305715,
+          0.0039536366834888445,
+          0.0013580142820353415,
+          0.000349842993524237,
+          7.209945976978418e-05,
+          1.2382535869228883e-05,
+          1.822805746898422e-06,
+          2.3478980580100074e-07,
+          2.6882246657078557e-08,
+          2.7700932950643367e-09
+        ],
+        [
+          0.0020876176721448467,
+          0.0021511950954231436,
+          0.0011083543697486737,
+          0.00038070292851157103,
+          9.807426469353251e-05,
+          2.0212214143521582e-05,
+          3.471294617571869e-06,
+          5.110016110521961e-07,
+          6.582049087078586e-08,
+          7.536113693871932e-09,
+          7.765622524239516e-10
+        ],
+        [
+          0.0005016329495068082,
+          0.0005169099471997661,
+          0.000266326099368836,
+          9.14789788682573e-05,
+          2.3566232134058423e-05,
+          4.856786150148314e-06,
+          8.341162181438295e-07,
+          1.2278840554720995e-07,
+          1.581598365163071e-08,
+          1.8108502291952856e-09,
+          1.8659988289850468e-10
+        ],
+        [
+          0.00010547006138380706,
+          0.00010868210294929973,
+          5.59959828718544e-05,
+          1.9233771477828612e-05,
+          4.954881756088583e-06,
+          1.0211560741530088e-06,
+          1.7537581774752362e-07,
+          2.581668664910591e-08,
+          3.3253652261535515e-09,
+          3.8073751937125447e-10,
+          3.9233270308232406e-11
+        ],
+        [
+          1.971150660700025e-05,
+          2.0311811354238114e-05,
+          1.0465199051391596e-05,
+          3.5946372704108374e-06,
+          9.260275683032854e-07,
+          1.9084586126481412e-07,
+          3.277633050443194e-08,
+          4.8249311963786916e-09,
+          6.214840284152737e-10,
+          7.115678165113505e-11,
+          7.33238282739525e-12
+        ],
+        [
+          3.3155299130196713e-06,
+          3.4165028313296297e-06,
+          1.7602754164043226e-06,
+          6.046279279469162e-07,
+          1.5576039742695505e-07,
+          3.210080154780151e-08,
+          5.513069416412357e-09,
+          8.115667680203689e-10,
+          1.045353319640739e-10,
+          1.1968767420079554e-11,
+          1.2333270653856112e-12
+        ]
+      ]
+    }
+  }
+}

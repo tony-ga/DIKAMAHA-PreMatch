@@ -1,0 +1,42 @@
+name: dikamaha-phase-7-11-prospective-collection
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - src/collect_prospective_signals.py
+      - scripts/run_phase_7_11_prospective_collection.py
+      - tests/test_phase_7_11_prospective_collection.py
+      - tests/test_phase_7_11_prospective_collection_postgres.py
+      - .github/workflows/phase-7-11-prospective-collection.yml
+
+jobs:
+  collect-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install frozen dependencies
+        run: python -m pip install -r requirements.staging.txt pytest
+      - name: Compile and unit tests
+        run: |
+          python -m py_compile src/collect_prospective_signals.py scripts/run_phase_7_11_prospective_collection.py
+          python -m pytest -q tests/test_phase_7_11_prospective_collection.py
+      - name: Read-only collection
+        if: env.DATABASE_URL != ''
+        run: python scripts/run_phase_7_11_prospective_collection.py
+      - name: PostgreSQL integration
+        if: env.DATABASE_URL != ''
+        run: python -m pytest -q --run-postgres tests/test_phase_7_11_prospective_collection_postgres.py
+      - name: Upload collection evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dikamaha-phase-7-11-prospective-collection
+          path: artifacts/phase_7_11_prospective_collection/
+          if-no-files-found: warn

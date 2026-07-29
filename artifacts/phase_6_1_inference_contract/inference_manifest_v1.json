@@ -1,0 +1,19 @@
+{
+  "artifacts": [
+    "audit",
+    "configuration",
+    "contract",
+    "examples",
+    "tests"
+  ],
+  "decision": "inference_contract_approved_with_caveats",
+  "hashes": {
+    "audit": "ecfaeb6a5011cf26452c589e389d63843ccd0460590447272fd3d7a86093a072",
+    "configuration": "0eb13fa80729333b923cd48cd9b03dd6d3e59dddd0f4bb6b22f13a8e683ec113",
+    "contract": "2c075af8003b11e4a8325115989893074b4703c97acf66f286c1ed24bf8674a4",
+    "examples": "744caadb90e1bf4d954f144eab90982a78ee6f1ebb443010106c84d9f5d1a50a",
+    "tests": "cdef6ca58ea6c3db2d051a1a0ce208c9a3e989d0b0c7c8f188974f7efc63f10c"
+  },
+  "phase": "6.1",
+  "replay_identical": true
+}

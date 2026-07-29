@@ -1,0 +1,40 @@
+name: phase-7-15-espn-connector-r5
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Fecha inicial YYYYMMDD"
+        required: true
+        type: string
+      end_date:
+        description: "Fecha final YYYYMMDD"
+        required: true
+        type: string
+      dry_run:
+        description: "No escribir staging"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  range-ingestion:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Ejecutar R5 en modo seguro
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIKAMAHA_ESPN_LEAGUE: ${{ vars.DIKAMAHA_ESPN_LEAGUE }}
+        run: >-
+          python scripts/run_phase_7_15_espn_connector.py
+          --enable-source-fetch
+          --start-date "${{ inputs.start_date }}"
+          --end-date "${{ inputs.end_date }}"
+          --max-concurrency 1
+          --sleep-between-requests 0.5
+          ${{ inputs.dry_run && '--dry-run' || '' }}
