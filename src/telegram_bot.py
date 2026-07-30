@@ -4,7 +4,7 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.2.0
+Version: 2.3.0
 Created: 2026-07-29
 """
 from __future__ import annotations
@@ -160,6 +160,7 @@ class TelegramBotConfig:
     request_timeout_seconds: float = 15.0
     rate_limit_requests: int = 10
     rate_limit_window_seconds: int = 60
+    access_mode: str = "private"
 
     def __post_init__(self) -> None:
         """Valida límites sin inspeccionar o exponer secretos."""
@@ -170,6 +171,8 @@ class TelegramBotConfig:
             raise ValueError("telegram_timeout_invalid")
         if self.rate_limit_requests < 1 or self.rate_limit_window_seconds < 1:
             raise ValueError("telegram_rate_limit_invalid")
+        if self.access_mode not in {"private", "public"}:
+            raise ValueError("telegram_access_mode_invalid")
 
 
 def telegram_config_from_env() -> TelegramBotConfig:
@@ -188,6 +191,8 @@ def telegram_config_from_env() -> TelegramBotConfig:
         rate_limit_requests=int(os.getenv("TELEGRAM_RATE_LIMIT", "10")),
         rate_limit_window_seconds=int(
             os.getenv("TELEGRAM_RATE_WINDOW_SECONDS", "60")),
+        access_mode=os.getenv(
+            "TELEGRAM_ACCESS_MODE", "private").strip().casefold(),
     )
 
 
@@ -511,8 +516,11 @@ class TelegramPredictionBot:
         user_id, chat_id = int(sender.get("id", 0)), int(message["chat"]["id"])
         self._transport.answer_callback_query(str(callback.get("id", "")))
         data = str(callback.get("data", ""))
-        if user_id not in self._config.allowed_user_ids:
+        if not self._is_authorized(user_id):
             _send(self._transport, chat_id, _unauthorized_text(), None)
+            return
+        if not self._rate.allow(user_id, time.monotonic()):
+            _send(self._transport, chat_id, _rate_limit_text(), None)
             return
         try:
             replies = self._callback_reply(user_id, data)
@@ -531,14 +539,21 @@ class TelegramPredictionBot:
             return [(f"Tu ID de Telegram es <code>{user_id}</code>.", None)]
         if command in {"/start", "/help"}:
             return [(_help_text(), _main_keyboard())]
-        if user_id not in self._config.allowed_user_ids:
+        if not self._is_authorized(user_id):
             return [(_unauthorized_text(), None)]
         if user_id in self._team_search and not text.startswith("/"):
             league = self._team_search.pop(user_id)
             return self._team_search_reply(user_id, league, text)
         if not self._rate.allow(user_id, time.monotonic()):
-            return [("Demasiadas solicitudes. Intenta de nuevo en un minuto.", None)]
+            return [(_rate_limit_text(), None)]
         return self._authorized_reply(command, text)
+
+    def _is_authorized(self, user_id: int) -> bool:
+        """Autoriza por modo público o por membresía privada explícita."""
+
+        return (
+            self._config.access_mode == "public"
+            or user_id in self._config.allowed_user_ids)
 
     def _authorized_reply(self, command: str, text: str) -> list[tuple[str, dict[str, Any] | None]]:
         """Ejecuta comandos autorizados con errores sanitizados."""
@@ -727,8 +742,6 @@ class TelegramPredictionBot:
         fixture = self._menus.get(user_id, {}).get(key)
         if not fixture:
             return [("El menú expiró. Pulsa Próximos partidos.", _main_keyboard())]
-        if not self._rate.allow(user_id, time.monotonic()):
-            return [("Demasiadas solicitudes. Intenta de nuevo en un minuto.", None)]
         try:
             result = self._gateway.predict_upcoming(_prediction_payload(fixture))
             result.setdefault("fixture", {
@@ -1863,6 +1876,12 @@ def _unauthorized_text() -> str:
         "Usa /whoami y envía tu identificador al administrador.")
 
 
+def _rate_limit_text() -> str:
+    """Informa el límite sin revelar la configuración interna."""
+
+    return "Demasiadas solicitudes. Intenta de nuevo en un minuto."
+
+
 def _usage_text(command: str) -> str:
     """Devuelve sintaxis sin detalles internos."""
 
@@ -1916,5 +1935,5 @@ class LongPollingRunner:
                 time.sleep(2)
 
 
-# Version: 2.2.0
+# Version: 2.3.0
 # Created: 2026-07-29

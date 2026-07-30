@@ -210,7 +210,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 106 | `probability_repair_selective` | integrada selectivamente | BTTS causal por liga aprobado; fallback exacto de la línea Markov degradada |
 | 107 | `railway_user_pilot_readiness` | validada | imagen, auth, volumen, logs, 100 solicitudes concurrentes y Telegram público aprobados |
 | 108 | `repository_hygiene` | validada | runtime mínimo, snapshot gzip y exclusión de cachés/evidencia local para GitHub |
-| 109 | `premium_telegram_railway` | validada v1.1 | allowlist fail-closed, paridad con canal, worker independiente y contrato móvil medible |
+| 109 | `premium_telegram_railway` | validada v1.2 | acceso private/public, paridad con canal, worker independiente y contrato móvil medible |
 
 ## Componentes heredados
 

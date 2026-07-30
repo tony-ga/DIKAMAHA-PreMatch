@@ -2,7 +2,7 @@
 
 **Actualizado:** 2026-07-30
 **Fase activa:** Fase 109 bot premium Telegram en Railway
-**Objetivo:** abrir el bot a usuarios de pago mediante una allowlist operativa,
+**Objetivo:** operar acceso privado o público mediante un interruptor seguro,
 sin modificar las probabilidades vigentes.
 
 ## Fase 109 — bot premium Telegram en Railway
@@ -12,7 +12,9 @@ desplegada y reutiliza exactamente el presentador del canal para la tarjeta
 principal y el dashboard de mercados. Conserva navegación por liga/fecha,
 play-by-play, estadísticas y perfiles de jugadores.
 
-- allowlist obligatoria y fail-closed;
+- interruptor `private|public`, con `private` seguro por defecto;
+- allowlist obligatoria y fail-closed únicamente en modo privado;
+- modo público limitado a chats privados y rate limit por usuario;
 - `/whoami` disponible para solicitar alta;
 - rechazo no autorizado sin ejecutar inferencia;
 - servicio Railway independiente, sin dominio ni volumen;
@@ -22,11 +24,10 @@ play-by-play, estadísticas y perfiles de jugadores.
 - contrato móvil compartido: prosa ≤72 columnas, tablas ≤40, botones ≤32;
 - estadísticas reducidas de 46 a 38 columnas sin perder métricas;
 - nombres, contexto, eventos y botones dinámicos compactados semánticamente;
-- 24 pruebas visuales dirigidas y 450 pruebas integrales aprobadas, 8 omitidas.
+- 30 pruebas dirigidas y 457 pruebas integrales aprobadas, 8 omitidas.
 
-Estado: `validated_for_deployment`. Los cobros, renovaciones y vencimientos aún
-se administran fuera del bot; esta fase sólo implementa el perímetro técnico
-de acceso premium.
+Estado: `validated_for_deployment`. El interruptor no administra cobros,
+renovaciones ni vencimientos; sólo controla el perímetro técnico de acceso.
 
 ## Fase 108 — higiene del repositorio
 

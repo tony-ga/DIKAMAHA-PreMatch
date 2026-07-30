@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.run_phase_97_telegram_bot import _validate_premium_config
-from src.telegram_bot import TelegramBotConfig
+from src.telegram_bot import TelegramBotConfig, telegram_config_from_env
 from src.telegram_channel_publisher import channel_prediction_messages
 
 from tests.test_telegram_bot import FakeGateway, FakeTransport, _bot, _prediction, _update
@@ -44,6 +44,34 @@ def test_premium_configuration_fails_closed(
         _validate_premium_config(_premium_config(**changes))
 
 
+def test_public_configuration_does_not_require_allowlist() -> None:
+    """Permite apertura explícita conservando HTTPS y API key."""
+
+    config = _premium_config(
+        access_mode="public", allowed_user_ids=frozenset())
+
+    _validate_premium_config(config)
+
+
+def test_invalid_access_mode_is_rejected() -> None:
+    """Evita que un error tipográfico abra o cierre el bot silenciosamente."""
+
+    with pytest.raises(ValueError, match="access_mode"):
+        _premium_config(access_mode="everyone")
+
+
+def test_access_mode_defaults_private_and_reads_public_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Congela el valor seguro por defecto y el interruptor de Railway."""
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "secret")
+    monkeypatch.delenv("TELEGRAM_ACCESS_MODE", raising=False)
+    assert telegram_config_from_env().access_mode == "private"
+    monkeypatch.setenv("TELEGRAM_ACCESS_MODE", "PUBLIC")
+    assert telegram_config_from_env().access_mode == "public"
+
+
 def test_bot_uses_exact_channel_prediction_messages() -> None:
     """Comprueba paridad textual entre selección privada y canal."""
 
@@ -72,5 +100,5 @@ def test_premium_image_is_minimal_and_non_root() -> None:
     assert "models.joblib" not in dockerfile
 
 
-# Version: 1.0.0
+# Version: 1.1.0
 # Created: 2026-07-30

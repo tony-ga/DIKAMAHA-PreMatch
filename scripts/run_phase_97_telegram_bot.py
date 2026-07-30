@@ -4,7 +4,7 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.0.0
+Version: 2.1.0
 Created: 2026-07-29
 """
 from __future__ import annotations
@@ -32,9 +32,9 @@ from src.runtime_logging import configure_runtime_logging  # noqa: E402
 
 
 def _validate_premium_config(config: TelegramBotConfig) -> None:
-    """Valida que el despliegue premium falle cerrado."""
+    """Valida que el acceso elegido falle cerrado."""
 
-    if not config.allowed_user_ids:
+    if config.access_mode == "private" and not config.allowed_user_ids:
         raise ValueError("telegram_premium_allowlist_missing")
     if not config.dikamaha_api_key:
         raise ValueError("dikamaha_api_key_missing")
@@ -65,8 +65,8 @@ def main() -> int:
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, _stop_on_signal)
     logging.getLogger(__name__).info(
-        "telegram_premium_started allowed_users=%s",
-        len(config.allowed_user_ids))
+        "telegram_premium_started access_mode=%s allowed_users=%s",
+        config.access_mode, len(config.allowed_user_ids))
     try:
         LongPollingRunner(
             bot, transport, config.poll_timeout_seconds).run_forever()
@@ -79,5 +79,5 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-# Version: 2.0.0
+# Version: 2.1.0
 # Created: 2026-07-29

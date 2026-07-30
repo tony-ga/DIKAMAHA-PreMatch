@@ -127,12 +127,15 @@ Use `Dockerfile.telegram-bot` for that service and configure:
 
 ```text
 TELEGRAM_BOT_TOKEN=<secret>
+TELEGRAM_ACCESS_MODE=private
 TELEGRAM_ALLOWED_USER_IDS=<comma-separated Telegram user IDs>
 DIKAMAHA_BOT_API_URL=https://<api-service>.up.railway.app
 DIKAMAHA_API_KEY=<same private API key>
 ```
 
 Keep one worker replica and do not attach a public domain or data volume.
+Set `TELEGRAM_ACCESS_MODE=public` only for an intentional open pilot; private
+is the safe default and requires a non-empty allowlist.
 Deployment and membership operations are documented in
 `docs/runbooks/railway_premium_telegram_bot.md`.
 

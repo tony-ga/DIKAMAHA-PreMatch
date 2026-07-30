@@ -2,15 +2,15 @@
 
 ## Objetivo
 
-Desplegar el bot privado como servicio Railway independiente del canal, con
-acceso premium por allowlist y la misma presentación de predicciones y mercados
+Desplegar el bot como servicio Railway independiente del canal, con acceso
+privado o público explícito y la misma presentación de predicciones y mercados
 que la difusión automática.
 
 ## Alcance
 
 - long polling en un solo proceso;
 - API DIKAMAHA remota por HTTPS y `X-Dikamaha-Key`;
-- allowlist obligatoria mediante `TELEGRAM_ALLOWED_USER_IDS`;
+- acceso `private|public`; el modo privado exige `TELEGRAM_ALLOWED_USER_IDS`;
 - `/whoami` disponible antes de autorizar;
 - próximos por liga y fecha, predicciones, contexto, PBP, estadísticas,
   equipos, búsqueda y perfiles de jugador;
@@ -27,7 +27,8 @@ que la difusión automática.
 
 ## Gate
 
-1. Configuración sin token, API URL HTTPS o allowlist falla al arrancar.
+1. Configuración sin token o API URL HTTPS falla al arrancar; `private` sin
+   allowlist también falla y un modo desconocido es rechazado.
 2. Un usuario no autorizado no puede consultar datos ni predicciones.
 3. La selección de un fixture devuelve la tarjeta y dashboard de Fase 101.
 4. Los mensajes permanecen bajo 3,900 caracteres.
@@ -46,8 +47,8 @@ que la difusión automática.
 - configuración incompleta rechazada antes del polling;
 - imagen Docker: `57,852,478` bytes, usuario `app`;
 - imagen sin modelos, snapshots ni evidencia histórica;
-- 11 pruebas dirigidas aprobadas;
-- regresión: 447 aprobadas y 8 integraciones opcionales omitidas.
+- 30 pruebas dirigidas aprobadas;
+- regresión: 457 aprobadas y 8 integraciones opcionales omitidas.
 
 ### Revisión v1.1 — legibilidad móvil
 
@@ -66,3 +67,15 @@ play-by-play, estadísticas, plantillas, perfiles, errores y estado.
 La prueba contra Telegram y la API reales se ejecutará al crear el segundo
 servicio Railway con sus secretos. No cambia el router ni el estado de
 promoción de ningún mercado.
+
+### Revisión v1.2 — interruptor público
+
+`TELEGRAM_ACCESS_MODE` admite:
+
+- `private`: valor por defecto; sólo IDs de la allowlist;
+- `public`: cualquier usuario en chat privado.
+
+El modo público conserva rate limit individual, una réplica de long polling,
+API key, HTTPS y rechazo completo de grupos. Cambiar el modo es reversible y
+no requiere reconstruir modelos. Aprobaron 30 pruebas dirigidas y 457 pruebas
+integrales; 8 integraciones opcionales fueron omitidas.

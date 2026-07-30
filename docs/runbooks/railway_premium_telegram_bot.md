@@ -4,7 +4,7 @@
 
 El bot premium se despliega como un servicio Railway distinto del servicio API
 y avisador. No carga modelos ni snapshots: consulta la API DIKAMAHA por HTTPS,
-aplica una allowlist de usuarios y usa el mismo presentador de tarjetas y
+aplica el modo de acceso seleccionado y usa el mismo presentador de tarjetas y
 mercados del canal.
 
 ## Crear el servicio
@@ -23,7 +23,8 @@ mercados del canal.
 
 ```text
 TELEGRAM_BOT_TOKEN=<secreto del bot>
-TELEGRAM_ALLOWED_USER_IDS=<id1,id2,id3>
+TELEGRAM_ACCESS_MODE=private
+TELEGRAM_ALLOWED_USER_IDS=<id1,id2,id3>  # obligatorio sólo en private
 DIKAMAHA_BOT_API_URL=https://dikamaha-prematch-production.up.railway.app
 DIKAMAHA_API_KEY=<misma clave privada de la API>
 ```
@@ -40,7 +41,27 @@ LOG_LEVEL=INFO
 
 No configurar `DIKAMAHA_BOT_API_URL` con `127.0.0.1`: la API vive en otro
 servicio. El bot falla al arrancar si la URL no es HTTPS, la clave está vacía o
-no hay usuarios autorizados.
+el modo es inválido. En `private`, también falla si no hay usuarios autorizados.
+
+## Interruptor de acceso
+
+Para membresía controlada:
+
+```text
+TELEGRAM_ACCESS_MODE=private
+TELEGRAM_ALLOWED_USER_IDS=<id1,id2,id3>
+```
+
+Para una prueba abierta:
+
+```text
+TELEGRAM_ACCESS_MODE=public
+```
+
+En `public`, `TELEGRAM_ALLOWED_USER_IDS` puede quedar vacío. El bot continúa
+aceptando únicamente chats privados y mantiene el rate limit por usuario.
+Volver a `private` revoca inmediatamente a quienes no estén en la allowlist
+después del redeploy automático de Railway.
 
 ## Alta y baja de usuarios
 
@@ -57,7 +78,7 @@ control operativo de membresías inicial.
 En los logs debe aparecer:
 
 ```text
-telegram_premium_started allowed_users=<cantidad>
+telegram_premium_started access_mode=<private|public> allowed_users=<cantidad>
 ```
 
 Después, desde un usuario autorizado:

@@ -1585,6 +1585,25 @@ Evidencia obtenida: 24 pruebas dirigidas y 450 pruebas integrales aprobadas;
 8 integraciones opcionales omitidas. Casos de presión incluyen nombres largos,
 tablas, tarjetas, dashboards, botones, contexto, eventos y perfiles.
 
+DEC-140
+Fecha: 2026-07-29
+Problema: Fase 109 sólo admite usuarios enumerados, pero las pruebas públicas
+requieren abrir temporalmente el bot sin editar una allowlist por persona.
+Opciones: retirar la autorización; usar una allowlist infinita; o añadir un
+interruptor explícito con modo privado seguro por defecto.
+Decisión: versionar `TELEGRAM_ACCESS_MODE=private|public`. `private`
+seguirá exigiendo una allowlist no vacía. `public` admitirá cualquier usuario
+en chat privado, conservará rate limit por usuario, API key, HTTPS, una sola
+réplica y rechazo de grupos. El modo inválido impedirá el arranque.
+Motivo: permitir apertura controlada y reversible sin debilitar por accidente
+el despliegue premium.
+Estado: congelada; interruptor validado para Railway
+Impacto en contratos/fases: sólo autenticación del adaptador Telegram; no
+cambia API, modelos, probabilidades, mercados, canal ni settlement.
+Evidencia obtenida: default privado, rechazo privado, aceptación pública, rate
+limit por usuario, grupos ignorados, modo inválido rechazado y configuración
+Railway validados; 30 pruebas dirigidas y 457 integrales aprobadas, 8 omitidas.
+
 ```text
 DEC-NNN
 Fecha:

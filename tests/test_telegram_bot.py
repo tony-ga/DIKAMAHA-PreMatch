@@ -95,13 +95,29 @@ def _update(update_id: int, text: str, user_id: int = 7) -> dict[str, Any]:
     }
 
 
+def _callback(update_id: int, data: str, user_id: int = 7) -> dict[str, Any]:
+    """Construye un callback privado."""
+
+    return {
+        "update_id": update_id,
+        "callback_query": {
+            "id": f"cb-{update_id}", "data": data, "from": {"id": user_id},
+            "message": {"chat": {"id": 70, "type": "private"}},
+        },
+    }
+
+
 def _bot(
     transport: FakeTransport, gateway: FakeGateway,
     allowed: frozenset[int] = frozenset({7}),
+    access_mode: str = "private",
+    rate_limit: int = 10,
 ) -> TelegramPredictionBot:
     """Construye el bot con dependencias falsas."""
 
-    config = TelegramBotConfig("secret", allowed)
+    config = TelegramBotConfig(
+        "secret", allowed, access_mode=access_mode,
+        rate_limit_requests=rate_limit)
     return TelegramPredictionBot(config, transport, gateway)
 
 
@@ -125,6 +141,59 @@ def test_unauthorized_user_cannot_predict() -> None:
 
     assert "ACCESO PREMIUM REQUERIDO" in transport.sent[0][1]
     assert not gateway.fixture_payloads
+
+
+def test_public_mode_allows_any_private_user() -> None:
+    """Abre consultas privadas sin requerir una allowlist."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    _bot(
+        transport, gateway, frozenset(), access_mode="public",
+    ).process_update(
+        _update(1, "/partido esp.1 20300110 Real Madrid | Barcelona", 999))
+
+    assert len(gateway.fixture_payloads) == 1
+    assert "PRONÓSTICO DIKAMAHA" in transport.sent[0][1]
+
+
+def test_public_mode_keeps_per_user_rate_limit() -> None:
+    """Impide que la apertura pública retire el control de ráfagas."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    bot = _bot(
+        transport, gateway, frozenset(), access_mode="public", rate_limit=1)
+    command = "/partido esp.1 20300110 Real Madrid | Barcelona"
+    bot.process_update(_update(1, command, 999))
+    bot.process_update(_update(2, command, 999))
+
+    assert len(gateway.fixture_payloads) == 1
+    assert "Demasiadas solicitudes" in transport.sent[-1][1]
+
+
+def test_public_mode_limits_callback_navigation() -> None:
+    """Aplica el mismo control a botones y no sólo a comandos escritos."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    bot = _bot(
+        transport, gateway, frozenset(), access_mode="public", rate_limit=1)
+    bot.process_update(_callback(1, "menu:upcoming", 999))
+    bot.process_update(_callback(2, "menu:upcoming", 999))
+
+    assert "PRÓXIMOS Y PREDICCIONES" in transport.sent[0][1]
+    assert "Demasiadas solicitudes" in transport.sent[-1][1]
+
+
+def test_public_mode_ignores_group_messages() -> None:
+    """Mantiene el bot público limitado a conversaciones privadas."""
+
+    update = _update(1, "/partidos", 999)
+    update["message"]["chat"]["type"] = "group"
+    transport, gateway = FakeTransport(), FakeGateway()
+    _bot(
+        transport, gateway, frozenset(), access_mode="public",
+    ).process_update(update)
+
+    assert not transport.sent
 
 
 def test_fixture_command_preserves_gateway_payload() -> None:
@@ -182,5 +251,5 @@ def test_messages_are_split_below_telegram_limit() -> None:
     assert all(len(part) <= 3900 for part in parts)
 
 
-# Version: 1.0.0
+# Version: 1.1.0
 # Created: 2026-07-29
