@@ -537,6 +537,9 @@ class TelegramPredictionBot:
         user_id, chat_id = int(sender.get("id", 0)), int(message["chat"]["id"])
         self._transport.answer_callback_query(str(callback.get("id", "")))
         data = str(callback.get("data", ""))
+        if data == "menu:help":
+            _send(self._transport, chat_id, _help_text(), _main_keyboard())
+            return
         if not self._is_authorized(user_id):
             _send(self._transport, chat_id, _unauthorized_text(), None)
             return
@@ -558,7 +561,9 @@ class TelegramPredictionBot:
         command = text.split(maxsplit=1)[0].split("@", 1)[0].lower()
         if command == "/whoami":
             return [(f"Tu ID de Telegram es <code>{user_id}</code>.", None)]
-        if command in {"/start", "/help"}:
+        if command == "/start":
+            return [(_welcome_text(), _main_keyboard())]
+        if command == "/help":
             return [(_help_text(), _main_keyboard())]
         if not self._is_authorized(user_id):
             return [(_unauthorized_text(), None)]
@@ -691,6 +696,8 @@ class TelegramPredictionBot:
                 title=f"Próximos · {date[6:8]}/{date[4:6]}")
         if data == "menu:status":
             return [(_format_readiness(self._gateway.readiness()), _main_keyboard())]
+        if data == "menu:help":
+            return [(_help_text(), _main_keyboard())]
         if data in {"menu:plays", "menu:stats", "menu:players"}:
             return self._league_menu(data.split(":", 1)[1])
         if data.startswith("match:"):
@@ -1096,7 +1103,8 @@ def _main_keyboard() -> dict[str, Any]:
          {"text": "📊 Estadísticas", "callback_data": "menu:stats"}],
         [{"text": "👤 Equipos y jugadores",
           "callback_data": "menu:players"}],
-        [{"text": "✅ Estado", "callback_data": "menu:status"}],
+        [{"text": "✅ Estado", "callback_data": "menu:status"},
+         {"text": "ℹ️ Ayuda", "callback_data": "menu:help"}],
     ]}
 
 
@@ -1926,6 +1934,17 @@ def _help_text() -> str:
         "Probabilidades calculadas antes del inicio del partido.\n"
         "Incluyen resultados, goles y mercados por 1T, 2T y partido completo.\n\n"
         "<i>La información es analítica y no constituye una apuesta.</i>")
+
+
+def _welcome_text() -> str:
+    """Presenta el inicio del bot sin saturar la primera pantalla."""
+
+    return (
+        "💎 <b>DIKAMAHA PREMIUM</b>\n"
+        "<i>Predicciones y análisis pre-match</i>\n\n"
+        "Bienvenido. Usa el menú para consultar próximos partidos,\n"
+        "predicciones, mercados, play-by-play, estadísticas y jugadores.\n\n"
+        "Pulsa <b>Ayuda</b> o escribe /help para ver todas las opciones.")
 
 
 def _unauthorized_text() -> str:

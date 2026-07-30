@@ -178,6 +178,17 @@ def test_help_is_available_and_does_not_require_authorization() -> None:
     assert not gateway.fixture_payloads
 
 
+def test_start_shows_welcome_instead_of_full_help() -> None:
+    """El inicio abre el menú y deja la ayuda bajo demanda."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    _bot(transport, gateway, frozenset()).process_update(_update(1, "/start"))
+
+    assert "Bienvenido" in transport.sent[0][1]
+    assert "COMANDOS PRINCIPALES" not in transport.sent[0][1]
+    assert not gateway.fixture_payloads
+
+
 def test_transport_retries_rejected_html_as_plain_text() -> None:
     """Evita que un HTML rechazado deje bloqueado el polling."""
 
