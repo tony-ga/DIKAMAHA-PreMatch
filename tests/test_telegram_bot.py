@@ -123,7 +123,7 @@ def test_unauthorized_user_cannot_predict() -> None:
     _bot(transport, gateway, frozenset()).process_update(
         _update(1, "/partido esp.1 20300110 Local | Visitante"))
 
-    assert "prueba privada" in transport.sent[0][1]
+    assert "ACCESO PREMIUM REQUERIDO" in transport.sent[0][1]
     assert not gateway.fixture_payloads
 
 
@@ -138,7 +138,8 @@ def test_fixture_command_preserves_gateway_payload() -> None:
         "league_slug": "esp.1", "kickoff_date": "20300110",
         "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
     }]
-    assert "Mercados adicionales" in transport.sent[0][1]
+    assert "PRONÓSTICO DIKAMAHA" in transport.sent[0][1]
+    assert "MERCADOS DISPONIBLES" in transport.sent[1][1]
     assert "experimental" not in transport.sent[0][1].lower()
     assert "Real Madrid" in transport.sent[0][1]
     assert "Barcelona" in transport.sent[0][1]

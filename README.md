@@ -117,6 +117,25 @@ pilot. Telegram channel mode accepts:
 Channel delivery groups each fixture into an identifiable dashboard and keeps
 first-half, second-half and full-match cards separate.
 
+### Premium Telegram worker
+
+The private bot is deployed as a second Railway service. It consumes the
+existing HTTPS API, requires an explicit user allowlist and renders the exact
+same prediction card and market dashboard as the channel.
+
+Use `Dockerfile.telegram-bot` for that service and configure:
+
+```text
+TELEGRAM_BOT_TOKEN=<secret>
+TELEGRAM_ALLOWED_USER_IDS=<comma-separated Telegram user IDs>
+DIKAMAHA_BOT_API_URL=https://<api-service>.up.railway.app
+DIKAMAHA_API_KEY=<same private API key>
+```
+
+Keep one worker replica and do not attach a public domain or data volume.
+Deployment and membership operations are documented in
+`docs/runbooks/railway_premium_telegram_bot.md`.
+
 ## Testing
 
 Install development dependencies and run:

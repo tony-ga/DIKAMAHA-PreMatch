@@ -210,6 +210,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 106 | `probability_repair_selective` | integrada selectivamente | BTTS causal por liga aprobado; fallback exacto de la línea Markov degradada |
 | 107 | `railway_user_pilot_readiness` | validada | imagen, auth, volumen, logs, 100 solicitudes concurrentes y Telegram público aprobados |
 | 108 | `repository_hygiene` | validada | runtime mínimo, snapshot gzip y exclusión de cachés/evidencia local para GitHub |
+| 109 | `premium_telegram_railway` | validación en curso | allowlist fail-closed, paridad visual con canal y worker Railway independiente |
 
 ## Componentes heredados
 
@@ -231,11 +232,11 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Cerrar Fase 108 con suite integral e imagen reproducible; después desplegar
-Fase 107 en Railway con una sola réplica, volumen `/data`, secretos
-del entorno y modo Telegram `lite`. El despliegue sólo se abre a pilotos
-después de comprobar health, readiness, autenticación, predicción real y
-persistencia del ledger desde la URL asignada.
+Cerrar Fase 109 con suite integral e imagen reproducible; después desplegar el
+bot premium como segundo servicio Railway, una sola réplica, sin dominio ni
+volumen. El acceso inicial se administrará mediante allowlist y la apertura a
+pilotos exige comprobar paridad con el canal, rechazo no autorizado y conexión
+HTTPS a la API ya desplegada.
 
 La fase no autoriza staking real. ROI, CLV y Kelly continúan bloqueados hasta
 contar con cuotas históricas comparables.

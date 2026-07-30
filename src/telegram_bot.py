@@ -546,10 +546,14 @@ class TelegramPredictionBot:
         try:
             if command == "/partido":
                 payload = _fixture_payload(text)
-                return [(part, None) for part in _split_message(_format_prediction(self._gateway.predict_fixture(payload)))]
+                prediction = self._gateway.predict_fixture(payload)
+                return _channel_prediction_replies(
+                    _prediction_fixture(prediction), prediction)
             if command == "/predict":
                 payload = _upcoming_payload(text)
-                return [(part, None) for part in _split_message(_format_prediction(self._gateway.predict_upcoming(payload)))]
+                prediction = self._gateway.predict_upcoming(payload)
+                return _channel_prediction_replies(
+                    _prediction_fixture(prediction), prediction)
             if command == "/estado":
                 return [(_format_readiness(self._gateway.readiness()), _main_keyboard())]
             if command in {"/partidos", "/menu"}:
@@ -732,8 +736,8 @@ class TelegramPredictionBot:
                 "away_team_name": fixture.get("away_team_name", "Equipo 2"),
             })
             fixture["_prediction"] = result
-            keyboard = _prediction_keyboard(key)
-            return [(_format_prediction_summary(result), keyboard)]
+            return _channel_prediction_replies(
+                fixture, result, _prediction_keyboard(key))
         except PredictionGatewayError:
             return [("No pude generar la predicción ahora. Intenta de nuevo.", _main_keyboard())]
 
@@ -962,6 +966,36 @@ def _fixture_payload(text: str) -> dict[str, Any]:
         "league_slug": pieces[1], "kickoff_date": pieces[2],
         "home_team_name": home, "away_team_name": away,
     }
+
+
+def _prediction_fixture(payload: dict[str, Any]) -> dict[str, Any]:
+    """Reconstruye la identidad visible para el presentador compartido."""
+
+    nested = payload.get("fixture")
+    fixture = dict(nested) if isinstance(nested, dict) else {}
+    for key in (
+        "league_slug", "match_id", "competition_id", "kickoff_ts",
+        "home_team_id", "away_team_id", "home_team_name", "away_team_name",
+    ):
+        if key in payload:
+            fixture.setdefault(key, payload[key])
+    return fixture
+
+
+def _channel_prediction_replies(
+    fixture: dict[str, Any], prediction: dict[str, Any],
+    keyboard: dict[str, Any] | None = None,
+) -> list[tuple[str, dict[str, Any] | None]]:
+    """Entrega tarjeta y dashboard usando el presentador del canal."""
+
+    from src.telegram_channel_publisher import channel_prediction_messages
+
+    replies = [
+        (part, None) for message in channel_prediction_messages(
+            fixture, prediction) for part in _split_message(message)]
+    if replies and keyboard is not None:
+        replies[-1] = replies[-1][0], keyboard
+    return replies
 
 
 def _upcoming_payload(text: str) -> dict[str, Any]:
@@ -1759,8 +1793,8 @@ def _help_text() -> str:
     """Devuelve ayuda segura y reusable."""
 
     return (
-        "⚽ <b>DIKAMAHA</b>\n"
-        "<i>Centro de análisis pre-match</i>\n\n"
+        "💎 <b>DIKAMAHA PREMIUM</b>\n"
+        "<i>Centro privado de análisis pre-match</i>\n\n"
         "🔮 <b>Predicciones</b>\n"
         "Resultados, goles y mercados por 1T/2T/total.\n\n"
         "▶️ <b>Play-by-play</b>\n"
@@ -1769,17 +1803,16 @@ def _help_text() -> str:
         "Comparativas por mitad y boxscore total.\n\n"
         "👤 <b>Jugadores</b>\n"
         "Liga → equipo → plantilla → perfil.\n\n"
-        "🧪 <i>Mercados secundarios continúan en observación.</i>")
+        "ℹ️ <i>Probabilidades pre-partido; no constituyen una apuesta.</i>")
 
 
 def _unauthorized_text() -> str:
     """Informa cómo solicitar acceso sin revelar configuración."""
 
     return (
-        "🔒 <b>ACCESO PRIVADO</b>\n"
-        "Este bot está en prueba privada.\n"
-        "Tu usuario no está autorizado.\n"
-        "Usa /whoami para consultar tu identificador.")
+        "🔒 <b>ACCESO PREMIUM REQUERIDO</b>\n"
+        "Tu usuario no tiene una membresía activa.\n"
+        "Usa /whoami y envía tu identificador al administrador.")
 
 
 def _usage_text(command: str) -> str:
@@ -1835,5 +1868,5 @@ class LongPollingRunner:
                 time.sleep(2)
 
 
-# Version: 2.0.0
+# Version: 2.1.0
 # Created: 2026-07-29

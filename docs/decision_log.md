@@ -1543,6 +1543,27 @@ modelos, probabilidades, router ni settlement.
 Evidencia requerida: hash y conteo del snapshot, pruebas del registro,
 construcción Docker, smoke real e inventario antes/después.
 
+DEC-138
+Fecha: 2026-07-30
+Problema: el canal público ya entrega tarjetas y dashboards validados, pero el
+bot privado usa una presentación distinta y todavía no tiene una unidad
+Railway independiente para usuarios premium.
+Opciones: incluir long polling en el servicio del canal; duplicar API y modelos
+en un segundo contenedor; o desplegar un adaptador premium separado que consuma
+la API pública y reutilice exactamente el presentador del canal.
+Decisión: abrir Fase 109. El bot premium será un servicio Railway sin modelos
+ni base propia, conectado por HTTPS a la API DIKAMAHA. La allowlist de IDs será
+obligatoria y fail-closed. Las predicciones seleccionadas producirán la misma
+tarjeta principal y el mismo dashboard de mercados que el canal; explorador,
+PBP, estadísticas y jugadores conservarán sus contratos existentes.
+Motivo: aislar fallos y escalado del long polling, evitar lógica predictiva
+duplicada y mantener paridad visual entre la entrega pública y premium.
+Estado: congelada; implementación validada para despliegue
+Impacto en contratos/fases: presentación, acceso y empaquetado únicamente; no
+cambia Dixon-Coles, Kalman, Markov, snapshots, probabilidades ni promoción.
+Evidencia requerida: paridad byte a byte del presentador, rechazo sin allowlist,
+smoke del contenedor, health del API remoto y pruebas del flujo Telegram.
+
 ```text
 DEC-NNN
 Fecha:

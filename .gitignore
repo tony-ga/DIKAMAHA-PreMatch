@@ -2,6 +2,7 @@
 .env.*
 !.env.telegram.example
 !.env.discord.example
+!.env.premium-bot.example
 .venv/
 .venv-*/
 __pycache__/

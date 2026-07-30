@@ -1,0 +1,22 @@
+# Bot premium ligero: consume la API desplegada y no empaqueta modelos ni datos.
+FROM python:3.12.3-slim-bookworm@sha256:fd3817f3a855f6c2ada16ac9468e5ee93e361005bd226fd5a5ee1a504e038c84
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src:/app \
+    LOG_LEVEL=INFO
+
+WORKDIR /app
+
+COPY requirements.telegram-bot.txt /app/requirements.telegram-bot.txt
+RUN pip install --no-cache-dir --disable-pip-version-check \
+    -r /app/requirements.telegram-bot.txt
+
+COPY src /app/src
+COPY scripts/run_phase_97_telegram_bot.py /app/scripts/run_phase_97_telegram_bot.py
+
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && chown -R app:app /app
+USER app
+
+CMD ["python", "scripts/run_phase_97_telegram_bot.py"]

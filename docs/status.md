@@ -1,9 +1,29 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-07-29
-**Fase activa:** Fase 108 higiene del repositorio
-**Objetivo:** desplegar una réplica observable y recuperable para usuarios
-reales sin modificar las probabilidades vigentes.
+**Actualizado:** 2026-07-30
+**Fase activa:** Fase 109 bot premium Telegram en Railway
+**Objetivo:** abrir el bot a usuarios de pago mediante una allowlist operativa,
+sin modificar las probabilidades vigentes.
+
+## Fase 109 — bot premium Telegram en Railway
+
+Validada para despliegue. El bot privado consume por HTTPS la API ya
+desplegada y reutiliza exactamente el presentador del canal para la tarjeta
+principal y el dashboard de mercados. Conserva navegación por liga/fecha,
+play-by-play, estadísticas y perfiles de jugadores.
+
+- allowlist obligatoria y fail-closed;
+- `/whoami` disponible para solicitar alta;
+- rechazo no autorizado sin ejecutar inferencia;
+- servicio Railway independiente, sin dominio ni volumen;
+- una sola réplica de long polling;
+- imagen de 57.9 MB, usuario `app`, sin modelos, snapshots ni artefactos;
+- logs JSON, readiness remoto previo al polling y cierre SIGTERM limpio;
+- 11 pruebas dirigidas y 447 pruebas integrales aprobadas, 8 omitidas.
+
+Estado: `validated_for_deployment`. Los cobros, renovaciones y vencimientos aún
+se administran fuera del bot; esta fase sólo implementa el perímetro técnico
+de acceso premium.
 
 ## Fase 108 — higiene del repositorio
 

@@ -110,6 +110,29 @@ class FrozenPrediction:
     frozen_at: datetime
 
 
+def channel_prediction_messages(
+    fixture: dict[str, Any], prediction: dict[str, Any],
+) -> list[str]:
+    """Renderiza una predicción con el contrato visual exacto del canal."""
+
+    source = dict(fixture)
+    nested = prediction.get("fixture")
+    if isinstance(nested, dict):
+        source.setdefault("home_team_name", nested.get("home_team_name"))
+        source.setdefault("away_team_name", nested.get("away_team_name"))
+    kickoff = _parse_ts(source.get("kickoff_ts") or prediction["kickoff_ts"])
+    source.setdefault("league_slug", prediction.get("league_slug", ""))
+    source.setdefault("match_id", prediction.get("match_id", 0))
+    source.setdefault("competition_id", source.get("match_id", 0))
+    now = datetime.now(timezone.utc)
+    row = FrozenPrediction(
+        _fixture_key(source), kickoff.astimezone(MEXICO_TZ).date().isoformat(),
+        str(source["league_slug"]), int(source["match_id"]),
+        str(source["competition_id"]), kickoff, source, dict(prediction),
+        canonical_hash(prediction), now)
+    return [_card_text(row), *_market_texts(row)]
+
+
 class ChannelTransport(ABC):
     """Puerto para publicar mensajes en un canal."""
 
