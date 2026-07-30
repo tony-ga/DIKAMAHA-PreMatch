@@ -7,6 +7,7 @@ from src.telegram_bot import (
     LongPollingRunner,
     PredictionGateway,
     TelegramBotConfig,
+    TelegramHttpTransport,
     TelegramPredictionBot,
     TelegramTransport,
     _split_message,
@@ -62,6 +63,37 @@ class FakeGateway(PredictionGateway):
         """Simula servicio listo."""
 
         return {"ready": True, "contract_version": "test-v1"}
+
+
+class _Response:
+    """Respuesta mínima para probar el transporte sin red."""
+
+    def __init__(self, status_code: int, payload: dict[str, Any]) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict[str, Any]:
+        """Devuelve el cuerpo Telegram configurado."""
+
+        return self._payload
+
+
+class _Session:
+    """Sesión que rechaza HTML y acepta el reintento plano."""
+
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def post(
+        self, _url: str, json: dict[str, Any], timeout: tuple[int, int],
+    ) -> _Response:
+        """Registra payloads y simula dos respuestas consecutivas."""
+
+        self.payloads.append(json)
+        if len(self.payloads) == 1:
+            return _Response(400, {
+                "ok": False, "description": "can't parse entities"})
+        return _Response(200, {"ok": True, "result": {}})
 
 
 def _prediction() -> dict[str, Any]:
@@ -130,6 +162,32 @@ def test_whoami_does_not_require_authorization() -> None:
 
     assert "7" in transport.sent[0][1]
     assert not gateway.fixture_payloads
+
+
+def test_help_is_available_and_does_not_require_authorization() -> None:
+    """Entrega ayuda completa a cualquier chat privado."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    _bot(transport, gateway, frozenset()).process_update(_update(1, "/help"))
+
+    assert len(transport.sent) == 1
+    assert "COMANDOS PRINCIPALES" in transport.sent[0][1]
+    assert "Play-by-play" in transport.sent[0][1]
+    assert not gateway.fixture_payloads
+
+
+def test_transport_retries_rejected_html_as_plain_text() -> None:
+    """Evita que un HTML rechazado deje bloqueado el polling."""
+
+    session = _Session()
+    config = TelegramBotConfig("secret", frozenset({7}))
+    TelegramHttpTransport(config, session).send_message(
+        70, "<b>Ayuda</b> &amp; opciones", {"inline_keyboard": []})
+
+    assert len(session.payloads) == 2
+    assert session.payloads[0]["parse_mode"] == "HTML"
+    assert "parse_mode" not in session.payloads[1]
+    assert session.payloads[1]["text"] == "Ayuda & opciones"
 
 
 def test_unauthorized_user_cannot_predict() -> None:

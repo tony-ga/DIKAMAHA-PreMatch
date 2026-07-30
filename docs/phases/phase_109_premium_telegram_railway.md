@@ -68,6 +68,15 @@ La prueba contra Telegram y la API reales se ejecutará al crear el segundo
 servicio Railway con sus secretos. No cambia el router ni el estado de
 promoción de ningún mercado.
 
+### Revisión v1.3 — tolerancia de `/help`
+
+La ayuda completa se mantiene disponible sin autorización y ahora cuenta con
+un fallback seguro: si Telegram rechaza el HTML de cualquier ventana, el
+transporte reintenta una vez como texto plano sin teclado. El rechazo registra
+sólo método, estado y descripción sanitizada, nunca token ni cuerpo sensible.
+La suite integral quedó en `459 passed, 8 skipped`, con pruebas específicas
+para `/help` y el fallback de transporte.
+
 ### Revisión v1.2 — interruptor público
 
 `TELEGRAM_ACCESS_MODE` admite:

@@ -4,14 +4,15 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.3.0
-Created: 2026-07-29
+Version: 2.3.1
+Created: 2026-07-30
 """
 from __future__ import annotations
 
 import html
 import logging
 import os
+import re
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -35,6 +36,10 @@ MAX_MESSAGE_LENGTH = 3900
 
 class TelegramTransportError(RuntimeError):
     """Indica un fallo sanitizado del transporte Telegram."""
+
+
+class TelegramApiRejectedError(TelegramTransportError):
+    """Indica que Telegram rechazó una petición válida a nivel HTTP/API."""
 
 
 class PredictionGatewayError(RuntimeError):
@@ -256,7 +261,20 @@ class TelegramHttpTransport(TelegramTransport):
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
-        self._post("sendMessage", payload, int(self._config.request_timeout_seconds))
+        try:
+            self._post(
+                "sendMessage", payload,
+                int(self._config.request_timeout_seconds))
+        except TelegramApiRejectedError:
+            LOGGER.warning(
+                "Telegram rechazó HTML; se reintentará texto plano chat_id=%s",
+                chat_id)
+            fallback = {
+                "chat_id": chat_id, "text": _plain_telegram_text(text),
+            }
+            self._post(
+                "sendMessage", fallback,
+                int(self._config.request_timeout_seconds))
 
     def answer_callback_query(self, callback_id: str) -> None:
         """Confirma callback sin mostrar el identificador sensible."""
@@ -276,7 +294,10 @@ class TelegramHttpTransport(TelegramTransport):
         except (requests.RequestException, ValueError) as error:
             raise TelegramTransportError("telegram_api_unavailable") from error
         if response.status_code >= 400 or not bool(data.get("ok")):
-            raise TelegramTransportError("telegram_api_rejected_request")
+            LOGGER.warning(
+                "Telegram API rechazó method=%s status=%s description=%s",
+                method, response.status_code, data.get("description", "unknown"))
+            raise TelegramApiRejectedError("telegram_api_rejected_request")
         return data.get("result", [])
 
 
@@ -1850,6 +1871,13 @@ def _split_message(text: str) -> list[str]:
     return parts
 
 
+def _plain_telegram_text(text: str) -> str:
+    """Convierte HTML Telegram en texto seguro para un reintento."""
+
+    without_tags = re.sub(r"<[^>]*>", "", text)
+    return html.unescape(without_tags)
+
+
 def _help_text() -> str:
     """Devuelve ayuda completa y reutilizable."""
 
@@ -1978,5 +2006,5 @@ class LongPollingRunner:
                 time.sleep(2)
 
 
-# Version: 2.3.0
-# Created: 2026-07-29
+# Version: 2.3.1
+# Created: 2026-07-30

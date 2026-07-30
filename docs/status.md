@@ -24,7 +24,8 @@ play-by-play, estadísticas y perfiles de jugadores.
 - contrato móvil compartido: prosa ≤72 columnas, tablas ≤40, botones ≤32;
 - estadísticas reducidas de 46 a 38 columnas sin perder métricas;
 - nombres, contexto, eventos y botones dinámicos compactados semánticamente;
-- 30 pruebas dirigidas y 457 pruebas integrales aprobadas, 8 omitidas.
+- `/help` público con fallback a texto plano si Telegram rechaza HTML;
+- 32 pruebas dirigidas y 459 pruebas integrales aprobadas, 8 omitidas.
 
 Estado: `validated_for_deployment`. El interruptor no administra cobros,
 renovaciones ni vencimientos; sólo controla el perímetro técnico de acceso.
