@@ -19,7 +19,10 @@ play-by-play, estadísticas y perfiles de jugadores.
 - una sola réplica de long polling;
 - imagen de 57.9 MB, usuario `app`, sin modelos, snapshots ni artefactos;
 - logs JSON, readiness remoto previo al polling y cierre SIGTERM limpio;
-- 11 pruebas dirigidas y 447 pruebas integrales aprobadas, 8 omitidas.
+- contrato móvil compartido: prosa ≤72 columnas, tablas ≤40, botones ≤32;
+- estadísticas reducidas de 46 a 38 columnas sin perder métricas;
+- nombres, contexto, eventos y botones dinámicos compactados semánticamente;
+- 24 pruebas visuales dirigidas y 450 pruebas integrales aprobadas, 8 omitidas.
 
 Estado: `validated_for_deployment`. Los cobros, renovaciones y vencimientos aún
 se administran fuera del bot; esta fase sólo implementa el perímetro técnico

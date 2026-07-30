@@ -5,7 +5,7 @@
 #   sqlalchemy>=2
 #   tenacity>=8.2
 
-Version: 1.8.0
+Version: 1.9.0
 Created: 2026-07-29
 """
 
@@ -677,7 +677,8 @@ def _summary_line(row: FrozenPrediction) -> str:
 
     home, away = _names(row)
     local = row.kickoff_ts.astimezone(MEXICO_TZ).strftime("%H:%M")
-    league = row.fixture.get("league_name") or row.league_slug
+    league = _mobile_label(
+        str(row.fixture.get("league_name") or row.league_slug), 36)
     return (f"\n\n🏆 <b>{html.escape(str(league))}</b>\n"
             f"└ 🕘 {local} · {html.escape(home)} vs {html.escape(away)}")
 
@@ -1035,7 +1036,14 @@ def _names(row: FrozenPrediction) -> tuple[str, str]:
     nested = row.prediction.get("fixture") or {}
     home = row.fixture.get("home_team_name") or nested.get("home_team_name") or "Equipo 1"
     away = row.fixture.get("away_team_name") or nested.get("away_team_name") or "Equipo 2"
-    return str(home), str(away)
+    return _mobile_label(str(home), 28), _mobile_label(str(away), 28)
+
+
+def _mobile_label(value: str, limit: int) -> str:
+    """Normaliza espacios y acota etiquetas variables para pantalla móvil."""
+
+    clean = " ".join(value.split())
+    return clean if len(clean) <= limit else clean[:limit - 1].rstrip() + "…"
 
 
 def _top_1x2(
@@ -1114,5 +1122,5 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
-# Version: 1.8.0
+# Version: 1.9.0
 # Created: 2026-07-29

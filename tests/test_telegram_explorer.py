@@ -10,6 +10,10 @@ from src.telegram_bot import (
     TelegramTransport,
     _format_market_period,
 )
+from src.telegram_mobile_layout import (
+    keyboard_layout_issues,
+    mobile_layout_issues,
+)
 
 
 class MenuTransport(TelegramTransport):
@@ -222,5 +226,22 @@ def test_market_period_uses_team_names_and_separates_halves() -> None:
     assert "Segundo tiempo" in second and "70.0%" in second
 
 
-# Version: 1.0.0
+def test_navigation_windows_and_buttons_are_mobile_safe() -> None:
+    """Recorre los menús principales y audita texto y botones móviles."""
+
+    bot, transport = _bot()
+    for callback in (
+        "menu:upcoming", "upcoming:all", "upcoming:leagues",
+        "upcoming:dates", "menu:stats", "league:stats:mex.1",
+        "menu:players", "league:players:mex.1",
+    ):
+        bot.process_update(_callback(callback))
+
+    assert all(not mobile_layout_issues(text) for _, text, _ in transport.sent)
+    assert all(
+        not keyboard_layout_issues(keyboard)
+        for _, _, keyboard in transport.sent)
+
+
+# Version: 1.1.0
 # Created: 2026-07-29

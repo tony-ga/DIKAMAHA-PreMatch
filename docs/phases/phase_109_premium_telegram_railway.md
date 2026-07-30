@@ -35,6 +35,8 @@ que la difusión automática.
 6. El bot alcanza readiness remoto y procesa un update falso exactamente una
    vez.
 7. Suite dirigida y regresión integral aprobadas.
+8. Todas las ventanas cumplen el contrato móvil: prosa ≤72 columnas visibles,
+   tablas ≤40, botones ≤32 y mensajes ≤3,900 caracteres.
 
 ## Resultado
 
@@ -46,6 +48,20 @@ que la difusión automática.
 - imagen sin modelos, snapshots ni evidencia histórica;
 - 11 pruebas dirigidas aprobadas;
 - regresión: 447 aprobadas y 8 integraciones opcionales omitidas.
+
+### Revisión v1.1 — legibilidad móvil
+
+La auditoría amplió el gate a cada familia visible del bot y del avisador:
+menús, tarjetas, mercados por periodo, resumen diario, resultados, contexto,
+play-by-play, estadísticas, plantillas, perfiles, errores y estado.
+
+- tablas comparativas: `46 → 38` columnas;
+- campos de nombres dinámicos acotados con elipsis;
+- contexto y disponibilidad separados por equipo;
+- botones dinámicos limitados a 32 columnas;
+- eventos compactados dentro de tarjetas autoidentificables;
+- 24 pruebas visuales dirigidas aprobadas;
+- regresión integral: 450 aprobadas y 8 omitidas.
 
 La prueba contra Telegram y la API reales se ejecutará al crear el segundo
 servicio Railway con sus secretos. No cambia el router ni el estado de

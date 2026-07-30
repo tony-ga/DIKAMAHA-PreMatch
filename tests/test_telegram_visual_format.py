@@ -3,13 +3,18 @@ from __future__ import annotations
 
 from src.telegram_bot import (
     MAX_MESSAGE_LENGTH,
+    _format_fixture_context,
     _format_market_period,
     _format_player,
     _format_prediction_summary,
     _format_readiness,
     _format_statistics,
+    _help_text,
+    _unauthorized_text,
+    _usage_text,
     _plays_page,
 )
+from src.telegram_mobile_layout import mobile_layout_issues
 
 
 def _prediction() -> dict:
@@ -107,5 +112,40 @@ def test_player_profile_and_readiness_use_tables() -> None:
     assert len(player) < MAX_MESSAGE_LENGTH
 
 
-# Version: 1.0.0
+def test_every_bot_window_respects_mobile_width_contract() -> None:
+    """Audita ventanas principales con nombres y textos de máxima presión."""
+
+    long_name = "Club Deportivo Independiente de la Montaña"
+    fixture = {"home_team_name": long_name, "away_team_name": long_name}
+    prediction = {**_prediction(), "fixture": fixture}
+    context = {
+        "status": "available", "fixture": prediction,
+        "competition": {"name": long_name, "phase": "Temporada regular"},
+        "venue": {"name": long_name, "city": "Ciudad de México"},
+        "teams": {"home": {"name": long_name}, "away": {"name": long_name}},
+        "officials": [{"name": long_name}] * 4,
+        "broadcasts": [{"name": long_name}] * 4,
+        "editorial": {"articles": [{"headline": long_name * 3}]},
+    }
+    plays, _ = _plays_page(fixture, [{
+        "type": "goal", "period": 1, "clock": "45+12",
+        "label": "Gol confirmado", "text": long_name * 3,
+    }], "key", "g0", 0)
+    messages = [
+        _help_text(), _unauthorized_text(), _usage_text("/partido"),
+        _format_prediction_summary(prediction),
+        _format_market_period(prediction, "first_half"),
+        _format_fixture_context(context), plays,
+        _format_player({"name": long_name, "position": long_name}),
+        _format_readiness({"ready": True, "contract_version": long_name}),
+    ]
+
+    assert {
+        index: mobile_layout_issues(message)
+        for index, message in enumerate(messages)
+        if mobile_layout_issues(message)
+    } == {}
+
+
+# Version: 1.1.0
 # Created: 2026-07-29

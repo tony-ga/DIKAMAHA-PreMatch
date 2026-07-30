@@ -1564,6 +1564,27 @@ cambia Dixon-Coles, Kalman, Markov, snapshots, probabilidades ni promoción.
 Evidencia requerida: paridad byte a byte del presentador, rechazo sin allowlist,
 smoke del contenedor, health del API remoto y pruebas del flujo Telegram.
 
+DEC-139
+Fecha: 2026-07-29
+Problema: cumplir el límite de 3,900 caracteres no evita que Telegram envuelva
+filas anchas, botones, nombres o comparativas en móviles y vuelva ambigua la
+asociación entre equipo, valor y periodo.
+Opciones: confiar en el ajuste automático; reducir toda la información; o
+definir un contrato móvil medible y compactar únicamente campos variables.
+Decisión: Fase 109 v1.1 congela un contrato de hasta 72 columnas visibles para
+prosa, 40 para tablas monoespaciadas, 32 para botones y 3,900 caracteres por
+mensaje. Se acotan nombres dinámicos con elipsis, las estadísticas pasan de 46
+a 38 columnas, el contexto separa equipos y el play-by-play limita cada texto
+sin retirar eventos. Bot premium y avisador comparten las mismas reglas.
+Motivo: evitar saltos automáticos ambiguos manteniendo probabilidades, periodos
+y navegación completos.
+Estado: congelada; validación móvil aprobada
+Impacto en contratos/fases: presentación únicamente; no modifica API, datos,
+modelos, probabilidades, router, snapshots ni settlement.
+Evidencia obtenida: 24 pruebas dirigidas y 450 pruebas integrales aprobadas;
+8 integraciones opcionales omitidas. Casos de presión incluyen nombres largos,
+tablas, tarjetas, dashboards, botones, contexto, eventos y perfiles.
+
 ```text
 DEC-NNN
 Fecha:

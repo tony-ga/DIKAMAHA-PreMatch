@@ -15,7 +15,9 @@ from src.telegram_channel_publisher import (
     ChannelTransport,
     SqlAlchemyChannelRepository,
     TelegramChannelPublisher,
+    channel_prediction_messages,
 )
+from src.telegram_mobile_layout import mobile_layout_issues
 
 
 class _Gateway(PredictionGateway):
@@ -199,6 +201,7 @@ def test_all_messages_stay_below_telegram_limit() -> None:
     publisher.run_cycle(datetime(2026, 7, 30, 19, 0, tzinfo=timezone.utc))
     assert transport.messages
     assert all(len(message) <= 3900 for message in transport.messages)
+    assert all(not mobile_layout_issues(message) for message in transport.messages)
 
 
 def test_lite_mode_freezes_only_three_nearest_fixtures() -> None:
@@ -244,6 +247,23 @@ def test_visual_grid_sends_one_dashboard_per_fixture() -> None:
     assert "SEGUNDO TIEMPO" in dashboard
     assert "PARTIDO COMPLETO" in dashboard
     assert len(dashboard) <= 3900
+
+
+def test_channel_cards_with_long_names_remain_mobile_safe() -> None:
+    """Presiona tarjeta y dashboard con nombres largos sin filas ambiguas."""
+
+    gateway = _Gateway()
+    gateway.include_grid = True
+    fixture = {
+        **_fixture(),
+        "home_team_name": "Club Deportivo Independiente de la Montaña",
+        "away_team_name": "Asociación Deportiva Internacional del Valle",
+    }
+    prediction = gateway.predict_upcoming(fixture)
+    messages = channel_prediction_messages(fixture, prediction)
+
+    assert messages
+    assert all(not mobile_layout_issues(message) for message in messages)
 
 
 def test_legacy_freeze_gets_append_only_distributional_market_snapshot() -> None:

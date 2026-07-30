@@ -4,7 +4,7 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.0.0
+Version: 2.2.0
 Created: 2026-07-29
 """
 from __future__ import annotations
@@ -759,7 +759,7 @@ class TelegramPredictionBot:
 
         rows = self._gateway.explorer_leagues().get("leagues", [])
         buttons = _button_grid([
-            {"text": str(row.get("name") or row.get("slug")),
+            {"text": _compact(str(row.get("name") or row.get("slug")), 30),
              "callback_data": f"league:{mode}:{row.get('slug')}"}
             for row in rows if isinstance(row, dict)
         ], 2)
@@ -879,7 +879,7 @@ class TelegramPredictionBot:
             key = f"t{index}"
             self._menus[user_id][key] = {**row, "_league": league}
             buttons.append([{
-                "text": str(row.get("name") or row.get("id")),
+                "text": _compact(str(row.get("name") or row.get("id")), 30),
                 "callback_data": f"team:{key}",
             }])
         buttons.append([{
@@ -931,10 +931,10 @@ class TelegramPredictionBot:
                 **row, "_league": team["_league"], "_team_id": team["id"],
             }
             label = f"{row.get('jersey') or '—'} · {row.get('name')}"
-            buttons.append([{"text": label[:55],
+            buttons.append([{"text": _compact(label, 30),
                              "callback_data": f"player:{player_key}"}])
         return [("👥 <b>PLANTILLA</b>\n"
-                 f"<b>{html.escape(str(team.get('name', 'Equipo')))}</b>\n"
+                 f"<b>{html.escape(_compact(str(team.get('name', 'Equipo')), 38))}</b>\n"
                  f"<i>{len(players)} jugadores · dorsal y nombre</i>", {
                      "inline_keyboard": buttons + _back_row(),
                  })]
@@ -1037,7 +1037,7 @@ def _fixture_title(
 
     home = fixture.get("home_team_name", payload.get("home_team_id", "Equipo 1"))
     away = fixture.get("away_team_name", payload.get("away_team_id", "Equipo 2"))
-    return f"{home} vs {away}"
+    return f"{_compact(str(home), 28)} vs {_compact(str(away), 28)}"
 
 
 def _send(transport: TelegramTransport, chat_id: int, text: str, keyboard: dict[str, Any] | None) -> None:
@@ -1079,9 +1079,19 @@ def _upcoming_keyboard() -> dict[str, Any]:
 def _fixture_button(fixture: dict[str, Any]) -> str:
     """Construye texto corto para un botón de partido."""
 
-    title = _fixture_title({}, fixture)
-    kickoff = str(fixture.get("kickoff_ts", ""))[:16].replace("T", " ")
-    return f"{title[:40]} · {kickoff}"
+    home, away = _team_names({"fixture": fixture})
+    title = f"{_compact(home, 11)}–{_compact(away, 11)}"
+    return f"{title} · {_button_time(fixture.get('kickoff_ts'))}"
+
+
+def _button_time(value: Any) -> str:
+    """Reduce un kickoff ISO a hora UTC para un botón estrecho."""
+
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.strftime("%H:%M")
+    except ValueError:
+        return "N/D"
 
 
 def _match_keyboard(key: str) -> dict[str, Any]:
@@ -1098,31 +1108,58 @@ def _format_fixture_context(context: dict[str, Any]) -> str:
 
     if context.get("status") != "available":
         return "🏟 <b>CONTEXTO DEL PARTIDO</b>\n<i>Snapshot no disponible todavía.</i>"
-    fixture = context.get("fixture", {}); competition = context.get("competition", {})
-    venue = context.get("venue", {}); teams = context.get("teams", {})
+    teams = context.get("teams", {})
     home = teams.get("home", {}).get("name", "Local"); away = teams.get("away", {}).get("name", "Visitante")
+    home_label, away_label = _compact(str(home), 28), _compact(str(away), 28)
+    fields = _context_fields(context, home_label, away_label)
+    title = f"{home_label} vs {away_label}"
+    return "\n".join(["🏟 <b>CONTEXTO DEL PARTIDO</b>",
+                      f"<b>{html.escape(title)}</b>", *fields, "",
+                      "<i>Contexto informativo · no modifica la predicción.</i>"])
+
+
+def _context_fields(
+    context: dict[str, Any], home: str, away: str,
+) -> list[str]:
+    """Construye filas contextuales móviles separadas por equipo."""
+
+    fixture = context.get("fixture", {})
+    competition = context.get("competition", {})
+    venue = context.get("venue", {})
     fields = [
-        f"🏆 {competition.get('name') or 'Competición no publicada'}",
+        f"🏆 {html.escape(_compact(str(competition.get('name') or 'Competición no publicada'), 64))}",
         f"📅 {html.escape(_display_kickoff(fixture.get('kickoff_ts')))}",
-        f"🏟 {html.escape(_venue_label(venue))}",
-        f"🧭 {html.escape(str(competition.get('phase') or 'Fase no publicada'))}",
+        f"🏟 {html.escape(_compact(_venue_label(venue), 64))}",
+        f"🧭 {html.escape(_compact(str(competition.get('phase') or 'Fase no publicada'), 64))}",
     ]
     officials = context.get("officials", []); broadcasts = context.get("broadcasts", [])
     if officials:
         fields.append("👤 " + html.escape(_names(officials, "name")))
     if broadcasts:
         fields.append("📺 " + html.escape(_names(broadcasts, "name")))
-    team_context = context.get("team_context", {})
-    standings = _standing_line(team_context, "home", str(home), team_context, "away", str(away))
-    if standings:
-        fields.append("📊 " + html.escape(standings))
-    availability = _availability_line(context.get("availability"), str(home), str(away))
-    if availability:
-        fields.append("🩺 " + html.escape(availability))
+    fields.extend(_team_context_fields(context, home, away))
     editorial = _editorial_line(context.get("editorial"))
     if editorial:
         fields.append("📰 " + html.escape(editorial))
-    return "\n".join(["🏟 <b>CONTEXTO DEL PARTIDO</b>", f"<b>{html.escape(str(home))} vs {html.escape(str(away))}</b>", *fields, "", "<i>Contexto informativo · no modifica la predicción.</i>"])
+    return fields
+
+
+def _team_context_fields(
+    context: dict[str, Any], home: str, away: str,
+) -> list[str]:
+    """Separa clasificación y disponibilidad para cada equipo."""
+
+    output: list[str] = []
+    standings = context.get("team_context", {})
+    availability = context.get("availability")
+    rows = availability if isinstance(availability, dict) else {}
+    for side, name in (("home", home), ("away", away)):
+        standing = _standing_label(standings, side, name)
+        if standing:
+            output.append("📊 " + html.escape(standing))
+        output.append("🩺 " + html.escape(
+            _availability_label(rows.get(side), name)))
+    return output
 
 
 def _venue_label(venue: Any) -> str:
@@ -1136,7 +1173,9 @@ def _venue_label(venue: Any) -> str:
 def _names(rows: Any, key: str) -> str:
     """Lista hasta tres valores disponibles y evita mensajes demasiado largos."""
 
-    values = [str(row.get(key)) for row in rows if isinstance(row, dict) and row.get(key)]
+    values = [
+        _compact(str(row.get(key)), 20)
+        for row in rows if isinstance(row, dict) and row.get(key)]
     return ", ".join(values[:3]) + ("…" if len(values) > 3 else "")
 
 
@@ -1175,7 +1214,7 @@ def _availability_label(row: Any, name: str) -> str:
     data = row if isinstance(row, dict) else {}
     count = data.get("roster_count")
     status = data.get("injury_report_status")
-    if status == "not_published":
+    if not data or status in {None, "not_published"}:
         return f"{name}: reporte no publicado"
     injuries = data.get("published_injuries") if isinstance(data.get("published_injuries"), list) else []
     return f"{name}: {len(injuries)} incidencias publicadas · roster {count or 'N/D'}"
@@ -1187,7 +1226,7 @@ def _editorial_line(editorial: Any) -> str:
     data = editorial if isinstance(editorial, dict) else {}
     rows = data.get("articles") if isinstance(data.get("articles"), list) else []
     headline = next((row.get("headline") for row in rows if isinstance(row, dict) and row.get("headline")), None)
-    return str(headline)[:140] if headline else ""
+    return _compact(str(headline), 64) if headline else ""
 
 
 def _prediction_payload(fixture: dict[str, Any]) -> dict[str, Any]:
@@ -1387,10 +1426,11 @@ def _back_row() -> list[list[dict[str, str]]]:
 def _historical_fixture_button(fixture: dict[str, Any]) -> str:
     """Resume equipos, marcador y estado en un botón."""
 
-    title = _fixture_title({}, fixture)
+    home, away = _team_names({"fixture": fixture})
+    title = f"{_compact(home, 12)}–{_compact(away, 12)}"
     home, away = fixture.get("home_score"), fixture.get("away_score")
     score = f" {home}-{away}" if home is not None and away is not None else ""
-    return (title + score)[:58]
+    return _compact(title + score, 32)
 
 
 def _plays_page(
@@ -1429,7 +1469,7 @@ def _play_card(row: dict[str, Any]) -> str:
     period = "1T" if row.get("period") == 1 else "2T"
     clock = html.escape(str(row.get("clock") or "—"))
     label = html.escape(str(row.get("label") or "Evento"))
-    text = html.escape(_compact(str(row.get("text") or ""), 110))
+    text = html.escape(_compact(str(row.get("text") or ""), 68))
     icon = _event_icon(str(row.get("type") or ""))
     return f"{icon} <code>{period} {clock}</code> <b>{label}</b>\n└ {text}"
 
@@ -1543,23 +1583,31 @@ def _format_statistics(
     periods = payload.get("periods", {})
     home_stats = (periods.get("home") or {}).get(period, {})
     away_stats = (periods.get("away") or {}).get(period, {})
-    rows = [[_stat_label(metric), str(home_stats.get(metric, 0)),
-             str(away_stats.get(metric, 0))] for metric in (
-                 "goals", "shots", "shots_on_target", "corners",
-                 "yellow_cards", "red_cards", "fouls", "offsides", "saves",
-                 "substitutions")]
+    rows = _statistics_rows(home_stats, away_stats)
     lines = [
         f"📊 <b>ESTADÍSTICAS · {label.upper()}</b>",
         f"<b>{html.escape(_fixture_title({}, fixture))}</b>",
         _pre_table(
-            ["Evento", _compact(str(home), 14), _compact(str(away), 14)],
-            rows, [16, 14, 14], numeric={1, 2}),
+            ["Evento", _compact(str(home), 11), _compact(str(away), 11)],
+            rows, [14, 11, 11], numeric={1, 2}),
     ]
     if period == "total":
         lines.extend(_boxscore_lines(
             payload.get("boxscore", []), (str(home), str(away))))
     lines.extend(["", "✓ <i>1T + 2T reconciliado con el total.</i>"])
     return "\n".join(lines)
+
+
+def _statistics_rows(
+    home: dict[str, Any], away: dict[str, Any],
+) -> list[list[str]]:
+    """Construye las filas comparables de estadísticas por periodo."""
+
+    metrics = (
+        "goals", "shots", "shots_on_target", "corners", "yellow_cards",
+        "red_cards", "fouls", "offsides", "saves", "substitutions")
+    return [[_stat_label(metric), str(home.get(metric, 0)),
+             str(away.get(metric, 0))] for metric in metrics]
 
 
 def _stat_line(
@@ -1602,8 +1650,8 @@ def _boxscore_lines(value: Any, team_names: tuple[str, str]) -> list[str]:
         table_rows.append([
             label, str(home.get(key, "N/D")), str(away.get(key, "N/D"))])
     return ["", "<b>Boxscore ESPN · total</b>", _pre_table(
-        ["Métrica", _compact(team_names[0], 14), _compact(team_names[1], 14)],
-        table_rows, [16, 14, 14], numeric={1, 2})]
+        ["Métrica", _compact(team_names[0], 11), _compact(team_names[1], 11)],
+        table_rows, [14, 11, 11], numeric={1, 2})]
 
 
 def _format_player(payload: dict[str, Any]) -> str:
@@ -1619,7 +1667,7 @@ def _format_player(payload: dict[str, Any]) -> str:
     ]
     lines = [
         "👤 <b>PERFIL DEL JUGADOR</b>",
-        f"<b>{html.escape(str(payload.get('name') or 'Jugador'))}</b>", "",
+        f"<b>{html.escape(_compact(str(payload.get('name') or 'Jugador'), 38))}</b>", "",
         _pre_table(["Dato", "Valor"], profile_rows, [13, 22]),
     ]
     statistics = payload.get("statistics")
@@ -1868,5 +1916,5 @@ class LongPollingRunner:
                 time.sleep(2)
 
 
-# Version: 2.1.0
+# Version: 2.2.0
 # Created: 2026-07-29
