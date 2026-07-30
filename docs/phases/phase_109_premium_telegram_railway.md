@@ -77,6 +77,12 @@ sólo método, estado y descripción sanitizada, nunca token ni cuerpo sensible.
 La suite integral quedó en `459 passed, 8 skipped`, con pruebas específicas
 para `/help` y el fallback de transporte.
 
+### Revisión v1.4 — ayuda orientada al usuario
+
+`/start` y `/help` ya no muestran variables de entorno, tokens, allowlists ni
+detalles de configuración interna. Sólo exponen comandos, navegación,
+mercados disponibles y el aviso analítico correspondiente.
+
 ### Revisión v1.2 — interruptor público
 
 `TELEGRAM_ACCESS_MODE` admite:

@@ -25,6 +25,7 @@ play-by-play, estadísticas y perfiles de jugadores.
 - estadísticas reducidas de 46 a 38 columnas sin perder métricas;
 - nombres, contexto, eventos y botones dinámicos compactados semánticamente;
 - `/help` público con fallback a texto plano si Telegram rechaza HTML;
+- `/start` y `/help` ocultan configuración, tokens y controles internos;
 - 32 pruebas dirigidas y 459 pruebas integrales aprobadas, 8 omitidas.
 
 Estado: `validated_for_deployment`. El interruptor no administra cobros,

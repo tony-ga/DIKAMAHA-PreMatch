@@ -173,6 +173,8 @@ def test_help_is_available_and_does_not_require_authorization() -> None:
     assert len(transport.sent) == 1
     assert "COMANDOS PRINCIPALES" in transport.sent[0][1]
     assert "Play-by-play" in transport.sent[0][1]
+    assert "TELEGRAM_BOT_TOKEN" not in transport.sent[0][1]
+    assert "CONFIGURACIÓN (env vars)" not in transport.sent[0][1]
     assert not gateway.fixture_payloads
 
 

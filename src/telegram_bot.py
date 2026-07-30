@@ -1922,20 +1922,10 @@ def _help_text() -> str:
         "🏟 <b>Contexto del partido</b>\n"
         "   Partido → 🏟 Contexto → Clasificación, lesiones, sede, TV\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🔐 <b>ACCESO</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "• <b>Modo privado</b> (default): solo IDs en <code>TELEGRAM_ALLOWED_USER_IDS</code>\n"
-        "• <b>Modo público</b>: <code>TELEGRAM_ACCESS_MODE=public</code>\n"
-        "• Usa <b>/whoami</b> y envía tu ID al admin para acceso privado\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚙️ <b>CONFIGURACIÓN (env vars)</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "<code>TELEGRAM_BOT_TOKEN</code> — Token del bot\n"
-        "<code>TELEGRAM_ALLOWED_USER_IDS</code> — IDs separados por coma\n"
-        "<code>DIKAMAHA_BOT_API_URL</code> — URL API DIKAMAHA (default: localhost:8000)\n"
-        "<code>TELEGRAM_ACCESS_MODE</code> — private | public\n"
-        "<code>TELEGRAM_RATE_LIMIT</code> — req/ventana (default: 10/60s)\n\n"
-        "ℹ️ <i>Probabilidades pre-partido; no constituyen una apuesta.</i>")
+        "ℹ️ <b>Sobre las predicciones</b>\n"
+        "Probabilidades calculadas antes del inicio del partido.\n"
+        "Incluyen resultados, goles y mercados por 1T, 2T y partido completo.\n\n"
+        "<i>La información es analítica y no constituye una apuesta.</i>")
 
 
 def _unauthorized_text() -> str:
