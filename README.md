@@ -82,7 +82,8 @@ Railway, never in the repository.
 
 ## Main API
 
-The API requires `DIKAMAHA_API_KEY` when authentication is enabled. Health and
+The API requires `DIKAMAHA_API_KEY` when authentication is enabled. Send it in
+the `X-Dikamaha-Key` header. Health and
 readiness endpoints are public for the orchestrator.
 
 | Route | Purpose |
