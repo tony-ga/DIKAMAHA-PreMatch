@@ -26,15 +26,19 @@ import numpy as np
 import pandas as pd
 
 try:
+    from src.hawkes_live_v2 import HawkesLiveConfig, HawkesLiveV2
     from src.hawkes_v1_integration import HawkesIntegrationConfig, integrate_hawkes_optional
     from src.kalman_v2 import poisson_matrix
+    from src.markov_live_v1 import MarkovLiveInput, MarkovLiveV1
     from src.markov_v1 import MarkovV1
 except ModuleNotFoundError:  # pragma: no cover - soporte de ejecucion directa
+    from hawkes_live_v2 import HawkesLiveConfig, HawkesLiveV2
     from hawkes_v1_integration import HawkesIntegrationConfig, integrate_hawkes_optional
     from kalman_v2 import poisson_matrix
+    from markov_live_v1 import MarkovLiveInput, MarkovLiveV1
     from markov_v1 import MarkovV1
 
-CONTRACT_VERSION = "dikamaha_inference_contract_v1.1_shadow"
+CONTRACT_VERSION = "dikamaha_inference_contract_v1.3_live_shadow"
 BLOCKED_MATCH_ID = 704766
 
 
@@ -75,6 +79,10 @@ class Provenance:
     markov_matrix_synthetic: bool = True
     kalman_experimental: bool = True
     hawkes_shadow_mode: bool = False
+    markov_live_version: str = "markov_live_v1_disabled"
+    hawkes_live_version: str = "hawkes_live_v2_disabled"
+    markov_live_shadow_mode: bool = False
+    combined_live_shadow_mode: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +162,19 @@ class LiveSnapshotInput:
     hawkes_enabled: bool = False
     hawkes_shadow_mode: bool = False
     source_hash: str = ""
+    league_slug: str = ""
+    provider_event_id: str = ""
+    competition_id: str = ""
+    period: int = 1
+    match_clock_seconds: float | None = None
+    score_home: int | None = None
+    score_away: int | None = None
+    source_fetched_at: str = ""
+    markov_live_enabled: bool = False
+    markov_live_shadow_mode: bool = False
+    hawkes_rho: float | None = None
+    hawkes_rho_goal: float | None = None
+    hawkes_rho_next_event: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +195,9 @@ class LiveIntensityOutput:
     experimental_hawkes: dict[str, Any] | None
     provenance: Provenance
     audit: AuditMetadata
+    experimental_markov_live: dict[str, Any] | None = None
+    experimental_hawkes_residual: dict[str, Any] | None = None
+    experimental_combined_live: dict[str, Any] | None = None
 
 
 class InferenceEngine(ABC):
@@ -191,7 +215,11 @@ class InferenceEngine(ABC):
 class DikamahaInferenceEngine(InferenceEngine):
     """Ensamblador local del nucleo vigente de DIKAMAHA."""
 
-    def __init__(self, markov: MarkovV1 | None = None) -> None:
+    def __init__(
+        self,
+        markov: MarkovV1 | None = None,
+        markov_live: MarkovLiveV1 | None = None,
+    ) -> None:
         """Inicializa dependencias matematicas inyectables.
 
         Args:
@@ -199,6 +227,7 @@ class DikamahaInferenceEngine(InferenceEngine):
         """
 
         self._markov = markov or MarkovV1()
+        self._markov_live = markov_live or MarkovLiveV1()
 
     def predict_pre_match(self, request: PreMatchInput) -> PreMatchPrediction:
         """Genera mercados pre-match desde la matriz Poisson de Kalman."""
@@ -219,7 +248,7 @@ class DikamahaInferenceEngine(InferenceEngine):
         )
 
     def predict_live(self, request: LiveSnapshotInput) -> LiveIntensityOutput:
-        """Aplica Markov y conserva Hawkes detras del gate experimental."""
+        """Conserva v1 y añade Markov Live + Hawkes residual en shadow."""
 
         self._validate_live(request)
         frame = self._events_frame(request)
@@ -228,23 +257,63 @@ class DikamahaInferenceEngine(InferenceEngine):
         )
         markov["home_team_id"] = request.home_team_id
         markov["away_team_id"] = request.away_team_id
+        legacy_hawkes = request.hawkes_enabled and not request.markov_live_enabled
         hawkes = integrate_hawkes_optional(
             markov,
-            list(request.events),
+            self._legacy_hawkes_events(request),
             HawkesIntegrationConfig(
-                hawkes_enabled=request.hawkes_enabled,
-                hawkes_shadow_mode=request.hawkes_shadow_mode,
+                hawkes_enabled=legacy_hawkes,
+                hawkes_shadow_mode=legacy_hawkes,
                 official_prediction=request.official_prediction,
             ),
         )
-        provenance = self._provenance(request.source_hash, request.hawkes_shadow_mode)
-        audit = self._live_audit(request, markov, hawkes)
+        markov_live: dict[str, Any] | None = None
+        hawkes_residual: dict[str, Any] | None = None
+        combined_live: dict[str, Any] | None = None
+        if request.markov_live_enabled:
+            live_request = self._markov_live_input(request)
+            markov_live = self._markov_live.predict(live_request)
+            if request.hawkes_enabled:
+                hawkes_defaults = HawkesLiveConfig()
+                config = HawkesLiveConfig(
+                    rho=request.hawkes_rho if request.hawkes_rho is not None else hawkes_defaults.rho,
+                    rho_goal=(
+                        request.hawkes_rho_goal
+                        if request.hawkes_rho_goal is not None
+                        else hawkes_defaults.rho_goal
+                    ),
+                    rho_next_event=(
+                        request.hawkes_rho_next_event
+                        if request.hawkes_rho_next_event is not None
+                        else hawkes_defaults.rho_next_event
+                    ),
+                )
+                composition = HawkesLiveV2(config).combine(
+                    markov_live,
+                    list(live_request.events),
+                    home_team_id=request.home_team_id,
+                    away_team_id=request.away_team_id,
+                    score_home=live_request.score_home,
+                    score_away=live_request.score_away,
+                )
+                hawkes_residual = composition["hawkes_residual"]
+                combined_live = composition["combined_live"]
+        provenance = self._provenance(
+            request.source_hash,
+            legacy_hawkes,
+            request.markov_live_shadow_mode,
+            combined_live is not None,
+        )
+        audit = self._live_audit(
+            request, markov, hawkes, markov_live, hawkes_residual, combined_live,
+        )
         return LiveIntensityOutput(
             request.match_id, request.snapshot_ts, request.lambda_base_home,
             request.lambda_base_away, markov["lambda_markov_home"],
             markov["lambda_markov_away"], markov["home_state"], markov["away_state"],
-            self._markov_audit(markov), "markov_v1", hawkes["enabled"],
+            self._markov_audit(markov), "markov_v1", bool(hawkes["enabled"] or combined_live is not None),
             hawkes["experimental_output"], provenance, audit,
+            markov_live, hawkes_residual, combined_live,
         )
 
     def _validate_pre_match(self, request: PreMatchInput) -> None:
@@ -275,11 +344,38 @@ class DikamahaInferenceEngine(InferenceEngine):
         self._validate_intensities(request.lambda_base_home, request.lambda_base_away)
         if request.hawkes_enabled != request.hawkes_shadow_mode:
             raise ValueError("Hawkes requiere activacion shadow explicita y coherente.")
-        if request.official_prediction and request.hawkes_enabled:
-            raise ValueError("Hawkes shadow no esta permitido en predicciones oficiales.")
+        if request.markov_live_enabled != request.markov_live_shadow_mode:
+            raise ValueError("Markov Live requiere activacion shadow explicita y coherente.")
+        if request.official_prediction and (request.hawkes_enabled or request.markov_live_enabled):
+            raise ValueError("Los modelos live shadow no estan permitidos en predicciones oficiales.")
+        if request.markov_live_enabled and request.match_clock_seconds is None:
+            raise ValueError("Markov Live requiere match_clock_seconds explícito.")
+        if request.markov_live_enabled and (request.score_home is None or request.score_away is None):
+            raise ValueError("Markov Live requiere marcador explícito de ambos equipos.")
+        for name, value in (
+            ("hawkes_rho", request.hawkes_rho),
+            ("hawkes_rho_goal", request.hawkes_rho_goal),
+            ("hawkes_rho_next_event", request.hawkes_rho_next_event),
+        ):
+            if value is not None and not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} debe pertenecer a [0, 1].")
+        live_clock = self._live_clock_seconds(request)
+        if live_clock < 0.0:
+            raise ValueError("match_clock_seconds no puede ser negativo.")
+        if request.period < 1 or request.period > 5:
+            raise ValueError("period debe pertenecer a [1, 5].")
+        if request.score_home is not None and request.score_home < 0:
+            raise ValueError("score_home no puede ser negativo.")
+        if request.score_away is not None and request.score_away < 0:
+            raise ValueError("score_away no puede ser negativo.")
+        if request.source_fetched_at and _parse_ts(request.source_fetched_at) > _parse_ts(request.snapshot_ts):
+            raise ValueError("source_fetched_at no puede ser posterior al snapshot.")
         for event in request.events:
-            if _parse_ts(str(event["event_ts"])) > _parse_ts(request.snapshot_ts):
+            if event.get("event_ts") and _parse_ts(str(event["event_ts"])) > _parse_ts(request.snapshot_ts):
                 raise ValueError("event_ts debe ser <= snapshot_ts.")
+            event_clock = event.get("match_clock_seconds")
+            if event_clock is not None and float(event_clock) > live_clock + 1e-9:
+                raise ValueError("match_clock_seconds del evento debe ser <= snapshot.")
 
     @staticmethod
     def _validate_intensities(home: float, away: float) -> None:
@@ -324,7 +420,12 @@ class DikamahaInferenceEngine(InferenceEngine):
         return tuple(tuple(float(value) for value in row) for row in grid)
 
     @staticmethod
-    def _provenance(source_hash: str, hawkes_shadow_mode: bool = False) -> Provenance:
+    def _provenance(
+        source_hash: str,
+        hawkes_shadow_mode: bool = False,
+        markov_live_shadow_mode: bool = False,
+        combined_live_shadow_mode: bool = False,
+    ) -> Provenance:
         """Construye provenance congelado del nucleo vigente."""
 
         version = "hawkes_v1:alpha_reduced_shadow" if hawkes_shadow_mode else "hawkes_v1_disabled"
@@ -332,6 +433,10 @@ class DikamahaInferenceEngine(InferenceEngine):
             source_hash=source_hash,
             hawkes_version=version,
             hawkes_shadow_mode=hawkes_shadow_mode,
+            markov_live_version="markov_live_v1_shadow" if markov_live_shadow_mode else "markov_live_v1_disabled",
+            hawkes_live_version="hawkes_live_v2_residual_shadow" if combined_live_shadow_mode else "hawkes_live_v2_disabled",
+            markov_live_shadow_mode=markov_live_shadow_mode,
+            combined_live_shadow_mode=combined_live_shadow_mode,
         )
 
     @staticmethod
@@ -360,7 +465,12 @@ class DikamahaInferenceEngine(InferenceEngine):
         rows = list(request.events) or [{"event_id": "kickoff", "event_ts": request.kickoff_ts, "event_type": "kickoff", "team_id": None}]
         normalized = []
         for event in rows:
-            event_ts = _parse_ts(str(event["event_ts"]))
+            if event.get("event_ts"):
+                event_ts = _parse_ts(str(event["event_ts"]))
+            elif event.get("match_clock_seconds") is not None:
+                event_ts = _parse_ts(request.kickoff_ts) + pd.Timedelta(seconds=float(event["match_clock_seconds"]))
+            else:
+                raise ValueError("Cada evento requiere event_ts o match_clock_seconds.")
             delta = event_ts - _parse_ts(request.kickoff_ts)
             normalized.append({**event, "match_id": request.match_id, "home_team_id": request.home_team_id, "away_team_id": request.away_team_id, "kickoff_ts": request.kickoff_ts, "minute": max(0, int(delta.total_seconds() // 60)), "second": max(0, int(delta.total_seconds() % 60)), "annulled": bool(event.get("annulled", False)), "is_control": bool(event.get("is_control", False))})
         return pd.DataFrame(normalized)
@@ -371,14 +481,26 @@ class DikamahaInferenceEngine(InferenceEngine):
 
         return {"context_factor": 1.0, "state_before": markov["state_before"], "state_after": markov["state_after"], "window_5m": markov["window_5m"], "window_10m": markov["window_10m"], "transition_version": "markov_transition_v1"}
 
-    def _live_audit(self, request: LiveSnapshotInput, markov: dict[str, Any], hawkes: dict[str, Any]) -> AuditMetadata:
+    def _live_audit(
+        self,
+        request: LiveSnapshotInput,
+        markov: dict[str, Any],
+        hawkes: dict[str, Any],
+        markov_live: dict[str, Any] | None,
+        hawkes_residual: dict[str, Any] | None,
+        combined_live: dict[str, Any] | None,
+    ) -> AuditMetadata:
         """Audita temporalidad y separacion Markov/Hawkes."""
 
         experimental = hawkes["experimental_output"]
         used = experimental["events_used"] if experimental else []
         stability = experimental["stability"] if experimental else None
         checks = {
-            "events_before_snapshot": all(_parse_ts(str(e["event_ts"])) <= _parse_ts(request.snapshot_ts) for e in request.events),
+            "events_before_snapshot": all(
+                (not e.get("event_ts") or _parse_ts(str(e["event_ts"])) <= _parse_ts(request.snapshot_ts))
+                and (e.get("match_clock_seconds") is None or float(e["match_clock_seconds"]) <= self._live_clock_seconds(request) + 1e-9)
+                for e in request.events
+            ),
             "markov_intensities_valid": all(math.isfinite(markov[key]) and markov[key] > 0 for key in ("lambda_markov_home", "lambda_markov_away")),
             "context_factor_is_one": self._markov.config.context_factor_value == 1.0,
             "hawkes_default_off": request.hawkes_enabled or experimental is None,
@@ -388,8 +510,19 @@ class DikamahaInferenceEngine(InferenceEngine):
             "hawkes_stable": stability is None or bool(stability["subcritical"] and stability["positive_finite"]),
             "no_live_probabilities": not any("prob" in key for key in markov),
             "no_postgresql_or_external_calls": True,
+            "markov_live_gate_coherent": request.markov_live_enabled == request.markov_live_shadow_mode,
+            "markov_live_valid": markov_live is None or bool(markov_live["audit"]["passed"]),
+            "hawkes_residual_requires_markov_live": hawkes_residual is None or markov_live is not None,
+            "combined_requires_residual": combined_live is None or hawkes_residual is not None,
+            "official_output_unchanged": not request.official_prediction or (markov_live is None and combined_live is None),
         }
-        output = {"markov": self._markov_audit(markov), "experimental_hawkes": experimental}
+        output = {
+            "markov": self._markov_audit(markov),
+            "experimental_hawkes": experimental,
+            "experimental_markov_live": markov_live,
+            "experimental_hawkes_residual": hawkes_residual,
+            "experimental_combined_live": combined_live,
+        }
         warnings = tuple(experimental["warnings"]) if experimental else ()
         return AuditMetadata(
             all(checks.values()),
@@ -398,6 +531,87 @@ class DikamahaInferenceEngine(InferenceEngine):
             input_hash=_stable_hash(asdict(request)),
             output_hash=_stable_hash(output),
         )
+
+    @staticmethod
+    def _live_clock_seconds(request: LiveSnapshotInput) -> float:
+        """Usa reloj de partido explícito o deriva un fallback compatible."""
+
+        if request.match_clock_seconds is not None:
+            value = float(request.match_clock_seconds)
+        else:
+            value = (_parse_ts(request.snapshot_ts) - _parse_ts(request.kickoff_ts)).total_seconds()
+        if not math.isfinite(value):
+            raise ValueError("match_clock_seconds debe ser finito.")
+        return value
+
+    def _markov_live_input(self, request: LiveSnapshotInput) -> MarkovLiveInput:
+        """Adapta el contrato HTTP/legacy al snapshot causal live v1."""
+
+        events = []
+        for raw in request.events:
+            event = dict(raw)
+            if event.get("match_clock_seconds") is None and event.get("event_ts"):
+                event["match_clock_seconds"] = (
+                    _parse_ts(str(event["event_ts"])) - _parse_ts(request.kickoff_ts)
+                ).total_seconds()
+            events.append(event)
+        score_home, score_away = self._live_score(request, events)
+        return MarkovLiveInput(
+            match_id=request.match_id,
+            home_team_id=request.home_team_id,
+            away_team_id=request.away_team_id,
+            kickoff_ts=request.kickoff_ts,
+            snapshot_ts=request.snapshot_ts,
+            match_clock_seconds=self._live_clock_seconds(request),
+            period=request.period,
+            score_home=score_home,
+            score_away=score_away,
+            lambda_base_home=request.lambda_base_home,
+            lambda_base_away=request.lambda_base_away,
+            events=tuple(events),
+            league_slug=request.league_slug,
+            source_hash=request.source_hash,
+        )
+
+    @staticmethod
+    def _legacy_hawkes_events(request: LiveSnapshotInput) -> list[dict[str, Any]]:
+        """Completa `event_ts` para mantener compatible el puerto Hawkes v1."""
+
+        output: list[dict[str, Any]] = []
+        kickoff = _parse_ts(request.kickoff_ts)
+        for raw in request.events:
+            event = dict(raw)
+            if not event.get("event_ts") and event.get("match_clock_seconds") is not None:
+                event["event_ts"] = (
+                    kickoff + pd.Timedelta(seconds=float(event["match_clock_seconds"]))
+                ).isoformat()
+            output.append(event)
+        return output
+
+    @staticmethod
+    def _live_score(
+        request: LiveSnapshotInput, events: Sequence[dict[str, Any]],
+    ) -> tuple[int, int]:
+        """Usa el marcador explícito o lo deriva sólo de goles observados."""
+
+        if request.score_home is not None and request.score_away is not None:
+            return int(request.score_home), int(request.score_away)
+        home = away = 0
+        seen: set[str] = set()
+        for event in events:
+            if bool(event.get("annulled", False)):
+                continue
+            if str(event.get("event_type")) not in {"goal", "penalty_scored"}:
+                continue
+            key = str(event.get("event_id") or _stable_hash(event))
+            if key in seen:
+                continue
+            seen.add(key)
+            if event.get("team_id") == request.home_team_id:
+                home += 1
+            elif event.get("team_id") == request.away_team_id:
+                away += 1
+        return home, away
 
 
 # Version: 1.0.0

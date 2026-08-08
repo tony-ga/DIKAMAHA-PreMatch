@@ -1,0 +1,66 @@
+{
+  "classification": "historically_validated_markov_and_selective_hawkes_shadow",
+  "coverage": {
+    "eligible_matches": 7400,
+    "gate_passed": true,
+    "represented_leagues": 34,
+    "snapshot_count_confirmation": 6985
+  },
+  "database_audit": {
+    "counts_after": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_before": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_identical": true,
+    "event_source_hash": "5b6de4089e4c743531cedf4dc8223d923ef0d3621180e925c90256ba81137333",
+    "match_source_hash": "21abe3f79635778c0c4fa804c3216791c792b7932f2b14e7aeea6febbc492e1d",
+    "model_events": 402631,
+    "postgresql_writes": 0,
+    "read_only": true,
+    "reconciled_regulation_matches": 9649,
+    "represented_leagues": 42
+  },
+  "gates": {
+    "atomic_kickoffs": true,
+    "coverage": true,
+    "database_unchanged": true,
+    "hawkes_admitted_confirmation_league_count": 17,
+    "hawkes_admitted_league_count": 17,
+    "hawkes_aggregate_incremental_confirmed": true,
+    "hawkes_global_aggregate_incremental_confirmed": true,
+    "hawkes_global_non_degraded_league_fraction": 0.59375,
+    "hawkes_incremental_confirmed": true,
+    "hawkes_non_degraded_league_fraction": 0.84375,
+    "markov_incremental_confirmed": true,
+    "markov_non_degraded_league_fraction": 0.84375,
+    "official_router_modified": false,
+    "priors_strictly_prior": true
+  },
+  "partition": {
+    "development_end": "2025-09-26T18:30:00+00:00",
+    "kickoff_counts": {
+      "confirmation": 645,
+      "development": 1935,
+      "validation": 645
+    },
+    "kickoff_overlap": 0,
+    "match_counts": {
+      "confirmation": 1397,
+      "development": 4417,
+      "validation": 1586
+    },
+    "match_overlap": 0,
+    "validation_end": "2025-11-20T21:00:00+00:00"
+  },
+  "prior_audit": {
+    "atomic_same_kickoff_updates": true,
+    "cold_start_matches_excluded": 2249,
+    "prior_count": 7400,
+    "strictly_prior": true
+  },
+  "replay_hash": "c926fd712c596e4d475856cf6259db766cbb1f950a83e0d6e2da7bad47612b53"
+}

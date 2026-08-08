@@ -28,10 +28,13 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 LOGGER = logging.getLogger(__name__)
 SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
+SITE_FALLBACK_BASE = "https://site.web.api.espn.com/apis/site/v2/sports/soccer"
 SITE_STANDINGS_BASE = "https://site.api.espn.com/apis/v2/sports/soccer"
 CORE_BASE = "https://sports.core.api.espn.com/v2/sports/soccer"
 CORE_V3_BASE = "https://sports.core.api.espn.com/v3/sports/soccer"
-ALLOWED_HOSTS = {"site.api.espn.com", "sports.core.api.espn.com"}
+ALLOWED_HOSTS = {
+    "site.api.espn.com", "site.web.api.espn.com", "sports.core.api.espn.com",
+}
 PAGINATED_RESOURCES = frozenset({
     "active_athletes", "core_athletes", "core_standings", "core_teams",
     "leaders", "rankings", "season_athletes", "season_freeagents",
@@ -58,6 +61,7 @@ class EspnConnectorConfig:
     cache_ttl_seconds: int = 300
     cache_dir: Path = Path("data/cache/espn_prospective_v1")
     user_agent: str = "dikamaha-prospective-ingestion/1.0"
+    site_403_fallback_enabled: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +81,7 @@ class EspnFetchResult:
     http_status: int
     source_fetched_at: datetime
     from_cache: bool
+    source_url: str = ""
 
 
 def payload_hash(payload: Any) -> str:
@@ -110,7 +115,9 @@ def _merge_collection_pages(pages: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _summary_play_payload(summary: dict[str, Any]) -> dict[str, Any]:
+def _summary_play_payload(
+    summary: dict[str, Any], core_source_pages: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Convierte commentary documentado al contrato Core conservando raw."""
 
     teams = _summary_team_map(summary)
@@ -119,9 +126,11 @@ def _summary_play_payload(summary: dict[str, Any]) -> dict[str, Any]:
         play = row.get("play") if isinstance(row, dict) else None
         if isinstance(play, dict):
             items.append(_with_team_identity(play, teams))
+    core_pages = list(core_source_pages or [])
     return {
         "items": items, "count": len(items), "pageIndex": 1, "pageCount": 1,
         "_sourcePageCount": 0, "_sourcePages": [],
+        "_coreSourcePageCount": len(core_pages), "_coreSourcePages": core_pages,
         "_fallbackEndpoint": "summary_commentary",
         "_fallbackSummary": summary,
     }
@@ -188,6 +197,17 @@ class EspnProspectiveConnector:
             raise EspnConnectorError("invalid_scoreboard_date")
         return self._get(f"{SITE_BASE}/{self.config.league}/scoreboard", {"dates": date})
 
+    def scoreboard_fetch_result(self, date: str, *, use_cache: bool = True) -> EspnFetchResult:
+        """Consulta scoreboard conservando metadata y permitiendo captura fresca live."""
+
+        if len(date) != 8 or not date.isdigit():
+            raise EspnConnectorError("invalid_scoreboard_date")
+        return self._get_result(
+            f"{SITE_BASE}/{self.config.league}/scoreboard",
+            {"dates": date},
+            use_cache=use_cache,
+        )
+
     def calendar(self) -> dict[str, Any]:
         """Consulta el calendario Core documentado de la competición."""
 
@@ -198,36 +218,48 @@ class EspnProspectiveConnector:
 
         return self._get(f"{CORE_BASE}/leagues/{self.config.league}/events/{match_id}", {})
 
+    def event_fetch_result(self, match_id: str, *, use_cache: bool = True) -> EspnFetchResult:
+        """Consulta un evento conservando metadata de transporte."""
+
+        _required_id({"match_id": match_id}, "match_id")
+        return self._get_result(
+            f"{CORE_BASE}/leagues/{self.config.league}/events/{match_id}",
+            {},
+            use_cache=use_cache,
+        )
+
     def plays(self, match_id: str, competition_id: str) -> dict[str, Any]:
         """Consulta todas las páginas de play-by-play y conserva raw provenance."""
 
         return self.plays_fetch_result(match_id, competition_id).payload
 
     def plays_fetch_result(
-        self, match_id: str, competition_id: str,
+        self, match_id: str, competition_id: str, *, use_cache: bool = True,
     ) -> EspnFetchResult:
         """Consulta plays paginados conservando metadata de transporte."""
 
         path = f"{CORE_BASE}/leagues/{self.config.league}/events/{match_id}/competitions/{competition_id}/plays"
-        first = self._get_result(path, {"limit": 300, "page": 1})
+        first = self._get_result(path, {"limit": 300, "page": 1}, use_cache=use_cache)
         page_count = int(first.payload.get("pageCount") or 1)
         if page_count < 1 or page_count > 20:
             raise EspnConnectorError("invalid_plays_page_count")
         results = [first]
         for page in range(2, page_count + 1):
             results.append(self._get_result(
-                path, {"limit": 300, "page": page}))
+                path, {"limit": 300, "page": page}, use_cache=use_cache))
         merged = _merge_play_pages([item.payload for item in results])
         if merged["items"]:
             return EspnFetchResult(
                 merged, 200, max(item.source_fetched_at for item in results),
-                all(item.from_cache for item in results))
+                all(item.from_cache for item in results), first.source_url)
         summary = self._get_result(
             f"{SITE_BASE}/{self.config.league}/summary",
-            {"event": str(match_id)})
+            {"event": str(match_id)}, use_cache=use_cache)
         return EspnFetchResult(
-            _summary_play_payload(summary.payload), summary.http_status,
-            summary.source_fetched_at, summary.from_cache)
+            _summary_play_payload(
+                summary.payload, [item.payload for item in results],
+            ), summary.http_status,
+            summary.source_fetched_at, summary.from_cache, summary.source_url)
 
     def summary(self, event_id: str) -> dict[str, Any]:
         """Consulta el resumen documentado del evento mediante ``summary?event``."""
@@ -235,6 +267,17 @@ class EspnProspectiveConnector:
         if not str(event_id).isdigit():
             raise EspnConnectorError("invalid_summary_event_id")
         return self._get(f"{SITE_BASE}/{self.config.league}/summary", {"event": str(event_id)})
+
+    def summary_fetch_result(self, event_id: str, *, use_cache: bool = True) -> EspnFetchResult:
+        """Consulta summary conservando metadata de transporte."""
+
+        if not str(event_id).isdigit():
+            raise EspnConnectorError("invalid_summary_event_id")
+        return self._get_result(
+            f"{SITE_BASE}/{self.config.league}/summary",
+            {"event": str(event_id)},
+            use_cache=use_cache,
+        )
 
     def resource_request(self, resource: str, **identifiers: str) -> EspnRequest:
         """Construye una solicitud documentada para recursos pre-match."""
@@ -252,24 +295,25 @@ class EspnProspectiveConnector:
 
         return self._get(request.url, request.params)
 
-    def fetch_request_result(self, request: EspnRequest) -> EspnFetchResult:
+    def fetch_request_result(self, request: EspnRequest, *, use_cache: bool = True) -> EspnFetchResult:
         """Ejecuta una solicitud conservando metadatos causales."""
 
-        return self._get_result(request.url, request.params)
+        return self._get_result(request.url, request.params, use_cache=use_cache)
 
-    def fetch_all_pages_result(self, request: EspnRequest) -> EspnFetchResult:
+    def fetch_all_pages_result(self, request: EspnRequest, *, use_cache: bool = True) -> EspnFetchResult:
         """Obtiene una colección completa sin perder la proveniencia por página."""
 
-        first = self._get_result(request.url, request.params)
-        pages = self._collection_pages(request, first)
+        first = self._get_result(request.url, request.params, use_cache=use_cache)
+        pages = self._collection_pages(request, first, use_cache=use_cache)
         merged = _merge_collection_pages([item.payload for item in pages])
         return EspnFetchResult(
             merged, 200, max(item.source_fetched_at for item in pages),
             all(item.from_cache for item in pages),
+            first.source_url,
         )
 
     def _collection_pages(
-        self, request: EspnRequest, first: EspnFetchResult,
+        self, request: EspnRequest, first: EspnFetchResult, *, use_cache: bool = True,
     ) -> list[EspnFetchResult]:
         """Solicita páginas restantes con límite defensivo documentado."""
 
@@ -281,7 +325,7 @@ class EspnProspectiveConnector:
         pages = [first]
         for page in range(2, page_count + 1):
             params = {**request.params, "page": page}
-            pages.append(self._get_result(request.url, params))
+            pages.append(self._get_result(request.url, params, use_cache=use_cache))
         return pages
 
     def _site_resource(
@@ -413,6 +457,7 @@ class EspnProspectiveConnector:
             "_espn_cache_meta": {
                 "http_status": result.http_status,
                 "source_fetched_at": result.source_fetched_at.isoformat(),
+                "source_url": result.source_url,
             },
             "payload": result.payload,
         }
@@ -424,18 +469,36 @@ class EspnProspectiveConnector:
         return self._get_result(url, params).payload
 
     @retry(retry=retry_if_exception_type((requests.RequestException, EspnConnectorError)), wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(3), reraise=True)
-    def _get_result(self, url: str, params: dict[str, Any]) -> EspnFetchResult:
+    def _get_result(
+        self, url: str, params: dict[str, Any], *, use_cache: bool = True,
+    ) -> EspnFetchResult:
         """Ejecuta GET y conserva status/timestamp del origen o caché."""
 
         if self.failures >= self.config.max_failures:
             raise EspnConnectorError("circuit_breaker_open")
         if urlparse(url).hostname not in ALLOWED_HOSTS:
             raise EspnConnectorError("unauthorized_espn_domain")
-        cached = self._cached_result(url, params)
-        if cached is not None:
-            return cached
+        if use_cache:
+            cached = self._cached_result(url, params)
+            if cached is not None:
+                return cached
         try:
-            response = self.session.get(url, params=params, timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds))
+            effective_url = url
+            response = self.session.get(
+                effective_url, params=params,
+                timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds),
+            )
+            fallback_url = _site_fallback_url(url)
+            if (
+                response.status_code == 403
+                and fallback_url is not None
+                and self.config.site_403_fallback_enabled
+            ):
+                effective_url = fallback_url
+                response = self.session.get(
+                    effective_url, params=params,
+                    timeout=(self.config.connect_timeout_seconds, self.config.read_timeout_seconds),
+                )
             if response.status_code == 429:
                 raise EspnConnectorError("espn_rate_limited")
             if 400 <= response.status_code < 500:
@@ -451,8 +514,11 @@ class EspnProspectiveConnector:
             self.failures += 1
             raise
         self.failures = 0
-        result = EspnFetchResult(payload, response.status_code, _utc(self.clock()), False)
-        self._store_cache(url, params, result)
+        result = EspnFetchResult(
+            payload, response.status_code, _utc(self.clock()), False, effective_url,
+        )
+        if use_cache:
+            self._store_cache(url, params, result)
         return result
 
 
@@ -492,9 +558,11 @@ def extract_event_id(event: dict[str, Any]) -> str | None:
 def sanitized_endpoint_config(config: EspnConnectorConfig) -> dict[str, Any]:
     """Expone sólo configuración operacional, nunca cabeceras o secretos."""
 
-    return {"provider": "espn_unofficial", "league": config.league, "site_base": SITE_BASE, "core_base": CORE_BASE,
+    return {"provider": "espn_unofficial", "league": config.league, "site_base": SITE_BASE,
+            "site_fallback_base": SITE_FALLBACK_BASE, "core_base": CORE_BASE,
             "allowed_hosts": sorted(ALLOWED_HOSTS), "timeouts": {"connect": config.connect_timeout_seconds, "read": config.read_timeout_seconds},
-            "max_failures": config.max_failures, "user_agent_configured": bool(config.user_agent), "api_key_used": False}
+            "max_failures": config.max_failures, "user_agent_configured": bool(config.user_agent),
+            "site_403_fallback_enabled": config.site_403_fallback_enabled, "api_key_used": False}
 
 
 def _required_id(identifiers: dict[str, str], name: str) -> str:
@@ -522,9 +590,24 @@ def _decode_cache(value: dict[str, Any], path: Path) -> EspnFetchResult | None:
     payload = value.get("payload")
     if isinstance(metadata, dict) and isinstance(payload, dict):
         fetched_at = datetime.fromisoformat(str(metadata["source_fetched_at"]))
-        return EspnFetchResult(payload, int(metadata["http_status"]), fetched_at, True)
+        return EspnFetchResult(
+            payload, int(metadata["http_status"]), fetched_at, True,
+            str(metadata.get("source_url") or ""),
+        )
     legacy_time = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     return EspnFetchResult(value, 200, legacy_time, True)
+
+
+def _site_fallback_url(url: str) -> str | None:
+    """Conserva cualquier path Site HTTPS y cambia sólo al host alternativo."""
+
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "site.api.espn.com":
+        return None
+    fallback = parsed._replace(netloc="site.web.api.espn.com").geturl()
+    if urlparse(fallback).hostname not in ALLOWED_HOSTS:
+        raise EspnConnectorError("unauthorized_espn_fallback_domain")
+    return fallback
 
 
 def _utc(value: datetime) -> datetime:

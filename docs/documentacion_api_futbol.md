@@ -18,6 +18,20 @@ Para fútbol (el slug utilizado es `soccer`), los endpoints principales se const
 
 ---
 
+## Nota operativa DIKAMAHA
+
+En el entorno actual, `site.api.espn.com` puede responder HTTP 403 de Akamai.
+El adaptador mantiene ese dominio como primario y, sólo para ese estado,
+repite una vez el mismo path Site en `site.web.api.espn.com`. La prueba real
+de 2026-08-08 obtuvo JSON 200 para scoreboard, summary y standings en el
+fallback, y 200 para event y plays en Core. El cambio de host conserva tanto
+`/apis/site/v2` como `/apis/v2`; la URL efectiva se conserva en provenance.
+
+La CDN respondió HTTP 202 sin cuerpo y no se usa como fuente del modelo. Esto
+no afecta Core ni autoriza probabilities u odds como features.
+
+---
+
 ## 🏆 Ligas y Competiciones Soportadas
 
 Para acceder a una liga específica, debes reemplazar `{league}` en las URLs con el **slug** correspondiente de la liga. Algunos de los más destacados son:

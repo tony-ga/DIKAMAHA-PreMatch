@@ -1,0 +1,58 @@
+{
+  "phase": 114,
+  "generated_on": "2026-08-08",
+  "classification": "historically_validated_markov_and_selective_hawkes_shadow",
+  "tests": {
+    "command": "python -m pytest -q",
+    "passed": 519,
+    "skipped": 8,
+    "warnings": 1,
+    "exit_code": 0,
+    "skip_reasons": {
+      "discord_optional_dependency": 1,
+      "postgres_read_only_opt_in": 7
+    },
+    "warning_reason": "Starlette TestClient httpx deprecation"
+  },
+  "static_checks": {
+    "py_compile": "passed",
+    "git_diff_check": "passed",
+    "ruff": "not_available",
+    "pyflakes": "not_available",
+    "auto_review": "not_executed_missing_NVIDIA_API_KEY"
+  },
+  "deterministic_replay": {
+    "markov_identical": true,
+    "combined_identical": true,
+    "markov_output_hash": "b2437536f246146253dc2a089f0f7a8478ae0c2a061e9f6d65eeaf328aac40cc",
+    "combined_output_hash": "0b8b5dbe75028ecdef65a42559b2a243701879b93df1189056155a7a5e2da7ef",
+    "hawkes_spectral_radius": 0.31428571428571433,
+    "hawkes_subcritical": true
+  },
+  "live_transport_smoke": {
+    "command": "provider scoreboard-summary-standings-event-plays smoke plus phase114 cycle",
+    "http_status": 200,
+    "result": "site_fallback_and_core_available",
+    "active_matches": 0,
+    "predictions": 0,
+    "official_router_modified": false
+  },
+  "historical_gate": {
+    "status": "markov_and_selective_hawkes_confirmed_shadow",
+    "eligible_matches": 7400,
+    "represented_leagues": 34,
+    "confirmation_matches": 1397,
+    "confirmation_snapshots": 6985,
+    "markov_objective_delta": -0.0022588222008596637,
+    "markov_objective_ci_95": [-0.002857520697636576, -0.001635108810864838],
+    "hawkes_objective_delta": -0.0003980660295124964,
+    "hawkes_objective_ci_95": [-0.000650315508401186, -0.00013485669662801432],
+    "hawkes_global_objective_delta": -0.0006484501291203672,
+    "hawkes_global_objective_ci_95": [-0.0010262094064804439, -0.00027196681562409333],
+    "hawkes_admitted_leagues": 17,
+    "markov_non_degraded_league_fraction": 0.84375,
+    "hawkes_non_degraded_league_fraction": 0.84375,
+    "hawkes_global_non_degraded_league_fraction": 0.59375,
+    "historical_replay_hash": "c926fd712c596e4d475856cf6259db766cbb1f950a83e0d6e2da7bad47612b53"
+  }
+}

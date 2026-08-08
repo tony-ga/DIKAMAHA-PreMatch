@@ -60,6 +60,21 @@ def test_plays_fetches_and_preserves_every_page(tmp_path: Path) -> None:
     assert len(payload["_sourcePages"]) == 2
 
 
+def test_live_fetch_bypasses_cache_without_overwriting_it(tmp_path: Path) -> None:
+    """Dos polls frescos deben volver a consultar todas las páginas."""
+
+    session = _Session()
+    connector = EspnProspectiveConnector(
+        EspnConnectorConfig(cache_dir=tmp_path, cache_ttl_seconds=300),
+        session=session,
+    )
+    first = connector.plays_fetch_result("1", "1", use_cache=False)
+    second = connector.plays_fetch_result("1", "1", use_cache=False)
+    assert session.pages == [1, 2, 1, 2]
+    assert first.from_cache is second.from_cache is False
+    assert list(tmp_path.glob("*.json")) == []
+
+
 def test_summary_commentary_fallback_maps_team_identity() -> None:
     """Convierte commentary y conserva el summary raw completo."""
 
@@ -75,10 +90,12 @@ def test_summary_commentary_fallback_maps_team_identity() -> None:
                       "team": {"displayName": "Local FC"}}},
         ],
     }
-    result = _summary_play_payload(summary)
+    core_page = {"items": [], "pageCount": 1}
+    result = _summary_play_payload(summary, [core_page])
     assert result["count"] == 1
     assert result["items"][0]["team"]["id"] == "10"
     assert result["_fallbackSummary"] == summary
+    assert result["_coreSourcePages"] == [core_page]
 
 
 # Version: 1.0.0 - 2026-07-27

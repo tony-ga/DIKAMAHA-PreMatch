@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.espn_prospective_connector import (
     EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector,
+    EspnResourceUnavailable,
     scoreboard_references,
 )
 
@@ -92,6 +93,71 @@ def test_circuit_breaker_rejects_after_failures(tmp_path: Path) -> None:
         assert str(error) == "circuit_breaker_open"
     else:
         raise AssertionError("el circuito debe bloquear solicitudes adicionales")
+
+
+def test_site_403_uses_espn_web_fallback_and_preserves_provenance(tmp_path: Path) -> None:
+    """Un bloqueo Akamai regional no inutiliza Site API ni oculta el host real."""
+
+    class SequenceSession:
+        def __init__(self) -> None:
+            self.headers: dict[str, str] = {}
+            self.calls: list[str] = []
+
+        def get(self, url: str, **_kwargs: object) -> _Response:
+            self.calls.append(url)
+            return _Response(403, {}) if len(self.calls) == 1 else _Response(200, {"events": []})
+
+    session = SequenceSession()
+    connector = EspnProspectiveConnector(
+        EspnConnectorConfig(cache_dir=tmp_path), session=session,  # type: ignore[arg-type]
+    )
+
+    result = connector.scoreboard_fetch_result("20260720")
+
+    assert result.payload == {"events": []}
+    assert result.source_url.startswith("https://site.web.api.espn.com/")
+    assert session.calls[0].startswith("https://site.api.espn.com/")
+    assert session.calls[1].startswith("https://site.web.api.espn.com/")
+
+
+def test_site_403_fallback_also_covers_v2_standings_path(tmp_path: Path) -> None:
+    """El cambio de host conserva `/apis/v2`, no sólo `/apis/site/v2`."""
+
+    class SequenceSession:
+        def __init__(self) -> None:
+            self.headers: dict[str, str] = {}
+            self.calls: list[str] = []
+
+        def get(self, url: str, **_kwargs: object) -> _Response:
+            self.calls.append(url)
+            return _Response(403, {}) if len(self.calls) == 1 else _Response(200, {"children": []})
+
+    session = SequenceSession()
+    connector = EspnProspectiveConnector(
+        EspnConnectorConfig(cache_dir=tmp_path), session=session,  # type: ignore[arg-type]
+    )
+
+    request = connector.resource_request("standings")
+    result = connector.fetch_request_result(request, use_cache=False)
+
+    assert result.payload == {"children": []}
+    assert session.calls == [
+        "https://site.api.espn.com/apis/v2/sports/soccer/esp.1/standings",
+        "https://site.web.api.espn.com/apis/v2/sports/soccer/esp.1/standings",
+    ]
+    assert result.source_url == session.calls[1]
+
+
+def test_site_fallback_fails_closed_when_both_hosts_reject(tmp_path: Path) -> None:
+    connector = _connector(tmp_path, _Response(403, {}))
+
+    try:
+        connector.scoreboard_fetch_result("20260720", use_cache=False)
+    except EspnResourceUnavailable as error:
+        assert str(error) == "espn_resource_unavailable:403"
+        assert len(connector.session.calls) == 2
+    else:
+        raise AssertionError("dos respuestas 403 deben fallar cerrado")
 
 
 # Version: 1.0.0

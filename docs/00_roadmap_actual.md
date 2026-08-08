@@ -1,9 +1,9 @@
 # Roadmap vigente de DIKAMAHA
 
-**Actualizado:** 2026-08-07
-**Objetivo operativo:** preservar integridad matemática y causal tras la
-revalidación completa de Fase 113. La investigación Markov v4 continúa bajo
-los gates históricos, sin ampliar mercados ni afirmar ventaja económica.
+**Actualizado:** 2026-08-08
+**Objetivo operativo:** preservar la integridad matemática y causal de Fase
+113. Fase 114 valida históricamente Markov Live y Hawkes residual selectivo
+por objetivo, sin ampliar mercados ni afirmar ventaja económica.
 
 Fase 113 reemplaza las cifras de Fases 84A, 88, 94, 95, 96, 103, 104, 105 y
 106 cuando dependían de recorridos intra-kickoff, fronteras fraccionales o
@@ -21,7 +21,9 @@ con duración, aprendido sobre microventanas causales y agregado a mercados de
 
 `historial causal + contexto snapshot -> Dixon-Coles/Kalman -> estados latentes y duración -> simulación Markov v4 -> mercados temporales pre-match`
 
-Hawkes queda fuera del núcleo hasta demostrar valor incremental fuera de muestra.
+Hawkes queda fuera del núcleo pre-match. En live sólo puede operar como
+residual `shadow` de Markov Live hasta demostrar valor incremental fuera de
+muestra.
 
 La Fase 74 rematerializada cerró `ready_for_phase_75`: 9,465 partidos de 39 ligas fueron
 reconstruidos directamente desde 1.32 millones de eventos con reloj original,
@@ -222,6 +224,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 108 | `repository_hygiene` | validada | runtime mínimo, snapshot gzip y exclusión de cachés/evidencia local para GitHub |
 | 109 | `premium_telegram_railway` | validada v1.2 | acceso private/public, paridad con canal, worker independiente y contrato móvil medible |
 | 113 | `model_integrity_v1` | validada con salidas selectivas | fórmula, causalidad, PMF, métricas, hashes, fallbacks, replays y 485 pruebas aprobadas |
+| 114 | `live_markov_hawkes_v1` | Markov y Hawkes selectivo validados históricamente en shadow | 7,400 partidos/34 ligas; allowlist Hawkes de 17 ligas elegida sólo en validación; ambos alcanzan 84.4% de ligas no degradadas |
 
 ## Componentes heredados
 
@@ -230,8 +233,10 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | `match_features v1` | estable | Base estructural pre-match; no se modifica semánticamente |
 | Dixon-Coles | disponible | Prior de goles y capacidad estructural |
 | Kalman | disponible | Estado temporal previo al kickoff |
-| `markov_v1` live | legado experimental | No promover ni ampliar; sustituir gradualmente |
-| Hawkes v1 | shadow experimental | Sólo estudiar después de Markov dependiente |
+| `markov_v1` live | legado experimental | Mantener sólo por compatibilidad; sustituir gradualmente |
+| `markov_live_v1` | validado históricamente, shadow | Baseline causal in-play; gate 7,400 partidos/34 ligas aprobado |
+| Hawkes v1 | legado shadow | No ampliar; reemplazado para la investigación live |
+| `hawkes_live_v2` | residual selectivo validado, shadow | `rho_goal=1` sólo en 17 ligas admitidas; próximo evento y demás ligas usan fallback Markov exacto |
 
 ## Reglas no negociables
 
@@ -243,11 +248,10 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Cerrar Fase 109 con suite integral e imagen reproducible; después desplegar el
-bot premium como segundo servicio Railway, una sola réplica, sin dominio ni
-volumen. El acceso inicial se administrará mediante allowlist y la apertura a
-pilotos exige comprobar paridad con el canal, rechazo no autorizado y conexión
-HTTPS a la API ya desplegada.
+Ejecutar un replay operativo raw-first con un partido realmente activo y
+vigilar drift de la allowlist Hawkes sin reabrir confirmación; no se exige
+esperar una cohorte de 500 partidos. Ambos componentes permanecen en `shadow`
+hasta una decisión explícita de integración en producto.
 
 La fase no autoriza staking real. ROI, CLV y Kelly continúan bloqueados hasta
 contar con cuotas históricas comparables.

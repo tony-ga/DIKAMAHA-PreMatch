@@ -117,5 +117,88 @@ def test_shadow_requires_both_flags_and_replays_deterministically() -> None:
     assert first.experimental_hawkes["provenance"]["candidate"] == "alpha_reduced"
 
 
+def test_markov_live_and_hawkes_are_complementary_shadow_layers() -> None:
+    """Separa Markov Live, residual Hawkes y combinación sin tocar v1."""
+
+    engine = DikamahaInferenceEngine()
+    legacy = engine.predict_live(_live_input())
+    request = _live_input(
+        markov_live_enabled=True,
+        markov_live_shadow_mode=True,
+        hawkes_enabled=True,
+        hawkes_shadow_mode=True,
+        period=1,
+        match_clock_seconds=600.0,
+        score_home=0,
+        score_away=0,
+    )
+    first = engine.predict_live(request)
+    second = engine.predict_live(request)
+    assert first == second
+    assert first.lambda_markov_home == legacy.lambda_markov_home
+    assert first.lambda_markov_away == legacy.lambda_markov_away
+    assert first.experimental_hawkes is None
+    assert first.experimental_markov_live is not None
+    assert first.experimental_hawkes_residual is not None
+    assert first.experimental_combined_live is not None
+    assert first.experimental_hawkes_residual["stability"]["subcritical"] is True
+    assert first.provenance.hawkes_shadow_mode is False
+    assert first.provenance.combined_live_shadow_mode is True
+    assert first.audit.passed
+
+
+def test_markov_live_shadow_gate_and_official_policy() -> None:
+    """Bloquea activación parcial u oficial de la nueva ruta live."""
+
+    engine = DikamahaInferenceEngine()
+    with pytest.raises(ValueError, match="Markov Live"):
+        engine.predict_live(_live_input(markov_live_enabled=True))
+    with pytest.raises(ValueError, match="oficiales"):
+        engine.predict_live(_live_input(
+            official_prediction=True,
+            markov_live_enabled=True,
+            markov_live_shadow_mode=True,
+        ))
+    with pytest.raises(ValueError, match="match_clock_seconds"):
+        engine.predict_live(_live_input(
+            markov_live_enabled=True,
+            markov_live_shadow_mode=True,
+            score_home=0,
+            score_away=0,
+        ))
+    with pytest.raises(ValueError, match="marcador explícito"):
+        engine.predict_live(_live_input(
+            markov_live_enabled=True,
+            markov_live_shadow_mode=True,
+            match_clock_seconds=600.0,
+        ))
+
+
+def test_live_engine_supports_target_specific_hawkes_shrinkage() -> None:
+    output = DikamahaInferenceEngine().predict_live(_live_input(
+        markov_live_enabled=True,
+        markov_live_shadow_mode=True,
+        hawkes_enabled=True,
+        hawkes_shadow_mode=True,
+        period=1,
+        match_clock_seconds=600.0,
+        score_home=0,
+        score_away=0,
+        hawkes_rho=0.0,
+        hawkes_rho_goal=0.5,
+        hawkes_rho_next_event=0.0,
+    ))
+    assert output.experimental_markov_live is not None
+    assert output.experimental_combined_live is not None
+    assert (
+        output.experimental_combined_live["next_event"]
+        == output.experimental_markov_live["next_event"]
+    )
+    assert (
+        output.experimental_combined_live["lambda_remaining_home"]
+        > output.experimental_markov_live["lambda_remaining_home"]
+    )
+
+
 # Version: 1.0.0
 # Created: 2026-07-15

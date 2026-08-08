@@ -38,12 +38,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 try:
     from src.dikamaha_inference import (
+        CONTRACT_VERSION as INFERENCE_CONTRACT_VERSION,
         DikamahaInferenceEngine,
         LiveSnapshotInput,
         PreMatchInput,
     )
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
-    from dikamaha_inference import DikamahaInferenceEngine, LiveSnapshotInput, PreMatchInput
+    from dikamaha_inference import (
+        CONTRACT_VERSION as INFERENCE_CONTRACT_VERSION,
+        DikamahaInferenceEngine,
+        LiveSnapshotInput,
+        PreMatchInput,
+    )
 
 try:
     from src.prematch_shadow_catalog import build_shadow_observation, load_shadow_catalog
@@ -130,7 +136,7 @@ class MetricsStore:
         self._requests: dict[str, int] = {}
         self._status: dict[str, int] = {}
         self._latencies: dict[str, list[float]] = {}
-        self._counters = {"validation_errors": 0, "pre_match_responses": 0, "live_responses": 0, "hawkes_enabled": 0, "hawkes_disabled": 0, "hawkes_shadow_enabled": 0, "leakage_rejections": 0, "match_704766_rejections": 0}
+        self._counters = {"validation_errors": 0, "pre_match_responses": 0, "live_responses": 0, "hawkes_enabled": 0, "hawkes_disabled": 0, "hawkes_shadow_enabled": 0, "markov_live_enabled": 0, "markov_live_disabled": 0, "combined_live_shadow_enabled": 0, "leakage_rejections": 0, "match_704766_rejections": 0}
 
     def observe(self, endpoint: str, status: int, duration_ms: float, error_code: str | None) -> None:
         """Registra una request sin almacenar su payload."""
@@ -160,6 +166,14 @@ class MetricsStore:
             self._counters["hawkes_enabled" if enabled else "hawkes_disabled"] += 1
             if enabled and shadow_mode:
                 self._counters["hawkes_shadow_enabled"] += 1
+
+    def mark_live_layers(self, markov_enabled: bool, combined_enabled: bool) -> None:
+        """Registra activación de capas live sin almacenar el payload."""
+
+        with self._lock:
+            self._counters["markov_live_enabled" if markov_enabled else "markov_live_disabled"] += 1
+            if markov_enabled and combined_enabled:
+                self._counters["combined_live_shadow_enabled"] += 1
 
     def snapshot(self) -> dict[str, Any]:
         """Devuelve métricas serializables y agregadas."""
@@ -257,11 +271,13 @@ class ServiceConfig:
     """Configuración inmutable del servicio local u operativo de sólo lectura."""
 
     mode: str = "local_dry_run"
-    contract_version: str = "dikamaha_inference_contract_v1.2_shadow_catalog"
+    contract_version: str = INFERENCE_CONTRACT_VERSION
     dixon_coles_version: str = "dixon_coles_v1"
     kalman_version: str = "kalman_v2"
     markov_version: str = "markov_v1"
     hawkes_version: str = "hawkes_v1"
+    markov_live_version: str = "markov_live_v1_shadow"
+    hawkes_live_version: str = "hawkes_live_v2_residual_shadow"
     hawkes_enabled: bool = False
     hawkes_shadow_mode: bool = False
     official_prediction: bool = False
@@ -401,11 +417,16 @@ class EventRequest(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     event_id: str
-    event_ts: str
+    event_ts: str | None = None
     event_type: str
     team_id: int | None = None
     annulled: bool = False
     is_control: bool = False
+    event_type_raw: str | None = None
+    period: int | None = Field(default=None, ge=1, le=5)
+    match_clock_seconds: float | None = Field(default=None, ge=0.0)
+    observed_at: str | None = None
+    event_time_quality: str | None = None
 
 
 class PreMatchRequest(BaseModel):
@@ -496,6 +517,19 @@ class LiveRequest(BaseModel):
     hawkes_enabled: bool = False
     hawkes_shadow_mode: bool = False
     source_hash: str = ""
+    league_slug: str = Field(default="", max_length=64)
+    provider_event_id: str = Field(default="", max_length=100)
+    competition_id: str = Field(default="", max_length=100)
+    period: int = Field(default=1, ge=1, le=5)
+    match_clock_seconds: float | None = Field(default=None, ge=0.0)
+    score_home: int | None = Field(default=None, ge=0)
+    score_away: int | None = Field(default=None, ge=0)
+    source_fetched_at: str = ""
+    markov_live_enabled: bool = False
+    markov_live_shadow_mode: bool = False
+    hawkes_rho: float | None = Field(default=None, ge=0.0, le=1.0)
+    hawkes_rho_goal: float | None = Field(default=None, ge=0.0, le=1.0)
+    hawkes_rho_next_event: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @field_validator("lambda_base_home", "lambda_base_away")
     @classmethod
@@ -504,6 +538,15 @@ class LiveRequest(BaseModel):
 
         if value <= 0 or not value < float("inf"):
             raise ValueError("La intensidad debe ser positiva y finita.")
+        return value
+
+    @field_validator("league_slug")
+    @classmethod
+    def live_slug(cls, value: str) -> str:
+        """Valida el slug cuando el snapshot proviene del follower ESPN."""
+
+        if value and not re.fullmatch(r"[A-Za-z0-9._]+", value):
+            raise ValueError("league_slug inválido.")
         return value
 
 
@@ -867,12 +910,19 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
 
     @app.post("/v1/predict/live", tags=["inference"])
     async def predict_live(request: LiveRequest) -> dict[str, Any]:
-        """Ejecuta Markov live sin probabilidades ni Hawkes oficial."""
+        """Ejecuta v1 compatible y capas Markov Live/Hawkes sólo en shadow."""
 
         try:
-            if request.official_prediction and (request.hawkes_enabled or request.hawkes_shadow_mode):
-                raise ValueError("Hawkes shadow no puede activarse para predicciones oficiales.")
+            if request.official_prediction and (
+                request.hawkes_enabled or request.hawkes_shadow_mode
+                or request.markov_live_enabled or request.markov_live_shadow_mode
+            ):
+                raise ValueError("Las capas live shadow no pueden activarse para predicciones oficiales.")
             app.state.metrics.mark_hawkes(request.hawkes_enabled, request.hawkes_shadow_mode)
+            app.state.metrics.mark_live_layers(
+                request.markov_live_enabled,
+                request.markov_live_enabled and request.hawkes_enabled,
+            )
             result = await _infer_with_timeout(
                 engine.predict_live, _live_input(request), effective.inference_timeout_seconds
             )

@@ -1,0 +1,32 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "src/markov_live_v1.py": "44aa16c70f985dd33397a6f6b97cdac3bbe4342a91369d555118909c30965841",
+    "src/hawkes_live_v2.py": "8847df9deb8fcec2121274038d980259cb3780ee9731f12c337c4fc12e4b8542",
+    "src/espn_live_follower.py": "3aef01e13924f6b1180218a8ef6fe19376dabad8c21d4e61995d317fabb55605",
+    "src/evaluate_live_markov_hawkes_historical.py": "cc649f1f27c220538eb5f2d967a0cb9a6cadc0247b248ecb5a6faccd12fc67a0",
+    "src/espn_prospective_connector.py": "b993181c265ea57bb8c24ff12d002e8649193ebc103e899b2cf6b9162f011174",
+    "src/dikamaha_inference.py": "b03258e4bd35df6f62c4c864205a3300a020979a64b919d6949a0505c7aabbd3",
+    "src/dikamaha_service.py": "1836e315f7ea92e2ab09d6b64179ad88386f91712cf1d9723f8a30362d433447",
+    "src/prematch_data_contracts.py": "7b8856bbadf0341329493707c71bd61896ab79d450a1b5b94a673b0a45b6883e",
+    "scripts/run_phase_114_live_shadow.py": "920966b53c27fa86930846f04ee8b28231551c21986daaede60bd945a59e10fb",
+    "scripts/run_phase_114_historical_live_validation.py": "9374bb73e360c81e438247a8b1274347efa8c5ce24ffc57b9b315c3ac43bcda8",
+    "specs/plan.md": "26349773fd81152c42172f823da15481e98395e5593de2529b05b71659e16812",
+    "docs/specs/live_event_stream_v1.md": "77ff46c4e3df6188623c6fe764247c1a9791450f17c5fdd45a26a098436be901",
+    "docs/specs/markov_live_v1.md": "0273af5b0a1d5925b662a51528269d478f6e5104334ae5f2516edb6d3ad7c6e4",
+    "docs/specs/hawkes_live_v2.md": "7d640300962f172102864ae554b0d4315b2ff3096535c6da554e0191a9ab9c4b",
+    "docs/phases/phase_114_live_markov_hawkes.md": "002e8ab8e2000cfd08f4fdf0d66ede8f7e4b0f10f55f535f44e0806a36b02d9f",
+    "docs/00_roadmap_actual.md": "f17ad488214859383581a67905b1da039f4236d6bca72e0a1bca5f96eb103cbd",
+    "docs/status.md": "91d716c90ee12304671ae6066a53e172162568a57933a779bc94c2a351565ecb",
+    "docs/decision_log.md": "bccdf4ca0d40c2922d2cfb9f87ee89481eee4ff90bb782216cbbd67f67e16171",
+    "docs/documentacion_api_futbol.md": "8f86be34bfcd4c87318d3c32662a090226f833f5d2902d2eb320f2f71bbf63fa",
+    "artifacts/phase_114_live_markov_hawkes_v1/audit.json": "5c63e0385c093a74343ba5db00d1d0be0782380e7fd2a29ca842c56be238494a",
+    "artifacts/phase_114_live_markov_hawkes_v1/validation_report.json": "5a9be29b4d8be0ff0eaa011035b5d7175959461204d070faeeeb9050330a77c7",
+    "artifacts/phase_114_live_markov_hawkes_v1/final_report.md": "a53b09ab356cfe5355871e618ade872f51cb69a9800384ca494b1ff488019560",
+    "artifacts/phase_114_live_markov_hawkes_v1/historical_audit.json": "cc41ecbfbc238616bc0a2eb4eab89a8ba72ea54f0435ce2f3df475fc75a75a7e",
+    "artifacts/phase_114_live_markov_hawkes_v1/historical_metrics.json": "c738d5f58249c7f8715f7f2c013c15f26b3941dc014d4fc6fb4f2fec91a31cbb",
+    "artifacts/phase_114_live_markov_hawkes_v1/historical_report.md": "83f5acbc712109278cbdc7be8d04c29ed05b96d67e35a73001eacffa1eb23e83",
+    "artifacts/phase_114_live_markov_hawkes_v1/historical_validation.json": "eca485fe2cadc4776fe01018807719b6d1f85b33d24e2b2123f8c2716908288b",
+    "artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json": "48fa50c2ee37007a64e354954ea4a44bfc5751f0140b5945282e00a9e25c8d2d"
+  }
+}
