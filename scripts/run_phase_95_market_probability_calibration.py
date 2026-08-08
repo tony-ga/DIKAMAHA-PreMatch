@@ -1,4 +1,4 @@
-"""Ejecuta calibración prequential de nueve mercados.
+"""Ejecuta calibración prequential de mercados revalidados.
 
 # Requirements:
 # numpy>=2
@@ -26,6 +26,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.market_probability_calibration import PlattCalibrator  # noqa: E402
+from src.temporal_integrity import (  # noqa: E402
+    atomic_warmup_end,
+    global_kickoff_buckets,
+)
 
 LOGGER = logging.getLogger(__name__)
 SOURCE = ROOT / (
@@ -54,27 +58,34 @@ def _read() -> list[dict[str, Any]]:
         str(row["match_date"]), int(row["match_id"])))
 
 
-def _calibrate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _calibrate(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
     """Emite cada calibración usando únicamente historia anterior."""
 
     history: dict[str, list[tuple[float, bool]]] = defaultdict(list)
-    output = []
-    for index, row in enumerate(rows):
-        predictions = _calibrate_match(row, history, index)
-        if index >= WARMUP:
-            output.append({
-                "match_id": int(row["match_id"]),
-                "match_date": str(row["match_date"]),
-                "league_slug": str(row["league_slug"]),
-                "markets": predictions,
-            })
-        _update_history(row, history)
-    return output
+    output, processed = [], 0
+    warmup_end = atomic_warmup_end(rows, WARMUP)
+    for bucket in global_kickoff_buckets(rows):
+        eligible = processed >= warmup_end
+        for row in bucket:
+            predictions = _calibrate_match(row, history, eligible)
+            if eligible:
+                output.append({
+                    "match_id": int(row["match_id"]),
+                    "match_date": str(row["match_date"]),
+                    "league_slug": str(row["league_slug"]),
+                    "markets": predictions,
+                })
+        for row in bucket:
+            _update_history(row, history)
+        processed += len(bucket)
+    return output, warmup_end
 
 
 def _calibrate_match(
     row: dict[str, Any], history: dict[str, list[tuple[float, bool]]],
-    index: int,
+    eligible: bool,
 ) -> dict[str, Any]:
     """Calibra todas las líneas antes de revelar el target actual."""
 
@@ -82,7 +93,7 @@ def _calibrate_match(
     for name, market in sorted(row["markets"].items()):
         probability = float(market["probability"])
         calibrated = probability
-        if index >= WARMUP:
+        if eligible:
             previous = history[name]
             calibrated = _fit_predict(previous, probability)
         output[name] = _score(
@@ -244,20 +255,22 @@ def run() -> dict[str, Any]:
     """Ejecuta calibración expansiva, scoring y publicación."""
 
     source_rows = _read()
-    rows = _calibrate(source_rows)
+    rows, effective_warmup = _calibrate(source_rows)
     metrics = _metrics(rows)
     total = metrics["total"]
     gate = (
         total["calibrated_log_loss"] <= total["raw_log_loss"]
         and total["calibrated_brier"] <= total["raw_brier"]
         and total["calibrated_ece"] <= total["raw_ece"])
-    result = _result(rows, metrics, gate)
+    result = _result(
+        rows, metrics, gate, len(source_rows), effective_warmup)
     _publish(result)
     return result
 
 
 def _result(
     rows: list[dict[str, Any]], metrics: dict[str, Any], gate: bool,
+    source_matches: int, effective_warmup: int,
 ) -> dict[str, Any]:
     """Construye el contrato de fase."""
 
@@ -270,14 +283,17 @@ def _result(
             "calibrator": "platt_logit_regularization_1_0",
         },
         "coverage": {
-            "source_matches": 500, "warmup_matches": WARMUP,
+            "source_matches": source_matches,
+            "minimum_warmup_matches": WARMUP,
+            "effective_warmup_matches": effective_warmup,
             "evaluation_matches": len(rows),
             "decisions": sum(len(row["markets"]) for row in rows),
             "markets": len(rows[0]["markets"]),
         },
         "audit": {
             "strictly_prior_fit": True, "target_revealed_after_prediction": True,
-            "complete_match_unit": True, "router_modified": False,
+            "complete_match_unit": True, "same_kickoff_batch_safe": True,
+            "warmup_kickoff_atomic": True, "router_modified": False,
             "odds_used": False, "roi_or_clv_computed": False,
             "aggregate_gate_pass": gate,
         },
@@ -307,8 +323,10 @@ def _publish(result: dict[str, Any]) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     RESULT = run()
-    assert RESULT["coverage"]["evaluation_matches"] == 400
-    assert RESULT["coverage"]["decisions"] == 3600
+    assert RESULT["coverage"]["source_matches"] == 500
+    assert RESULT["coverage"]["decisions"] == (
+        RESULT["coverage"]["evaluation_matches"]
+        * RESULT["coverage"]["markets"])
     assert RESULT["audit"]["strictly_prior_fit"]
     LOGGER.info("Fase 95: %s", RESULT["classification"])
 

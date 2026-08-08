@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,27 @@ def test_artifact_provider_rejects_invalid_hash(tmp_path: Path) -> None:
     (tmp_path / "hashes.json").write_text(
         json.dumps({"calibrator.json": "bad"}), encoding="utf-8")
     with pytest.raises(ValueError, match="btts_calibrator_hash_mismatch"):
+        ArtifactBttsProbabilityProvider(tmp_path).predict(_matches())
+
+
+def test_artifact_provider_rejects_invalid_numeric_config_with_valid_hash(
+    tmp_path: Path,
+) -> None:
+    """Un prior NaN sellado sigue siendo matemáticamente inválido."""
+
+    calibrator = tmp_path / "calibrator.json"
+    calibrator.write_text(json.dumps({
+        "version": "btts_league_rate_v1",
+        "model": "causal_league_btts_rate",
+        "market": "btts",
+        "prior_rate": float("nan"),
+        "league_shrinkage": 500,
+    }), encoding="utf-8")
+    (tmp_path / "hashes.json").write_text(json.dumps({
+        "calibrator.json": hashlib.sha256(
+            calibrator.read_bytes()).hexdigest(),
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="prior_rate_invalid"):
         ArtifactBttsProbabilityProvider(tmp_path).predict(_matches())
 
 

@@ -18,7 +18,12 @@ import numpy as np
 def binary_log_loss(probability: float, actual: bool) -> float:
     """Calcula log-loss binario acotado."""
 
-    value = min(max(float(probability), 1e-12), 1.0 - 1e-12)
+    value = float(probability)
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise ValueError("probability_out_of_range")
+    if not isinstance(actual, (bool, np.bool_)):
+        raise ValueError("binary_outcome_required")
+    value = min(max(value, 1e-12), 1.0 - 1e-12)
     return -math.log(value if actual else 1.0 - value)
 
 
@@ -30,6 +35,12 @@ def evaluate_markets(
 
     if not rows:
         raise ValueError("promotion_rows_empty")
+    if isinstance(replicates, bool) or not isinstance(
+            replicates, (int, np.integer)) or replicates < 2:
+        raise ValueError("bootstrap_replicates_invalid")
+    if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)):
+        raise ValueError("bootstrap_seed_invalid")
+    _validate_rows(rows)
     markets = sorted(rows[0]["outcomes"])
     metrics = {
         name: _market_metrics(rows, name, replicates, seed + index)
@@ -38,6 +49,41 @@ def evaluate_markets(
         name for name, values in metrics.items()
         if _passes(values))
     return {"markets": metrics, "approved_markets": approved}
+
+
+def _validate_rows(rows: list[dict[str, Any]]) -> None:
+    """Valida IID, esquema de mercados y dominios antes del gate."""
+
+    match_ids = [row.get("match_id") for row in rows]
+    if any(isinstance(value, bool) or not isinstance(value, (int, np.integer))
+           for value in match_ids):
+        raise ValueError("match_id_required")
+    if len(set(int(value) for value in match_ids)) != len(match_ids):
+        raise ValueError("duplicate_match_id")
+    expected = set(rows[0].get("outcomes", {}))
+    if not expected:
+        raise ValueError("markets_empty")
+    for row in rows:
+        if not str(row.get("league_slug", "")).strip():
+            raise ValueError("league_slug_required")
+        blocks = (
+            row.get("outcomes"), row.get("probabilities"),
+            row.get("baseline_probabilities"),
+        )
+        if any(not isinstance(block, dict) or set(block) != expected
+               for block in blocks):
+            raise ValueError("market_keys_mismatch")
+        for outcome in blocks[0].values():
+            if not isinstance(outcome, (bool, np.bool_)):
+                raise ValueError("binary_outcome_required")
+        for block in blocks[1:]:
+            for value in block.values():
+                if isinstance(value, bool) or not isinstance(
+                        value, (int, float, np.integer, np.floating)):
+                    raise ValueError("probability_must_be_numeric")
+                probability = float(value)
+                if not math.isfinite(probability) or not 0.0 <= probability <= 1.0:
+                    raise ValueError("probability_out_of_range")
 
 
 def _market_metrics(

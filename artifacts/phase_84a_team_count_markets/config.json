@@ -3,7 +3,7 @@
     "corners": 1.0,
     "corners_first_half": 1.0,
     "red_cards": 0.1,
-    "shots": 1.0,
+    "shots": 10.0,
     "shots_on_target": 0.1,
     "yellow_cards": 0.1,
     "yellow_cards_first_half": 1.0
@@ -13,7 +13,7 @@
     "corners_first_half": 1.0675077015842587,
     "red_cards": 0.5783939789137932,
     "shots": 0.4748740369314678,
-    "shots_on_target": 0.29191318523062704,
+    "shots_on_target": 0.2919131852306269,
     "yellow_cards": 0.0010319491592509914,
     "yellow_cards_first_half": 0.0001
   },
@@ -128,5 +128,5 @@
     "yellow_cards": 0.8,
     "yellow_cards_first_half": 1.0
   },
-  "version": "team_count_markets_v2_commercial_shots"
+  "version": "team_count_markets_v3_kickoff_integrity"
 }

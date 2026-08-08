@@ -67,6 +67,17 @@ class DixonColesV1Tests(unittest.TestCase):
         self.assertNotEqual(low_score_tau(1, 1, lambda_home, lambda_away, 0.1), 1.0)
         self.assertEqual(low_score_tau(2, 2, lambda_home, lambda_away, 0.1), 1.0)
 
+    def test_low_score_correction_uses_canonical_home_away_orientation(self) -> None:
+        """Fija la fórmula exacta para 1-0 y 0-1 sin intercambiar lambdas."""
+
+        lambda_home, lambda_away, rho = 1.7, 0.6, 0.12
+        self.assertAlmostEqual(
+            low_score_tau(1, 0, lambda_home, lambda_away, rho),
+            1.0 + lambda_away * rho)
+        self.assertAlmostEqual(
+            low_score_tau(0, 1, lambda_home, lambda_away, rho),
+            1.0 + lambda_home * rho)
+
     def test_identifiability_and_determinism(self) -> None:
         """Verifica ajuste determinista y parámetros estables."""
 

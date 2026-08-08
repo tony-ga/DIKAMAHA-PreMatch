@@ -33,7 +33,7 @@ DEFAULT_ARTIFACT = ROOT / "artifacts/phase_84a_team_count_markets"
 DEFAULT_MARKOV_ARTIFACT = ROOT / "artifacts/phase_88_team_market_markov"
 APPROVED_MARKETS = frozenset({
     "home_corners_over_4_5", "away_corners_over_4_5",
-    "home_shots_over_10_5", "away_shots_over_10_5",
+    "away_shots_over_10_5",
     "shots_on_target_total_over_7_5",
 })
 MARKOV_APPROVED_MARKETS = frozenset({
@@ -94,6 +94,74 @@ def _sha(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _verify_hash_manifest(
+    artifact_path: Path, hashes: dict[str, Any], required: set[str],
+) -> None:
+    """Verifica cada componente declarado antes de deserializar modelos."""
+
+    if not isinstance(hashes, dict) or not required.issubset(hashes):
+        raise ValueError("artifact_hash_manifest_incomplete")
+    for name, expected in hashes.items():
+        if not isinstance(name, str) or Path(name).name != name:
+            raise ValueError("artifact_hash_manifest_invalid_path")
+        if not isinstance(expected, str) or len(expected) != 64:
+            raise ValueError("artifact_hash_manifest_invalid_digest")
+        path = artifact_path / name
+        if not path.is_file() or _sha(path) != expected:
+            raise ValueError(f"artifact_hash_mismatch:{name}")
+
+
+def _finite_number(value: Any) -> bool:
+    """Identifica números reales finitos, excluyendo booleanos."""
+
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float, np.integer, np.floating))
+        and math.isfinite(float(value))
+    )
+
+
+def _validate_count_config(
+    config: dict[str, Any], audit: dict[str, Any], models: Any,
+) -> None:
+    """Valida esquema y dominios numéricos de Fase 84A."""
+
+    if config.get("version") != "team_count_markets_v3_kickoff_integrity":
+        raise ValueError("team_market_config_version_mismatch")
+    if config.get("model_status") != "experimental_shadow_not_promoted":
+        raise ValueError("team_market_status_mismatch")
+    metrics = config.get("metrics")
+    if not isinstance(metrics, list) or not metrics:
+        raise ValueError("team_market_metrics_invalid")
+    names = [str(item.get("name")) for item in metrics]
+    if len(set(names)) != len(names):
+        raise ValueError("team_market_metric_duplicates")
+    for item in metrics:
+        if not isinstance(item, dict) or not item.get("source_field"):
+            raise ValueError("team_market_metric_schema_invalid")
+        if not _finite_number(item.get("safe_default")) or float(item["safe_default"]) < 0.0:
+            raise ValueError("team_market_safe_default_invalid")
+    for field in ("dispersions", "model_weights"):
+        values = config.get(field)
+        if not isinstance(values, dict) or set(values) != set(names):
+            raise ValueError(f"team_market_{field}_keys_invalid")
+        for value in values.values():
+            if not _finite_number(value):
+                raise ValueError(f"team_market_{field}_nonfinite")
+    if any(float(value) <= 0.0 for value in config["dispersions"].values()):
+        raise ValueError("team_market_dispersion_invalid")
+    if any(not 0.0 <= float(value) <= 1.0 for value in config["model_weights"].values()):
+        raise ValueError("team_market_weight_invalid")
+    if not isinstance(models, dict) or set(models) != set(names):
+        raise TypeError("team_market_models_contract_mismatch")
+    if audit.get("features_strictly_prior") is not True or audit.get(
+            "target_match_events_in_features") is not False:
+        raise ValueError("team_market_causal_audit_failed")
+    if audit.get("same_kickoff_batch_safe") is not True or audit.get(
+            "split_kickoff_atomic") is not True:
+        raise ValueError("team_market_kickoff_audit_failed")
 
 
 def _parse_ts(value: str) -> Any:
@@ -312,14 +380,16 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         config_path, audit_path = self._path / "config.json", self._path / "audit.json"
         hashes = json.loads((self._path / "hashes.json").read_text(encoding="utf-8"))
         models_path = self._path / "models.joblib"
-        if _sha(models_path) != hashes.get("models.joblib"):
-            raise ValueError("team_market_model_hash_mismatch")
+        _verify_hash_manifest(
+            self._path, hashes, {"config.json", "audit.json", "models.joblib"})
         config = json.loads(config_path.read_text(encoding="utf-8"))
         audit = json.loads(audit_path.read_text(encoding="utf-8"))
         enabled = sorted(audit["enabled_shadow_markets"])
         if set(enabled) != APPROVED_MARKETS:
             raise ValueError("team_market_approval_contract_mismatch")
-        self._loaded = config, joblib.load(models_path), enabled
+        models = joblib.load(models_path)
+        _validate_count_config(config, audit, models)
+        self._loaded = config, models, enabled
         return self._loaded
 
     def _matches(
@@ -351,13 +421,16 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
 
         if self._markov_loaded is not None:
             return self._markov_loaded
-        config = json.loads(
-            (self._markov_path / "config.json").read_text(encoding="utf-8"))
+        config_path = self._markov_path / "config.json"
         hashes = json.loads(
             (self._markov_path / "hashes.json").read_text(encoding="utf-8"))
         model_path = self._markov_path / "team_market_markov.joblib"
-        if _sha(model_path) != hashes.get(model_path.name):
-            raise ValueError("team_market_markov_hash_mismatch")
+        _verify_hash_manifest(
+            self._markov_path, hashes, {config_path.name, model_path.name})
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        if config.get("version") != "team_market_markov_v3_kickoff_integrity":
+            raise ValueError("team_market_markov_version_mismatch")
+        _parse_ts(str(config["training_cutoff_ts"]))
         enabled = sorted(config["enabled_shadow_markets"])
         if set(enabled) != MARKOV_APPROVED_MARKETS:
             raise ValueError("team_market_markov_approval_mismatch")
@@ -408,7 +481,8 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
 
         try:
             return self._markov_prediction(request)
-        except (FileNotFoundError, KeyError, TypeError, ValueError, OSError) as error:
+        except (FileNotFoundError, KeyError, TypeError, ValueError, OSError,
+                FloatingPointError, EOFError) as error:
             LOGGER.warning("team_market_markov_shadow_unavailable: %s", error)
             return {}, {}, {}, [], {
                 "status": "shadow_unavailable",
@@ -421,7 +495,8 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
 
         try:
             return self._predict(rows, request, source)
-        except (FileNotFoundError, KeyError, TypeError, ValueError, OSError) as error:
+        except (FileNotFoundError, KeyError, TypeError, ValueError, OSError,
+                FloatingPointError, EOFError) as error:
             LOGGER.warning("team_market_shadow_unavailable: %s", error)
             return self.unavailable(type(error).__name__)
 
@@ -484,7 +559,16 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         }
         payload["provenance"] = _provenance(
             self._path, request, source, matches, markov_meta)
-        payload["audit"] = _distributional_audit(ladders)
+        payload["audit"] = _distributional_audit(
+            ladders, probabilities, baselines, expected,
+            baseline_expected, matches, request)
+        required = (
+            "cutoff_causal", "target_match_excluded", "pmf_valid",
+            "probabilities_valid", "expected_counts_valid",
+            "over_under_complementary", "over_under_monotonic",
+        )
+        if not all(payload["audit"].get(key) is True for key in required):
+            raise FloatingPointError("team_market_distributional_audit_failed")
         return payload
 
     @staticmethod
@@ -576,17 +660,80 @@ def _provenance(
 
 
 def _distributional_audit(
-    ladders: list[dict[str, Any]],
+    ladders: list[dict[str, Any]], probabilities: dict[str, float],
+    baselines: dict[str, float], expected: dict[str, dict[str, float]],
+    baseline_expected: dict[str, dict[str, float]],
+    matches: list[dict[str, Any]], request: Any,
 ) -> dict[str, Any]:
     """Declara invariantes de la salida shadow."""
 
+    cutoff = _parse_ts(str(request.kickoff_ts))
+    pmf_valid = all(
+        _mass_is_valid(row.get(field, []))
+        for row in ladders
+        for field in ("probability_mass", "baseline_probability_mass"))
+    probability_values = list(probabilities.values()) + list(baselines.values())
+    expected_values = [
+        value for block in (expected, baseline_expected)
+        for side in block.values() for value in side.values()]
     return {
         "official_output_unchanged": True,
-        "target_match_data_used": False, "cutoff_causal": True,
-        "target_match_excluded": True,
+        "target_match_data_used": False,
+        "cutoff_causal": all(
+            _parse_ts(str(row["match_date"])) < cutoff for row in matches),
+        "target_match_excluded": all(
+            int(row["match_id"]) != int(request.match_id) for row in matches),
         "distributional_markets_promoted": False,
+        "pmf_valid": pmf_valid,
+        "probabilities_valid": bool(probability_values) and all(
+            _finite_number(value) and 0.0 <= float(value) <= 1.0
+            for value in probability_values),
+        "expected_counts_valid": bool(expected_values) and all(
+            _finite_number(value) and float(value) >= 0.0
+            for value in expected_values),
+        "over_under_complementary": all(
+            _ladder_is_complementary(row) for row in ladders),
         "over_under_monotonic": _all_monotonic(ladders),
     }
+
+
+def _mass_is_valid(values: list[dict[str, Any]]) -> bool:
+    """Comprueba finitud, soporte y normalización de una PMF pública."""
+
+    if not values:
+        return False
+    probabilities = [item.get("probability") for item in values]
+    counts = [item.get("count") for item in values]
+    return (
+        all(_finite_number(value) and float(value) >= 0.0
+            for value in probabilities)
+        and all(isinstance(value, int) and not isinstance(value, bool)
+                and value >= 0 for value in counts)
+        and math.isclose(
+            sum(float(value) for value in probabilities),
+            1.0, rel_tol=0.0, abs_tol=1e-9)
+    )
+
+
+def _ladder_is_complementary(row: dict[str, Any]) -> bool:
+    """Comprueba rangos y complementos over/under de una escalera."""
+
+    for line in row.get("ladder", []):
+        values = [
+            line.get("over_probability"), line.get("under_probability"),
+            line.get("baseline_over_probability"),
+            line.get("baseline_under_probability"),
+        ]
+        if not all(_finite_number(value) and 0.0 <= float(value) <= 1.0
+                   for value in values):
+            return False
+        if not math.isclose(float(values[0]) + float(values[1]), 1.0,
+                            rel_tol=0.0, abs_tol=1e-10):
+            return False
+        if not math.isclose(float(values[2]) + float(values[3]), 1.0,
+                            rel_tol=0.0, abs_tol=1e-10):
+            return False
+    return bool(row.get("ladder"))
 
 
 def _distributional_row(

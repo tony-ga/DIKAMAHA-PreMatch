@@ -27,6 +27,13 @@ def test_poisson_deviance_is_zero_at_observation() -> None:
     assert poisson_deviance(3.0, 3.0) == 0.0
 
 
+def test_poisson_deviance_preserves_impossible_zero_mean() -> None:
+    """Una media cero no puede ocultar una observación positiva."""
+
+    assert poisson_deviance(0.0, 0.0) == 0.0
+    assert poisson_deviance(1.0, 0.0) == float("inf")
+
+
 def test_solver_emits_positive_rates() -> None:
     """El adaptador mantiene lambdas positivas."""
 
@@ -52,6 +59,34 @@ def test_negative_binomial_distribution_is_normalized() -> None:
     assert all(isinstance(count, int) and count >= 0 for count in distribution)
     mean = sum(count * value for count, value in distribution.items())
     assert mean == pytest.approx(8.0, rel=1e-6)
+
+
+def test_negative_binomial_distribution_extends_past_initial_maximum() -> None:
+    """No renormaliza una cola material dentro del soporte inicial."""
+
+    distribution = negative_binomial_distribution(
+        24.0, 0.475, maximum=30)
+    assert max(distribution) > 30
+    mean = sum(count * value for count, value in distribution.items())
+    assert mean == pytest.approx(24.0, rel=1e-8)
+
+
+@pytest.mark.parametrize(
+    ("function", "args"),
+    [
+        (poisson_over_probability, (float("nan"), 2)),
+        (poisson_over_probability, (-1.0, 2)),
+        (negative_binomial_over_probability, (2.0, 0.0, 2)),
+        (negative_binomial_distribution, (float("inf"), 0.2)),
+    ],
+)
+def test_count_probabilities_reject_invalid_parameters(
+    function: object, args: tuple[object, ...],
+) -> None:
+    """NaN, tasas negativas y dispersiones nulas fallan explícitamente."""
+
+    with pytest.raises(ValueError):
+        function(*args)
 
 
 def test_commercial_shots_and_on_target_include_goals() -> None:

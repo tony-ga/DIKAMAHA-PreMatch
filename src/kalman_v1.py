@@ -133,16 +133,29 @@ def _softmax_from_scores(home: float, away: float) -> dict[str, float]:
     return {"1": float(probs[0]), "X": float(probs[1]), "2": float(probs[2])}
 
 
-def _goal_probs(home: float, away: float, max_goals: int) -> tuple[float, float]:
-    """Aproxima Over 2.5 y BTTS con Poisson truncado simple."""
+def _goal_matrix(home: float, away: float, max_goals: int) -> np.ndarray:
+    """Construye la matriz Poisson conjunta usada por Kalman v1."""
 
+    if not np.isfinite(home) or not np.isfinite(away) or home <= 0 or away <= 0:
+        raise ValueError("Las tasas de gol deben ser finitas y positivas.")
+    if isinstance(max_goals, bool) or not isinstance(max_goals, (int, np.integer)) or max_goals < 1:
+        raise ValueError("max_goals debe ser un entero positivo.")
     grid = np.zeros((max_goals + 1, max_goals + 1), dtype=float)
     for x in range(max_goals + 1):
         for y in range(max_goals + 1):
             grid[x, y] = (
                 np.exp(-home) * home**x / math.factorial(x) * np.exp(-away) * away**y / math.factorial(y)
             )
-    grid /= grid.sum()
+    mass = float(grid.sum())
+    if not np.isfinite(mass) or mass <= 0.0:
+        raise FloatingPointError("La matriz Poisson es inválida.")
+    return grid / mass
+
+
+def _goal_probs(home: float, away: float, max_goals: int) -> tuple[float, float]:
+    """Aproxima Over 2.5 y BTTS con Poisson truncado simple."""
+
+    grid = _goal_matrix(home, away, max_goals)
     over_25 = float(grid[np.add.outer(np.arange(grid.shape[0]), np.arange(grid.shape[1])) > 2].sum())
     btts = float(grid[1:, 1:].sum())
     return over_25, btts
@@ -227,17 +240,50 @@ class KalmanFilterV1:
         """Actualiza el estado usando el marcador observado."""
 
         home_lambda, away_lambda = self._predict_lambda(state, home, away)
-        home_residual = hg - home_lambda
-        away_residual = ag - away_lambda
+        return self._update_state_batch(
+            state, [(home, away, hg, ag, home_lambda, away_lambda)])
+
+    def _update_state_batch(
+        self,
+        state: KalmanState,
+        updates: list[tuple[int, int, int, int, float, float]],
+    ) -> KalmanState:
+        """Actualiza un kickoff completo sin depender del orden de partidos."""
+
+        if not updates:
+            return state
         gain = 0.1
-        state.attack[home] += gain * home_residual
-        state.defense[away] -= gain * home_residual
-        state.attack[away] += gain * away_residual
-        state.defense[home] -= gain * away_residual
-        state.home_advantage += 0.05 * (home_residual - away_residual)
-        state.league_intercept += 0.01 * (home_residual + away_residual) / 2.0
+        attack_delta = {team_id: 0.0 for team_id in state.team_ids}
+        defense_delta = {team_id: 0.0 for team_id in state.team_ids}
+        home_advantage_delta = 0.0
+        intercept_delta = 0.0
+        for home, away, hg, ag, home_lambda, away_lambda in sorted(
+            updates, key=lambda item: tuple(item)
+        ):
+            if home not in attack_delta or away not in attack_delta:
+                raise KeyError("Equipo desconocido en el estado.")
+            if hg < 0 or ag < 0:
+                raise ValueError("Los goles observados no pueden ser negativos.")
+            if not np.isfinite(home_lambda) or not np.isfinite(away_lambda):
+                raise ValueError("Las tasas de gol deben ser finitas.")
+            home_residual = hg - home_lambda
+            away_residual = ag - away_lambda
+            attack_delta[home] += gain * home_residual
+            defense_delta[away] -= gain * home_residual
+            attack_delta[away] += gain * away_residual
+            defense_delta[home] -= gain * away_residual
+            home_advantage_delta += 0.05 * (
+                home_residual - away_residual)
+            intercept_delta += 0.01 * (
+                home_residual + away_residual) / 2.0
+        for team_id in state.team_ids:
+            state.attack[team_id] += attack_delta[team_id]
+            state.defense[team_id] += defense_delta[team_id]
+        state.home_advantage += home_advantage_delta
+        state.league_intercept += intercept_delta
         cov = np.asarray(state.covariance, dtype=float)
-        cov = cov + np.eye(cov.shape[0]) * self.config.process_noise_attack
+        cov = cov + np.eye(cov.shape[0]) * (
+            self.config.process_noise_attack * len(updates))
         cov = 0.5 * (cov + cov.T)
         eigmin = float(np.min(np.linalg.eigvalsh(cov)))
         if eigmin < -1e-9:
@@ -258,6 +304,7 @@ class KalmanFilterV1:
         states: list[dict[str, Any]] = []
         for cutoff, bucket in prepared.groupby("match_date", sort=True):
             state_before = json.loads(json.dumps(asdict(state), default=_json_default))
+            batch_updates: list[tuple[int, int, int, int, float, float]] = []
             for _, row in bucket.sort_values("match_id").iterrows():
                 home = int(row.home_team_id)
                 away = int(row.away_team_id)
@@ -292,8 +339,12 @@ class KalmanFilterV1:
                     delta_defense_away_vs_dc=float(state.defense[away] + 0.15),
                 )
                 predictions.append(prediction)
-                state = self._update_state(state, home, away, int(row.home_goals), int(row.away_goals))
-                state.cutoff_ts = cutoff.isoformat()
+                batch_updates.append((
+                    home, away, int(row.home_goals), int(row.away_goals),
+                    lh, la,
+                ))
+            state = self._update_state_batch(state, batch_updates)
+            state.cutoff_ts = cutoff.isoformat()
             states.append(
                 {
                     "cutoff_ts": cutoff.isoformat(),
@@ -433,7 +484,9 @@ def _fold_metrics(rows: list[dict[str, Any]]) -> dict[str, float]:
     return {key: value / len(rows) for key, value in totals.items()}
 
 
-def _metrics_from_prediction(pred: dict[str, Any], row: pd.Series) -> dict[str, float]:
+def _metrics_from_prediction(
+    pred: dict[str, Any], row: pd.Series, max_goals: int = 10,
+) -> dict[str, float]:
     """Calcula métricas para una predicción y un resultado observado."""
 
     outcome = str(row.result_1x2)
@@ -444,11 +497,18 @@ def _metrics_from_prediction(pred: dict[str, Any], row: pd.Series) -> dict[str, 
     over_25 = -math.log(max(1e-15, pred["prob_over_2_5_kalman"] if bool(row.over_2_5) else 1.0 - pred["prob_over_2_5_kalman"]))
     btts = -math.log(max(1e-15, pred["prob_btts_kalman"] if bool(row.btts) else 1.0 - pred["prob_btts_kalman"]))
     mae = abs(pred["expected_home_goals_kalman"] + pred["expected_away_goals_kalman"] - float(row.total_goals))
+    home_goals, away_goals = int(row.home_goals), int(row.away_goals)
+    score_grid = _goal_matrix(
+        float(pred["expected_home_goals_kalman"]),
+        float(pred["expected_away_goals_kalman"]),
+        max(max_goals, home_goals, away_goals),
+    )
     return {
         "log_loss_1x2": log_loss,
         "brier_1x2": brier,
         "calibration_1x2": calibration,
-        "log_score_goals": -math.log(max(1e-15, pred["prob_1_kalman"] * pred["prob_x_kalman"])),
+        "log_score_goals": -math.log(max(
+            1e-15, float(score_grid[home_goals, away_goals]))),
         "mae_goals": mae,
         "over_2_5": over_25,
         "btts": btts,
@@ -486,46 +546,67 @@ def run_real_kalman_dry_run(
     fold_size = max(1, len(trainable) // 5)
     home_mean = float(trainable["home_goals"].mean())
     away_mean = float(trainable["away_goals"].mean())
-    for fold_id, start in enumerate(range(0, len(trainable), fold_size)):
-        valid = trainable.iloc[start : min(len(trainable), start + fold_size)].copy()
+    fold_frames: list[tuple[int, pd.DataFrame]] = []
+    start = 0
+    while start < len(trainable):
+        end = min(len(trainable), start + fold_size)
+        while (end < len(trainable)
+               and trainable.iloc[end - 1].match_date
+               == trainable.iloc[end].match_date):
+            end += 1
+        fold_frames.append((start, trainable.iloc[start:end].copy()))
+        start = end
+    for fold_id, (start, valid) in enumerate(fold_frames):
         if valid.empty:
             break
         fold_predictions: list[dict[str, Any]] = []
         state_before = json.loads(json.dumps(asdict(state), default=_json_default))
-        for _, row in valid.iterrows():
-            home = int(row.home_team_id)
-            away = int(row.away_team_id)
-            lh, la = filter_._predict_lambda(state, home, away)
-            probs = _softmax_from_scores(lh, la)
-            over_25, btts = _goal_probs(lh, la, config.max_goals_grid)
-            pred = {
-                "match_id": int(row.match_id),
-                "fold_id": fold_id,
-                "home_team_id": home,
-                "away_team_id": away,
-                "attack_kalman_home": float(state.attack[home]),
-                "defense_kalman_home": float(state.defense[home]),
-                "attack_kalman_away": float(state.attack[away]),
-                "defense_kalman_away": float(state.defense[away]),
-                "expected_home_goals_kalman": lh,
-                "expected_away_goals_kalman": la,
-                "prob_1_kalman": probs["1"],
-                "prob_x_kalman": probs["X"],
-                "prob_2_kalman": probs["2"],
-                "prob_over_2_5_kalman": over_25,
-                "prob_btts_kalman": btts,
-                "cutoff_ts": row.match_date.isoformat(),
-                "state_version": state.state_version,
-                "delta_attack_home_vs_dc": float(state.attack[home] - (lh - 0.15)),
-                "delta_defense_home_vs_dc": float(state.defense[home] + 0.15),
-                "delta_attack_away_vs_dc": float(state.attack[away] - (la - 0.15)),
-                "delta_defense_away_vs_dc": float(state.defense[away] + 0.15),
-            }
-            metrics = _metrics_from_prediction(pred, row)
-            fold_predictions.append({**pred, **metrics})
-            predictions.append({**pred, **metrics})
-            state = filter_._update_state(state, home, away, int(row.home_goals), int(row.away_goals))
-            state.cutoff_ts = row.match_date.isoformat()
+        for cutoff, bucket in valid.groupby("match_date", sort=True):
+            updates: list[tuple[int, int, int, int, float, float]] = []
+            for _, row in bucket.iterrows():
+                home = int(row.home_team_id)
+                away = int(row.away_team_id)
+                lh, la = filter_._predict_lambda(state, home, away)
+                probs = _softmax_from_scores(lh, la)
+                over_25, btts = _goal_probs(
+                    lh, la, config.max_goals_grid)
+                pred = {
+                    "match_id": int(row.match_id),
+                    "fold_id": fold_id,
+                    "home_team_id": home,
+                    "away_team_id": away,
+                    "attack_kalman_home": float(state.attack[home]),
+                    "defense_kalman_home": float(state.defense[home]),
+                    "attack_kalman_away": float(state.attack[away]),
+                    "defense_kalman_away": float(state.defense[away]),
+                    "expected_home_goals_kalman": lh,
+                    "expected_away_goals_kalman": la,
+                    "prob_1_kalman": probs["1"],
+                    "prob_x_kalman": probs["X"],
+                    "prob_2_kalman": probs["2"],
+                    "prob_over_2_5_kalman": over_25,
+                    "prob_btts_kalman": btts,
+                    "cutoff_ts": cutoff.isoformat(),
+                    "state_version": state.state_version,
+                    "delta_attack_home_vs_dc": float(
+                        state.attack[home] - (lh - 0.15)),
+                    "delta_defense_home_vs_dc": float(
+                        state.defense[home] + 0.15),
+                    "delta_attack_away_vs_dc": float(
+                        state.attack[away] - (la - 0.15)),
+                    "delta_defense_away_vs_dc": float(
+                        state.defense[away] + 0.15),
+                }
+                metrics = _metrics_from_prediction(
+                    pred, row, config.max_goals_grid)
+                fold_predictions.append({**pred, **metrics})
+                predictions.append({**pred, **metrics})
+                updates.append((
+                    home, away, int(row.home_goals), int(row.away_goals),
+                    lh, la,
+                ))
+            state = filter_._update_state_batch(state, updates)
+            state.cutoff_ts = cutoff.isoformat()
         folds.append(
             {
                 "fold_id": fold_id,

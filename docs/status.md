@@ -1,9 +1,31 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-07-30
-**Fase activa:** Fase 109 bot premium Telegram en Railway
-**Objetivo:** operar acceso privado o público mediante un interruptor seguro,
-sin modificar las probabilidades vigentes.
+**Actualizado:** 2026-08-07
+**Fase activa:** Fase 113 auditoría integral de modelos
+**Objetivo:** operar la cadena predictiva corregida, causal y fail-closed,
+manteniendo únicamente las salidas que superaron su revalidación.
+
+## Fase 113 — integridad completa de modelos
+
+Validada con salidas selectivas. La auditoría corrigió la orientación de baja
+anotación de Dixon-Coles, eliminó actualizaciones entre partidos del mismo
+kickoff y endureció splits, métricas, PMF, artefactos y fallbacks.
+
+- 1,405 kickoffs simultáneos auditados y 3,884 exposiciones históricas
+  intra-kickoff eliminadas;
+- fronteras compartidas de Fase 104: `27 → 0`;
+- 45 partidos con equipos sin historia previa excluidos del gate;
+- ocho familias de artefactos con todos los hashes verificados;
+- runtime oficial normalizado, causal y fail-closed;
+- 1X2 y over 2.5 continúan oficiales; BTTS usa Fase 106;
+- ocho mercados de equipo permanecen en shadow;
+- Fase 105 regenerada: 1,000 partidos, 11,000 decisiones, accuracy `59.14%`,
+  log-loss `0.713722` y Brier normalizado `0.246900`;
+- 485 pruebas integrales aprobadas, 8 integraciones opcionales omitidas.
+
+Estado: `validated_selective`. No hay validación de cuotas, ROI, CLV, Kelly,
+stakes ni combinadas; cualquier reporte fuera del contrato versionado queda
+excluido de promoción.
 
 ## Fase 109 — bot premium Telegram en Railway
 
@@ -88,11 +110,13 @@ La tarjeta oficial ya ejecuta una cadena real Dixon-Coles/Kalman. El gate
 walk-forward evaluó 500 partidos de 31 ligas con 10,000 bootstraps pareados
 por mercado.
 
-- 1X2: aprobado; log-loss `1.066077` frente a `1.195493`, IC95%
-  `[0.068550, 0.195753]` y estabilidad `77.42%`.
-- Over 2.5: aprobado; log-loss `0.722363` frente a `1.023257`, IC95%
-  `[0.184474, 0.426642]` y estabilidad `80.65%`.
-- Ambos marcan: fallback baseline; estabilidad `61.29%`, inferior al gate.
+- 1X2: aprobado; log-loss `1.044743` frente a `1.179101`, IC95%
+  `[0.074377, 0.197009]` y estabilidad `80.65%`.
+- Over 2.5: aprobado; log-loss `0.732155` frente a `0.970582`, IC95%
+  `[0.127871, 0.359432]` y estabilidad `80.65%`.
+- Ambos marcan: no supera el gate estructural por estabilidad `67.74%`; usa
+  la reparación causal validada de Fase 106.
+- 45 cold starts posteriores al corte quedaron excluidos de la comparación.
 - Markov de goles continúa shadow y declara `markov_used=false`.
 - El router revierte automáticamente al baseline si la cadena no puede
   ajustarse causalmente.
@@ -103,15 +127,17 @@ Estado: `selective_official`.
 ## Fase 105 — auditoría histórica completa de 1,000 partidos
 
 Se ejecutó una prueba con el modelo actualmente desplegado: 1,000 partidos,
-21 ligas y 12,000 decisiones contra PBP reconciliado.
+21 ligas y 11,000 decisiones contra PBP reconciliado.
 
-- accuracy global: `60.11%`;
-- confianza media: `61.00%`;
-- log-loss global: `0.707251`;
-- Brier global: `0.270837`;
-- cadena oficial DC/Kalman: `50.55%`;
-- mercados agregados Fase 84A: `64.28%`;
-- mercados temporales Markov Fase 88: `61.80%`;
+- accuracy global: `59.14%`;
+- confianza media: `61.11%`;
+- log-loss global: `0.713722`;
+- Brier normalizado por evento: `0.246900`;
+- el Brier crudo mixto se suprime porque 1X2 y mercados binarios no comparten
+  escala;
+- cadena oficial DC/Kalman: `50.65%`;
+- mercados agregados Fase 84A: `62.65%`;
+- mercados temporales Markov Fase 88: `61.75%`;
 - BTTS baseline: `51.60%`;
 - partidos 12/12: `4`;
 - partidos 0/12: `0`.
@@ -123,7 +149,7 @@ evidencia de ROI.
 
 Validó valor incremental histórico para 12 de 18 candidatos Markov elegidos
 sin consultar confirmación. La evaluación cubrió 9,646 partidos, 218 líneas,
-1,891 partidos de selección y 1,895 de confirmación. El manifiesto quedó
+1,892 partidos de selección y 1,895 de confirmación. El manifiesto quedó
 sellado antes del scoring; el gate aplicó 10,000 bootstraps por partido,
 Brier, ECE y estabilidad por liga. Seis candidatos se rechazaron aunque
 mejoraban en promedio porque no alcanzaron 70% de ligas no degradadas.
@@ -271,7 +297,7 @@ duplica lógica del modelo.
 - `/start`, `/help`, `/whoami`, `/estado`, `/partido` y `/predict`;
 - allowlist de usuarios y sólo chats privados;
 - rate limit, timeout, retry exponencial y mensajes bajo 3,900 caracteres;
-- fixture E2E con nueve mercados y baseline oficial correctamente etiquetado;
+- fixture E2E con ocho mercados y baseline oficial correctamente etiquetado;
 - token, API key y allowlist sólo desde entorno;
 - replay de integración idéntico;
 - cero llamadas Telegram reales durante auditoría;
@@ -285,14 +311,14 @@ activo y los secretos permanecen fuera de código, logs y artefactos.
 
 Se ejecutaron exclusivamente tareas cubiertas por la información actual.
 
-- Fase 95: 400 partidos/3,600 decisiones prequential;
-- log-loss raw/calibrado: 0.659177/0.644836;
-- Brier raw/calibrado: 0.232875/0.226793;
-- ECE raw/calibrado: 0.057422/0.032275;
-- IC95% de mejora log-loss: [0.007502, 0.020872];
-- cinco líneas recomiendan calibración; cuatro mantienen probabilidad raw;
-- Fase 96: seis pares con dependencia absoluta >=0.30;
-- 9 perfectos observados frente a 6.72 esperados bajo independencia;
+- Fase 95: 395 partidos/3,160 decisiones después de un warm-up atómico de 105;
+- log-loss raw/calibrado: 0.662019/0.650708;
+- Brier raw/calibrado: 0.234291/0.229677;
+- ECE raw/calibrado: 0.047495/0.025295;
+- IC95% de mejora log-loss: [0.005200, 0.017453];
+- cinco líneas recomiendan calibración; tres mantienen probabilidad raw;
+- Fase 96: tres pares con dependencia absoluta >=0.30;
+- 10 perfectos observados frente a 9.47 esperados bajo independencia;
 - política shadow: máximo tres mercados por partido y uno por componente
   positivamente correlacionado;
 - router, stakes, ROI, CLV y Kelly permanecen sin cambios/no calculados.
@@ -304,8 +330,9 @@ alineadas con cada línea. No se simularán.
 ## Fase 94 — validación semi-oficial
 
 La espera de 520 fixtures de Fase 90 dejó de ser un bloqueo operativo. La
-validación histórica cubre 500 partidos distintos de Fase 88, nueve mercados
-y 4,500 liquidaciones contra play-by-play.
+validación histórica regenerada cubre 500 partidos, ocho mercados y 4,000
+liquidaciones contra play-by-play. Las cifras anteriores de nueve mercados
+quedan reemplazadas por Fase 113.
 
 - accuracy total: 62.31% (baseline 59.78%);
 - log-loss total: 0.660556 (baseline 0.677244);
@@ -469,8 +496,8 @@ se presenta como evidencia prospectiva independiente.
   el mejor mercado con `72%`, pero no supera su mayoría de `72%`. Diagnóstico
   reproducible, Hawkes fuera y router intacto.
 - Fase 84A fue corregida a semántica comercial de tiros (`shots + goals`) sin
-  tocar goles. Quedan cinco líneas shadow: corners local/visitante O4.5,
-  tiros local/visitante O10.5 y tiros a puerta totales O7.5.
+  tocar goles. Tras la revalidación quedan cuatro líneas shadow: corners
+  local/visitante O4.5, tiros visitante O10.5 y tiros a puerta totales O7.5.
 - Fase 85 integró las líneas aprobadas en solicitud universal y
   resolución de fixture bajo `experimental_team_markets`. Diez fixtures de
   replay conservaron idénticos todos los campos oficiales, el fallback seguro
@@ -501,10 +528,11 @@ se presenta como evidencia prospectiva independiente.
 - Regresión integral posterior a Fase 88, con PostgreSQL: `385 passed`;
   únicamente permanecen advertencias externas deprecadas.
 - Fase 89 serializó el Markov comercial final y añadió cuatro líneas al flujo
-  universal. El sidecar expone nueve mercados: cinco Fase 84A y cuatro Fase 88.
+  universal. Tras Fase 113 el sidecar expone ocho mercados: cuatro Fase 84A y
+  cuatro Fase 88.
 - Diez fixtures verificaron hash, cutoff causal, probabilidades válidas,
   paridad oficial y replay idéntico. Si Markov falta o el kickoff no es
-  posterior al cutoff, permanecen exactamente las cinco líneas 84A.
+  posterior al cutoff, permanecen exactamente las cuatro líneas 84A.
 - Regresión integral posterior a Fase 89, con PostgreSQL: `387 passed`;
   permanecen únicamente advertencias externas deprecadas.
 - Fase 90 congeló 520 predicciones nuevas antes del kickoff en 18 ligas,
@@ -516,7 +544,7 @@ se presenta como evidencia prospectiva independiente.
 - Fase 92 dejó listo el gate individual de 10,000 bootstraps por partido,
   Brier y estabilidad por liga. Permanece `insufficient_coverage` y no puntúa
   parcialmente.
-- Fase 93 añadió `user_market_view`: contrato tipado de nueve mercados para
+- Fase 93 añadió `user_market_view`; Fase 113 actualizó el contrato a ocho mercados para
   interfaz con probabilidad, baseline, lado, periodo, línea, fuente y estado.
   Diez fixtures conservaron paridad oficial y replay.
 - Regresión integral posterior a Fases 90–93, con PostgreSQL: `397 passed`;

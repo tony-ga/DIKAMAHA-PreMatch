@@ -14,7 +14,6 @@
     "away_corners_over_4_5",
     "away_shots_over_10_5",
     "home_corners_over_4_5",
-    "home_shots_over_10_5",
     "shots_on_target_total_over_7_5"
   ],
   "features_strictly_prior": true,
@@ -27,13 +26,15 @@
     "first_half_cards_over_1_5": false,
     "first_half_corners_over_4_5": false,
     "home_corners_over_4_5": true,
-    "home_shots_over_10_5": true,
+    "home_shots_over_10_5": false,
     "red_card_yes": false,
     "shots_on_target_total_over_7_5": true,
     "shots_total_over_22_5": false
   },
   "player_markets_enabled": false,
   "router_modified": false,
+  "same_kickoff_batch_safe": true,
   "selection_uses_confirmation": false,
+  "split_kickoff_atomic": true,
   "target_match_events_in_features": false
 }

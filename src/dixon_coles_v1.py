@@ -228,9 +228,9 @@ def low_score_tau(x: int, y: int, lambda_home: float, lambda_away: float, tau: f
     if (x, y) == (0, 0):
         return max(1e-9, 1.0 - (lambda_home * lambda_away * tau))
     if (x, y) == (1, 0):
-        return max(1e-9, 1.0 + (lambda_home * tau))
-    if (x, y) == (0, 1):
         return max(1e-9, 1.0 + (lambda_away * tau))
+    if (x, y) == (0, 1):
+        return max(1e-9, 1.0 + (lambda_home * tau))
     if (x, y) == (1, 1):
         return max(1e-9, 1.0 - tau)
     return 1.0
@@ -345,8 +345,8 @@ class DixonColesEstimatorV1:
         log_p += -away + y * np.log(away) - gammaln(y + 1)
         tau = np.ones(len(frame), dtype=float)
         tau[(x == 0) & (y == 0)] = 1.0 - (home * away * tau_dc)[(x == 0) & (y == 0)]
-        tau[(x == 1) & (y == 0)] = 1.0 + (home * tau_dc)[(x == 1) & (y == 0)]
-        tau[(x == 0) & (y == 1)] = 1.0 + (away * tau_dc)[(x == 0) & (y == 1)]
+        tau[(x == 1) & (y == 0)] = 1.0 + (away * tau_dc)[(x == 1) & (y == 0)]
+        tau[(x == 0) & (y == 1)] = 1.0 + (home * tau_dc)[(x == 0) & (y == 1)]
         tau[(x == 1) & (y == 1)] = 1.0 - tau_dc
         if np.any(tau <= 0) or not np.isfinite(tau).all():
             return np.inf
