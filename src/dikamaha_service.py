@@ -8,7 +8,7 @@ Requirements:
     - fastapi
     - pydantic
 
-Version: 1.5.0
+Version: 1.6.0
 Created: 2026-07-15
 """
 
@@ -62,6 +62,7 @@ try:
     from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
     from src.espn_user_explorer import EspnFootballDataExplorer, explorer_dates
     from src.espn_fixture_context import default_context_service
+    from src.live_prediction_runtime import LivePredictionRuntime, model_inventory
     from src.prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
@@ -69,10 +70,11 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
     from espn_user_explorer import EspnFootballDataExplorer, explorer_dates
     from espn_fixture_context import default_context_service
+    from live_prediction_runtime import LivePredictionRuntime, model_inventory
     from prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
 
 LOGGER = logging.getLogger(__name__)
-SERVICE_VERSION = "dikamaha_local_service_v1.5_data_explorer"
+SERVICE_VERSION = "dikamaha_local_service_v1.6_live_models"
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -148,10 +150,10 @@ class MetricsStore:
             samples = self._latencies.setdefault(endpoint, [])
             samples.append(round(duration_ms, 3))
             del samples[:-self._max_samples]
-            if endpoint.endswith(("pre-match", "upcoming", "fixture")) and status < 400:
-                self._counters["pre_match_responses"] += 1
-            if endpoint.endswith("live") and status < 400:
+            if endpoint in {"/v1/predict/live", "/v1/predict/live/fixture"} and status < 400:
                 self._counters["live_responses"] += 1
+            elif endpoint.endswith(("pre-match", "upcoming", "fixture")) and status < 400:
+                self._counters["pre_match_responses"] += 1
             if error_code == "contract_validation_error":
                 self._counters["validation_errors"] += 1
             if error_code == "temporal_leakage":
@@ -550,6 +552,22 @@ class LiveRequest(BaseModel):
         return value
 
 
+class LiveFixtureRequest(BaseModel):
+    """Selecciona un fixture activo sin aceptar eventos del cliente."""
+
+    model_config = ConfigDict(extra="forbid")
+    league_slug: str = Field(min_length=1, max_length=64)
+    match_id: int = Field(gt=0)
+    date: str | None = Field(default=None, pattern=r"^\d{8}$")
+
+    @field_validator("league_slug")
+    @classmethod
+    def valid_slug(cls, value: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9._]+", value):
+            raise ValueError("league_slug inválido.")
+        return value
+
+
 def _pre_input(request: PreMatchRequest) -> PreMatchInput:
     """Convierte el modelo HTTP al contrato matemático."""
 
@@ -653,7 +671,11 @@ def _error(detail: str) -> HTTPException:
     return HTTPException(status_code=422, detail={"code": code, "message": detail}, headers={"X-Error-Code": code})
 
 
-def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None = None) -> FastAPI:
+def create_app(
+    config: ServiceConfig | None = None,
+    fixture_resolver: Any | None = None,
+    live_runtime: Any | None = None,
+) -> FastAPI:
     """Crea la aplicación local con dependencias inyectadas.
 
     Args:
@@ -673,6 +695,7 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
     except SnapshotRegistryError as error:
         raise PrematchUnavailableError("active_snapshot_unavailable") from error
     upcoming_engine = UniversalPrematchEngine(snapshot_path)
+    live_engine = live_runtime or LivePredictionRuntime(upcoming_engine, engine)
     shadow_catalog = load_shadow_catalog()
     app = FastAPI(title="DIKAMAHA Local Inference Service", version=SERVICE_VERSION)
     app.state.service_config = effective
@@ -681,6 +704,7 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
     app.state.fixture_resolver = fixture_resolver
     app.state.data_explorer = EspnFootballDataExplorer()
     app.state.fixture_context = default_context_service()
+    app.state.live_runtime = live_engine
     app.state.shadow_catalog = shadow_catalog
     app.state.metrics = MetricsStore()
     app.state.upcoming_cache = AsyncPredictionCache()
@@ -734,7 +758,7 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
         """Indica si la configuración local permite recibir requests."""
 
         valid = _configuration_ready(effective)
-        return {"status": "ready" if valid else "not_ready", "ready": valid, "contract_version": effective.contract_version, "hawkes_enabled": effective.hawkes_enabled, "hawkes_shadow_mode": effective.hawkes_shadow_mode, "shadow_catalog_ready": True, "reason": None if valid else "invalid_service_configuration"}
+        return {"status": "ready" if valid else "not_ready", "ready": valid, "contract_version": effective.contract_version, "hawkes_enabled": effective.hawkes_enabled, "hawkes_shadow_mode": effective.hawkes_shadow_mode, "shadow_catalog_ready": True, "live_models_ready": True, "reason": None if valid else "invalid_service_configuration"}
 
     @app.get("/v1/upcoming", tags=["inference"])
     async def upcoming_catalog(
@@ -756,6 +780,35 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
             LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
         return {"fixtures": fixtures, "count": len(fixtures)}
+
+    @app.get("/v1/live", tags=["inference"])
+    async def live_catalog(
+        limit: int = 12, leagues: str | None = None,
+        date: str | None = None,
+    ) -> dict[str, Any]:
+        """Descubre fixtures ESPN activos para navegación Telegram."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        selected = leagues or os.getenv("DIKAMAHA_LIVE_LEAGUES")
+        if not selected:
+            selected = ",".join(
+                str(row["slug"]) for row in app.state.data_explorer.leagues())
+        try:
+            return await _infer_with_timeout(
+                lambda values: app.state.live_runtime.list_active(*values),
+                (selected, min(max(int(limit), 1), 20), date),
+                effective.inference_timeout_seconds * 4,
+            )
+        except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
+            LOGGER.warning("Rechazo catálogo live: %s", exc)
+            raise _error("live_catalog_unavailable") from exc
+
+    @app.get("/v1/models", tags=["inference"])
+    def models() -> dict[str, Any]:
+        """Lista sólo modelos realmente ejecutados y su clasificación."""
+
+        return model_inventory(app.state.live_runtime.policy)
 
     @app.get("/v1/explorer/leagues", tags=["explorer"])
     async def explorer_leagues() -> dict[str, Any]:
@@ -908,6 +961,29 @@ def create_app(config: ServiceConfig | None = None, fixture_resolver: Any | None
         payload["shadow_catalog"] = build_shadow_observation(app.state.shadow_catalog)
         return payload
 
+    @app.post("/v1/predict/live/fixture", tags=["inference"])
+    async def predict_live_fixture(
+        request: LiveFixtureRequest,
+    ) -> dict[str, Any]:
+        """Captura ESPN y ejecuta Markov Live + Hawkes residual shadow."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        try:
+            result = await _infer_with_timeout(
+                lambda payload: app.state.live_runtime.predict_fixture(*payload),
+                (request.league_slug, request.match_id, request.date),
+                effective.inference_timeout_seconds * 4,
+            )
+        except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
+            LOGGER.warning("Rechazo fixture live: %s", exc)
+            raise _error(str(exc)) from exc
+        app.state.metrics.mark_hawkes(True, True)
+        app.state.metrics.mark_live_layers(True, True)
+        result["shadow_catalog"] = build_shadow_observation(
+            app.state.shadow_catalog)
+        return result
+
     @app.post("/v1/predict/live", tags=["inference"])
     async def predict_live(request: LiveRequest) -> dict[str, Any]:
         """Ejecuta v1 compatible y capas Markov Live/Hawkes sólo en shadow."""
@@ -977,7 +1053,13 @@ async def _call_with_timeout(request: Request, call_next: Any, config: ServiceCo
     """Ejecuta una request con timeout operativo."""
 
     try:
-        return await asyncio.wait_for(call_next(request), timeout=config.inference_timeout_seconds + 1.0)
+        multiplier = 4.0 if request.url.path in {
+            "/v1/live", "/v1/predict/live/fixture",
+        } else 1.0
+        return await asyncio.wait_for(
+            call_next(request),
+            timeout=config.inference_timeout_seconds * multiplier + 1.0,
+        )
     except TimeoutError:
         return _gate_error("inference_timeout", 504)
 
@@ -1020,5 +1102,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 
-# Version: 1.5.0
-# Created: 2026-07-15; updated: 2026-07-29
+# Version: 1.6.0
+# Created: 2026-07-15; updated: 2026-08-08

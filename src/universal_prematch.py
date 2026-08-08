@@ -13,6 +13,7 @@ Created: 2026-07-27
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import logging
 import math
@@ -225,6 +226,61 @@ class UniversalPrematchEngine:
         """Genera una predicción usando sólo historia anterior al kickoff."""
 
         self._validate(request)
+        return self._predict_validated(request)
+
+    def reconstruct_live_prior(
+        self, request: UpcomingMatchInput,
+    ) -> dict[str, Any]:
+        """Reconstruye un prior causal para un partido ya iniciado.
+
+        La reconstrucción usa el kickoff como corte lógico y sólo consume
+        partidos históricos estrictamente anteriores. No relaja el contrato
+        público de :meth:`predict`, que continúa exigiendo un fixture futuro.
+        """
+
+        self._validate_identity(request)
+        matches = _league_matches(_load_matches(str(self._windows_path)), request)
+        home, away, markets, chain_provenance, chain_audit = (
+            self._goal_output(matches, request))
+        _, _, coverage = _lambdas(matches, request)
+        kickoff = _parse_ts(request.kickoff_ts)
+        cutoff = _parse_ts(str(coverage["history_cutoff_ts"]))
+        if cutoff >= kickoff:
+            raise PrematchUnavailableError("live_prior_cutoff_not_strict")
+        payload = {
+            "status": "reconstructed_causal_prematch_prior",
+            "provider_event_id": str(request.match_id or ""),
+            "home_team_id": request.home_team_id,
+            "away_team_id": request.away_team_id,
+            "league_slug": request.league_slug,
+            "kickoff_ts": kickoff.isoformat(),
+            "cutoff_ts": cutoff.isoformat(),
+            "lambda_base_home": home,
+            "lambda_base_away": away,
+            "model": str(chain_provenance["router_model"]),
+            "provenance": {
+                **chain_provenance,
+                "source": _source_label(self._windows_path),
+                "snapshot_id": self._windows_path.parent.name,
+                "reconstruction_mode": "historical_snapshot_at_kickoff",
+            },
+            "audit": {
+                **coverage,
+                **chain_audit,
+                "target_match_data_used": False,
+                "cutoff_strictly_before_kickoff": True,
+            },
+        }
+        payload["source_hash"] = hashlib.sha256(json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        ).encode("utf-8")).hexdigest()
+        return payload
+
+    def _predict_validated(
+        self, request: UpcomingMatchInput,
+    ) -> UpcomingPrediction:
+        """Calcula la salida después de validar el contrato de entrada."""
+
         matches = _league_matches(_load_matches(str(self._windows_path)), request)
         home, away, markets, chain_provenance, chain_audit = (
             self._goal_output(matches, request))
@@ -325,12 +381,19 @@ class UniversalPrematchEngine:
     def _validate(request: UpcomingMatchInput) -> None:
         """Valida identidad, localía, liga y futuro del partido."""
 
+        UniversalPrematchEngine._validate_identity(request)
+        if _parse_ts(request.kickoff_ts) <= datetime.now(timezone.utc):
+            raise PrematchUnavailableError("kickoff_is_not_future")
+
+    @staticmethod
+    def _validate_identity(request: UpcomingMatchInput) -> None:
+        """Valida identidad sin imponer que el partido siga en el futuro."""
+
         if not request.league_slug or not request.league_slug.replace(".", "").replace("_", "").isalnum():
             raise PrematchUnavailableError("invalid_league_slug")
         if request.home_team_id <= 0 or request.away_team_id <= 0 or request.home_team_id == request.away_team_id:
             raise PrematchUnavailableError("invalid_team_identity")
-        if _parse_ts(request.kickoff_ts) <= datetime.now(timezone.utc):
-            raise PrematchUnavailableError("kickoff_is_not_future")
+        _parse_ts(request.kickoff_ts)
 
 
 def _result_markets(result: Any) -> dict[str, float]:

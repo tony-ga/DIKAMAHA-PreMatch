@@ -2,9 +2,8 @@
 
 **Actualizado:** 2026-08-08
 **Fase activa:** Fase 114 Markov Live + Hawkes residual
-**Objetivo:** integrar la validación histórica causal de Markov Live y mantener
-Hawkes como residual selectivo por objetivo, sin cambiar salidas oficiales ni
-la ruta pre-match revalidada.
+**Objetivo:** operar Markov Live y Hawkes residual selectivo desde Telegram,
+sin cambiar salidas oficiales ni la ruta pre-match revalidada.
 
 ## Fase 114 — Markov Live y Hawkes residual
 
@@ -22,6 +21,10 @@ residual acotado en escala logarítmica.
   `rho_goal=1.0` y `rho_next_event=0.0` seleccionados fuera de confirmación;
 - replay determinista sellado para Markov y la combinación;
 - API aditiva: bloques Markov, residual y combinado separados;
+- API de producto: catálogo de fixtures activos y predicción por identidad;
+- prior `reconstructed_causal_prematch_prior`, con cutoff histórico estricto,
+  hash y exclusión del partido objetivo;
+- Telegram expone `Partidos en vivo` y `Modelos en operación` sin llamar ESPN;
 - runner gradual multiliga sobre el catálogo habilitado;
 - gate histórico read-only: 9,649 partidos reconciliados de regulación;
 - 7,400 partidos elegibles/34 ligas tras warm-up causal;
@@ -37,11 +40,11 @@ residual acotado en escala logarítmica.
 - fuera de la allowlist y para próximo evento se aplica fallback Markov exacto;
 - clocks ESPN de descuento `90'+N'` ya no quedan truncados en 90 minutos.
 
-Estado: `historically_validated_markov_and_selective_hawkes_shadow`. Markov
+Estado: `historically_validated_and_product_integrated_shadow`. Markov
 Live supera el gate histórico; Hawkes global conserva su diagnóstico
 heterogéneo, pero la política selectiva supera el gate robusto sin alterar
-próximo evento. No se modificaron router oficial, modelos pre-match, bots ni
-mercados promovidos.
+próximo evento. La integración de producto conserva las tres capas separadas,
+el router oficial intacto y todos los modelos live sin promoción.
 
 ## Fase 113 — integridad completa de modelos
 
@@ -59,9 +62,16 @@ kickoff y endureció splits, métricas, PMF, artefactos y fallbacks.
 - ocho mercados de equipo permanecen en shadow;
 - Fase 105 regenerada: 1,000 partidos, 11,000 decisiones, accuracy `59.14%`,
   log-loss `0.713722` y Brier normalizado `0.246900`;
-- 485 pruebas integrales aprobadas, 8 integraciones opcionales omitidas.
+- la imagen Railway detectó una incompatibilidad CRLF/LF en manifiestos
+  sellados y exigía además evidencia no ejecutable excluida del contenedor;
+- el verificador portable conserva hashes estrictos para cada componente
+  runtime requerido y tolera únicamente la representación CRLF/LF en texto;
+- Cambridge United–Barnet (`401880614`) produce dentro de la imagen mínima
+  8 mercados, 21 grupos y probabilidades para 1T, 2T y partido completo;
+- BTTS deja de caer al fallback por el mismo defecto de empaquetado;
+- 522 pruebas integrales aprobadas, 8 integraciones opcionales omitidas.
 
-Estado: `validated_selective`. No hay validación de cuotas, ROI, CLV, Kelly,
+Estado: `validated_selective_hotfix_ready_for_deployment`. No hay validación de cuotas, ROI, CLV, Kelly,
 stakes ni combinadas; cualquier reporte fuera del contrato versionado queda
 excluido de promoción.
 
@@ -86,9 +96,14 @@ play-by-play, estadísticas y perfiles de jugadores.
 - nombres, contexto, eventos y botones dinámicos compactados semánticamente;
 - `/help` público con fallback a texto plano si Telegram rechaza HTML;
 - `/start` y `/help` ocultan configuración, tokens y controles internos;
-- 32 pruebas dirigidas y 459 pruebas integrales aprobadas, 8 omitidas.
+- menú y comando live con Markov, Hawkes residual y combinado separados;
+- inventario visible de modelos oficiales y shadow realmente operativos;
+- imagen bot sin artefactos; imagen API con política Hawkes de 17 ligas;
+- 529 pruebas integrales aprobadas y 8 omitidas.
+- la regresión Cambridge United–Barnet confirma tarjeta y dashboard de 2,941
+  caracteres con 1T, 2T y total cuando la API carga los artefactos sellados.
 
-Estado: `validated_for_deployment`. El interruptor no administra cobros,
+Estado: `validated_for_deployment_with_live_models`. El interruptor no administra cobros,
 renovaciones ni vencimientos; sólo controla el perímetro técnico de acceso.
 
 ## Fase 108 — higiene del repositorio

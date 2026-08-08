@@ -51,6 +51,24 @@ mercados promovidos.
   advertencia externa de deprecación.
 - Ninguna prueba autoriza ROI, CLV, Kelly, stakes o combinadas.
 
+## Revisión operativa v1.1 — hashes portables
+
+El despliegue Linux reveló dos diferencias entre el gate local y la imagen
+mínima: Git materializaba JSON sellados con LF aunque el manifiesto se había
+calculado sobre CRLF, y los manifiestos científicos enumeraban evidencia que
+el runtime no consume ni empaqueta. Esto forzaba `shadow_unavailable` en los
+mercados de equipo y fallback BTTS pese a que los modelos eran válidos.
+
+La corrección verifica todos los archivos requeridos por cada proveedor,
+ignora sólo entradas de evidencia no ejecutables y acepta exclusivamente la
+normalización LF/CRLF en archivos de texto conocidos. Los binarios y cualquier
+cambio de contenido continúan fail-closed.
+
+La imagen de producción reconstruida ejecutó Cambridge United–Barnet con 8
+líneas, 21 grupos distribucionales y los periodos `first_half`, `second_half`
+y `full_match`. El presentador produjo tarjeta y dashboard con probabilidades
+visibles. Regresión integral: 522 aprobadas y 8 omitidas.
+
 ## Artefactos sellados
 
 `artifacts/phase_113_model_integrity_audit/` contiene configuración,

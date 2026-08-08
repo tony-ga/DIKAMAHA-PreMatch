@@ -1765,6 +1765,72 @@ global quedó en 59.375%. Dos ejecuciones reprodujeron
 `c926fd712c596e4d475856cf6259db766cbb1f950a83e0d6e2da7bad47612b53` y
 PostgreSQL conservó 10,251 partidos/1,349,977 eventos sin escrituras.
 
+DEC-146
+Fecha: 2026-08-08
+Problema: Railway devolvía `shadow_unavailable` para Cambridge United–Barnet
+y el bot no mostraba probabilidades de 1T, 2T ni partido completo. Los logs
+aislaron `artifact_hash_mismatch:audit.json` tanto en mercados de equipo como
+en la reparación BTTS. El manifiesto se había sellado con CRLF, Git entregaba
+LF a Linux y la imagen mínima excluía evidencia científica no consumida que el
+verificador amplio exigía de todos modos.
+Opciones: empaquetar toda la evidencia histórica; retirar la verificación de
+hashes; o limitar el gate a componentes runtime obligatorios y hacer portable
+únicamente la representación de finales de línea.
+Decisión: cada proveedor verifica de forma fail-closed todos sus archivos
+runtime requeridos. Las entradas del manifiesto que son sólo evidencia no se
+exigen dentro de la imagen. Para texto conocido se acepta hash raw, LF o CRLF;
+binarios, contenido, esquema, causalidad y aprobaciones permanecen estrictos.
+Motivo: restaura paridad Windows/Linux sin aumentar la imagen, desactivar
+integridad ni tratar evidencia de evaluación como dependencia de inferencia.
+Estado: congelada; hotfix validado para despliegue
+Impacto en contratos/fases: revisión operativa de Fases 107, 109 y 113. No
+modifica modelos, probabilidades, router, mercados aprobados, Hawkes, Markov ni
+política económica.
+Evidencia requerida: regresiones de LF/CRLF, ausencia de evidencia opcional,
+rechazo de alteraciones reales, imagen mínima, fixture real, contrato móvil y
+suite integral.
+Evidencia obtenida: 22 pruebas dirigidas; imagen Docker construida; Cambridge
+United–Barnet produjo 8 filas, 21 grupos y los tres periodos; tarjeta de 345 y
+dashboard de 2,941 caracteres; BTTS cargó el calibrador; suite integral de 522
+aprobadas y 8 omitidas.
+
+DEC-147
+Fecha: 2026-08-08
+Problema: Markov Live y Hawkes residual superaron el gate histórico de Fase
+114, pero la API sólo aceptaba snapshots ya ensamblados y Telegram no ofrecía
+un menú de partidos activos. Además, el prior pre-match normal rechaza por
+diseño cualquier kickoff pasado, por lo que una consulta iniciada durante el
+partido no podía construir el baseline causal necesario.
+Opciones: mantener Live sólo como runner técnico; permitir que Telegram llame
+ESPN o calcule modelos; o publicar un flujo API read-only que descubra el
+scoreboard, capture raw-first, reconstruya el prior desde el snapshot histórico
+versionado con cutoff de kickoff y ejecute las capas shadow centralizadas.
+Decisión: añadir catálogo y predicción de fixtures live autenticados a la API.
+El prior se reconstruye de forma determinista usando exclusivamente partidos
+anteriores al kickoff objetivo, excluye el match actual, conserva hash y se
+declara `reconstructed_causal_prematch_prior`; no se presenta como captura
+prospectiva congelada. Markov Live es el baseline universal. Hawkes sólo aplica
+el residual de goles en ligas admitidas por la política de validación congelada;
+fuera de ella, y para próximo evento, el combinado reproduce Markov exactamente.
+Telegram consume sólo la API, expone `Partidos en vivo` y `Modelos en operación`
+y rotula Markov, Hawkes y combinado como experimentales shadow no promovidos.
+Motivo: activa el producto sin duplicar inferencia, usar datos posteriores al
+kickoff para el prior ni hacer competir a Hawkes con Markov. La reconstrucción
+causal permite usar la base histórica existente sin esperar una cohorte nueva.
+Estado: congelada; validada para despliegue
+Impacto en contratos/fases: revisión operativa de Fases 109 y 114. Añade
+endpoints read-only y presentación Telegram; no modifica router oficial,
+parámetros congelados, política Hawkes, probabilidades pre-match ni promoción.
+Evidencia requerida: regresiones de prior causal, identidad, política por liga,
+fallback exacto, listado sin partidos, menús y formato móvil; suite integral,
+imágenes Docker y smoke de producción de API y bot.
+Evidencia obtenida: prior real reconstruido con cutoff estricto, hash y cero uso
+del target; fallback Hawkes fuera de allowlist idéntico a Markov; proveedor ESPN
+real sin fallos parciales; 529 pruebas aprobadas y 8 omitidas. Las imágenes API
+y bot construyeron como usuario no privilegiado; la API declaró 6 modelos, la
+política de 17 ligas y el catálogo live, mientras el bot conservó cero
+artefactos locales. La verificación Railway se ejecuta tras integrar a `main`.
+
 ```text
 DEC-NNN
 Fecha:

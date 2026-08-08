@@ -109,6 +109,18 @@ class MenuGateway(PredictionGateway):
              "kickoff_ts": "2026-08-01T20:00:00+00:00"},
         ]}
 
+    def list_live(
+        self, limit: int = 12, leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Devuelve un fixture activo con marcador y reloj."""
+
+        return {"fixtures": [{
+            "league_slug": "mex.1", "match_id": 3,
+            "home_team_id": 10, "away_team_id": 20,
+            "home_team_name": "Cruz Azul", "away_team_name": "Pumas",
+            "home_score": 1, "away_score": 1, "display_clock": "64'",
+        }]}
+
 
 def _callback(data: str) -> dict[str, Any]:
     """Construye callback privado autorizado."""
@@ -189,6 +201,19 @@ def test_upcoming_league_and_future_date_submenus() -> None:
     assert "26/07" in str(transport.sent[-1][2])
 
 
+def test_live_menu_is_visible_and_lists_active_fixture() -> None:
+    """Añade la ruta live al menú sin exigir IDs manuales."""
+
+    bot, transport = _bot()
+    bot.process_update(_callback("menu:live"))
+
+    assert "PARTIDOS EN VIVO" in transport.sent[-1][1]
+    keyboard = str(transport.sent[-1][2])
+    assert "Cruz Azul" in keyboard
+    assert "1-1" in keyboard
+    assert "64'" in keyboard
+
+
 def test_team_search_returns_only_matching_button() -> None:
     """La búsqueda por texto devuelve coincidencias navegables."""
 
@@ -231,7 +256,7 @@ def test_navigation_windows_and_buttons_are_mobile_safe() -> None:
 
     bot, transport = _bot()
     for callback in (
-        "menu:upcoming", "upcoming:all", "upcoming:leagues",
+        "menu:upcoming", "upcoming:all", "upcoming:leagues", "menu:live",
         "upcoming:dates", "menu:stats", "league:stats:mex.1",
         "menu:players", "league:players:mex.1",
     ):

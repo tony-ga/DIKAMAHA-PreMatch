@@ -34,6 +34,8 @@ artifacts/*
 !artifacts/phase_106_probability_repair/
 !artifacts/phase_106_probability_repair/calibrator.json
 !artifacts/phase_106_probability_repair/hashes.json
+!artifacts/phase_114_live_markov_hawkes_v1/
+!artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 *.db
 *.sqlite
 *.pem
