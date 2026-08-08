@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from src.kalman_v2 import (
     KalmanV2Config,
@@ -50,6 +51,40 @@ class KalmanV2Tests(unittest.TestCase):
         self.assertAlmostEqual(float(matrix.sum()), 1.0, places=10)
         self.assertTrue(np.all(matrix >= 0.0))
 
+    def test_poisson_matrix_applies_exact_dixon_coles_orientation(self) -> None:
+        """Protege las celdas 1-0 y 0-1 contra el intercambio de lambdas."""
+
+        home, away, rho = 1.7, 0.6, 0.12
+        base = poisson_matrix(home, away, 8)
+        corrected = poisson_matrix(home, away, 8, rho, True)
+        common_scale = corrected[2, 0] / base[2, 0]
+        self.assertAlmostEqual(
+            corrected[1, 0] / base[1, 0] / common_scale,
+            1.0 + away * rho)
+        self.assertAlmostEqual(
+            corrected[0, 1] / base[0, 1] / common_scale,
+            1.0 + home * rho)
+
+    def test_goal_log_score_indexes_the_observed_scoreline(self) -> None:
+        """El diagnóstico usa P(goles observados), no P(1)*P(X)."""
+
+        state = self.filter._init_state(
+            [1, 2], "2025-01-01T00:00:00+00:00")
+        pred, _ = self.filter._predict_one(
+            state, 1, 2, 0, 1, "2025-01-02T00:00:00+00:00")
+        row = pd.Series({
+            "result_1x2": "1", "over_2_5": False, "btts": False,
+            "total_goals": 1, "home_goals": 1, "away_goals": 0,
+        })
+        metrics = self.filter._prediction_metrics(pred, row)
+        grid = poisson_matrix(
+            pred.lambda_home, pred.lambda_away,
+            self.config.max_goals_grid,
+            self.config.dixon_coles_tau,
+            self.config.use_dixon_coles_correction)
+        self.assertAlmostEqual(
+            metrics["log_score_goals"], -np.log(grid[1, 0]))
+
     def test_softmax_is_disallowed(self) -> None:
         """Softmax no debe usarse en la implementación."""
 
@@ -77,6 +112,17 @@ class KalmanV2Tests(unittest.TestCase):
         state_day0 = result["states_by_date"][0]
         self.assertNotEqual(state_day0["state_before"], state_day0["state_after"])
         self.assertEqual(first_batch[0]["cutoff_ts"], first_batch[1]["cutoff_ts"])
+
+    def test_same_kickoff_state_is_invariant_to_match_id_order(self) -> None:
+        """Cambiar el orden identificador no altera el estado posterior."""
+
+        swapped = self.frame.copy()
+        swapped.loc[swapped["match_id"] == 1, "match_id"] = 101
+        swapped.loc[swapped["match_id"] == 2, "match_id"] = 1
+        swapped.loc[swapped["match_id"] == 101, "match_id"] = 2
+        first = self.filter.fit_predict(self.frame.copy())
+        second = KalmanV2Filter(self.config).fit_predict(swapped)
+        self.assertEqual(first["state"], second["state"])
 
     def test_reproducibility_and_hashes(self) -> None:
         """Verifica determinismo de salidas y hashes."""

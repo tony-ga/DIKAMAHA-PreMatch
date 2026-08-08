@@ -84,8 +84,8 @@ def test_upcoming_prediction_uses_compact_request_and_causal_snapshot() -> None:
     assert data["audit"]["target_match_data_used"] is False
     shadow = data["experimental_team_markets"]
     assert shadow["status"] == "experimental_shadow_not_promoted"
-    assert len(shadow["probabilities"]) == 9
-    assert len(shadow["user_market_view"]) == 9
+    assert len(shadow["probabilities"]) == 8
+    assert len(shadow["user_market_view"]) == 8
     assert shadow["audit"]["official_output_unchanged"] is True
     assert abs(data["probability_home"] + data["probability_draw"] + data["probability_away"] - 1.0) < 1e-10
 
@@ -125,7 +125,7 @@ def test_fixture_prediction_exposes_same_team_market_contract() -> None:
     assert data["fixture"]["match_id"] == 990002
     expected = {
         "home_corners_over_4_5", "away_corners_over_4_5",
-        "away_shots_over_10_5", "home_shots_over_10_5",
+        "away_shots_over_10_5",
         "shots_on_target_total_over_7_5",
             "away_shots_second_half_over_5_5",
             "home_corners_second_half_over_2_5",

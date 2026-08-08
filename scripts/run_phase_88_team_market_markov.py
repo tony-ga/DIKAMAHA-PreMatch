@@ -42,6 +42,10 @@ from src.team_market_markov import (  # noqa: E402
     market_name,
     state_for,
 )
+from src.temporal_integrity import (  # noqa: E402
+    kickoff_buckets,
+    normalize_kickoff_splits,
+)
 
 LOGGER = logging.getLogger(__name__)
 SOURCE = ROOT / "artifacts/phase_74_causal_sequence_corpus/micro_windows_15m.jsonl"
@@ -119,8 +123,7 @@ def _matches(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         grouped[int(row["match_id"])].append(row)
     matches = [_match(values) for values in grouped.values()]
-    return sorted((row for row in matches if row), key=lambda row: (
-        str(row["match_date"]), int(row["match_id"])))
+    return normalize_kickoff_splits(row for row in matches if row)
 
 
 def _match(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -170,12 +173,14 @@ def _walk_forward(
         match for match in matches if match["split"] == "confirmation"]
     target_ids = {
         int(match["match_id"]) for match in confirmation[-100:]}
-    for match in matches:
-        if int(match["match_id"]) in target_ids:
-            trajectories = model.predict_match(match)
-            predictions.append(_prediction_row(match, trajectories))
-            outcomes[int(match["match_id"])] = _actuals(match)
-        model.update(match)
+    for bucket in kickoff_buckets(matches):
+        for match in bucket:
+            if int(match["match_id"]) in target_ids:
+                trajectories = model.predict_match(match)
+                predictions.append(_prediction_row(match, trajectories))
+                outcomes[int(match["match_id"])] = _actuals(match)
+        for match in bucket:
+            model.update(match)
     return predictions, outcomes, model
 
 
@@ -426,7 +431,7 @@ def run() -> dict[str, Any]:
     result = {
         "classification": classification,
         "config": {
-            "version": "team_market_markov_v2_commercial_shots",
+            "version": "team_market_markov_v3_kickoff_integrity",
             "metrics": list(METRICS),
             "state_names": STATE_NAMES, "market_lines": MARKET_LINES,
             "bootstrap_replicates": BOOTSTRAP,
@@ -444,6 +449,8 @@ def run() -> dict[str, Any]:
         "audit": {
             "features_strictly_prior": True,
             "prediction_before_update": True,
+            "same_kickoff_batch_safe": True,
+            "split_kickoff_atomic": True,
             "selection_before_scoring": True,
             "target_match_events_used_as_features": False,
             "report_ids_unique": len({row["match_id"] for row in scored}) == 100,

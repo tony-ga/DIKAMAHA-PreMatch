@@ -23,6 +23,7 @@ import pandas as pd
 
 from src.dixon_coles_v1 import DixonColesConfig, DixonColesEstimatorV1
 from src.kalman_v2 import KalmanV2Config, KalmanV2Filter, KalmanV2State, poisson_matrix
+from src.temporal_integrity import aligned_fraction_boundaries
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,19 +87,33 @@ class DixonColesKalmanGoalModel(GoalModelPort):
     ) -> GoalChainPrediction:
         """Ejecuta la cadena causal y deriva mercados desde su matriz."""
 
-        frame = _frame(matches)
+        if home_team_id == away_team_id:
+            raise ValueError("home_and_away_team_must_differ")
+        frame = _frame(matches, cutoff_ts)
         fitted = self._fit_or_load(frame, cutoff_ts)
+        if not fitted.converged:
+            raise RuntimeError("dixon_coles_non_converged")
+        if home_team_id not in fitted.state.team_ids or away_team_id not in fitted.state.team_ids:
+            raise KeyError("target_team_missing_from_causal_history")
         prediction, extra = KalmanV2Filter()._predict_one(
             fitted.state, home_team_id, away_team_id, 0, -1, cutoff_ts)
         dc_home, dc_away = _dc_lambdas(
             fitted, home_team_id, away_team_id)
         home = _blend_lambda(dc_home, prediction.lambda_home)
         away = _blend_lambda(dc_away, prediction.lambda_away)
+        if not np.isfinite([home, away]).all() or home <= 0.0 or away <= 0.0:
+            raise FloatingPointError("invalid_blended_goal_rates")
         matrix = poisson_matrix(
             home, away, 12, fitted.tau_dc, True)
         markets = _markets(matrix)
         provenance = _provenance(fitted)
         audit = _audit(frame, cutoff_ts, matrix, fitted)
+        if not all((
+            audit["cutoff_causal"], audit["score_matrix_normalized"],
+            audit["score_matrix_finite"], audit["probabilities_valid"],
+            audit["dc_converged"],
+        )):
+            raise RuntimeError("official_goal_chain_integrity_gate_failed")
         return GoalChainPrediction(
             home, away,
             markets["home"], markets["draw"], markets["away"],
@@ -122,7 +137,8 @@ class DixonColesKalmanGoalModel(GoalModelPort):
     ) -> _FittedChain:
         """Ajusta el prior DC y reproduce cronológicamente la cola Kalman."""
 
-        split = max(8, int(len(frame) * self._initial_fraction))
+        split = max(8, aligned_fraction_boundaries(
+            frame, (self._initial_fraction,))[0])
         if split >= len(frame):
             raise ValueError("history_insufficient_for_kalman_replay")
         initial, replay = frame.iloc[:split], frame.iloc[split:]
@@ -140,10 +156,12 @@ class DixonColesKalmanGoalModel(GoalModelPort):
 def _dc_config() -> DixonColesConfig:
     """Devuelve la configuración congelada de la cadena v1."""
 
-    return DixonColesConfig(max_goals_grid=12, max_iter=500, fail_on_non_convergence=False)
+    return DixonColesConfig(max_goals_grid=12, max_iter=500, fail_on_non_convergence=True)
 
 
-def _frame(matches: list[dict[str, Any]]) -> pd.DataFrame:
+def _frame(
+    matches: list[dict[str, Any]], cutoff_ts: str,
+) -> pd.DataFrame:
     """Normaliza el histórico agregado al contrato del estimador."""
 
     required = ("match_id", "match_date", "home_team_id", "away_team_id",
@@ -153,7 +171,30 @@ def _frame(matches: list[dict[str, Any]]) -> pd.DataFrame:
     if len(frame) < 16:
         raise ValueError("league_history_below_chain_minimum")
     frame["match_date"] = pd.to_datetime(
-        frame["match_date"], utc=True, format="mixed")
+        frame["match_date"], utc=True, format="mixed", errors="raise")
+    cutoff = pd.to_datetime(cutoff_ts, utc=True, errors="raise")
+    if pd.isna(cutoff):
+        raise ValueError("invalid_prediction_cutoff")
+    if frame["match_id"].duplicated().any():
+        raise ValueError("duplicate_match_id_in_goal_history")
+    for column in (
+        "match_id", "home_team_id", "away_team_id",
+        "home_goals", "away_goals",
+    ):
+        frame[column] = pd.to_numeric(frame[column], errors="raise")
+        if not np.isfinite(frame[column]).all():
+            raise ValueError(f"nonfinite_{column}")
+        if (frame[column] % 1 != 0).any():
+            raise ValueError(f"noninteger_{column}")
+        frame[column] = frame[column].astype(int)
+    if (frame["home_team_id"] == frame["away_team_id"]).any():
+        raise ValueError("history_contains_self_match")
+    if (frame[["home_team_id", "away_team_id"]] <= 0).any().any():
+        raise ValueError("history_contains_invalid_team_id")
+    if (frame[["home_goals", "away_goals"]] < 0).any().any():
+        raise ValueError("history_contains_negative_goals")
+    if not bool((frame["match_date"] < cutoff).all()):
+        raise ValueError("history_not_strictly_before_cutoff")
     return frame.sort_values(["match_date", "match_id"]).reset_index(drop=True)
 
 
@@ -187,8 +228,7 @@ def _replay(state: KalmanV2State, frame: pd.DataFrame) -> KalmanV2State:
     filter_ = KalmanV2Filter(KalmanV2Config())
     for cutoff, bucket in frame.groupby("match_date", sort=True):
         updates = [_predict_update(filter_, state, row) for _, row in bucket.iterrows()]
-        for values in updates:
-            state = filter_._update(state, *values)
+        state = filter_._update_batch(state, updates)
         state.cutoff_ts = cutoff.isoformat()
     return state
 
@@ -255,8 +295,8 @@ def _provenance(fitted: _FittedChain) -> dict[str, Any]:
     """Declara los componentes realmente ejecutados por la predicción."""
 
     return {
-        "model_version": "official_goal_chain_dc_kalman_v1",
-        "dixon_coles_used": True, "dixon_coles_version": "dixon_coles_v1",
+        "model_version": "official_goal_chain_dc_kalman_v2_integrity",
+        "dixon_coles_used": True, "dixon_coles_version": "dixon_coles_v1.1",
         "kalman_used": True, "kalman_version": "kalman_v2",
         "markov_used": False, "markov_status": "goal_trajectory_shadow_only",
         "hawkes_used": False, "promotion_status": "candidate_gated",
@@ -271,12 +311,22 @@ def _audit(
 ) -> dict[str, Any]:
     """Publica invariantes causales y de normalización de la cadena."""
 
-    cutoff = pd.Timestamp(cutoff_ts)
+    cutoff = pd.to_datetime(cutoff_ts, utc=True, errors="raise")
+    markets = _markets(matrix)
+    probabilities = list(markets.values())
     return {
         "cutoff_causal": bool((frame["match_date"] < cutoff).all()),
         "target_match_data_used": False,
         "score_matrix_normalized": math.isclose(
             float(matrix.sum()), 1.0, abs_tol=1e-10),
+        "score_matrix_finite": bool(
+            np.isfinite(matrix).all() and (matrix >= 0.0).all()),
+        "probabilities_valid": bool(
+            np.isfinite(probabilities).all()
+            and all(0.0 <= value <= 1.0 for value in probabilities)
+            and math.isclose(
+                markets["home"] + markets["draw"] + markets["away"],
+                1.0, abs_tol=1e-10)),
         "same_kickoff_batch_safe": True,
         "dc_converged": fitted.converged,
         "dc_train_matches": fitted.dc_matches,
@@ -287,7 +337,7 @@ def _audit(
 if __name__ == "__main__":
     LOGGER.info("Use DixonColesKalmanGoalModel desde UniversalPrematchEngine.")
     assert 0.50 <= DixonColesKalmanGoalModel()._initial_fraction <= 0.90
-    assert _dc_config().fail_on_non_convergence is False
+    assert _dc_config().fail_on_non_convergence is True
     assert _dc_config().max_goals_grid == 12
 
 # Version: 1.0.0

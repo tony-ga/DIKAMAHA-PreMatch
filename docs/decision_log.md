@@ -1604,6 +1604,36 @@ Evidencia obtenida: default privado, rechazo privado, aceptación pública, rate
 limit por usuario, grupos ignorados, modo inválido rechazado y configuración
 Railway validados; 30 pruebas dirigidas y 457 integrales aprobadas, 8 omitidas.
 
+DEC-141
+Fecha: 2026-08-07
+Problema: la auditoría integral detectó que la corrección de baja anotación
+Dixon-Coles intercambia las intensidades local y visitante en los marcadores
+`1-0` y `0-1`; además, varios recorridos walk-forward actualizan historia entre
+partidos de la misma liga y hora de inicio, y algunas rutas aceptan estados,
+métricas o artefactos numéricamente inválidos.
+Opciones: conservar resultados previos por compatibilidad; corregir únicamente
+la fórmula; o abrir una fase de integridad que corrija fórmula, causalidad,
+métricas y validación fail-closed y vuelva a generar toda evidencia afectada.
+Decisión: abrir Fase 113 y congelar el contrato `model_integrity_v1`. La fórmula
+Dixon-Coles seguirá la definición canónica para `x=home_goals` y
+`y=away_goals`; ningún resultado con el mismo kickoff podrá alimentar otra
+predicción de ese kickoff; los splits se alinearán a kickoffs completos; y las
+rutas oficiales y sidecars rechazarán convergencia, probabilidades, PMF,
+historia o hashes inválidos. Toda promoción previa afectada queda pendiente de
+revalidación, sin inferir ventaja económica ni usar cuotas sintéticas.
+Motivo: restablecer la interpretación matemática del modelo, eliminar leakage
+intra-kickoff y hacer que cualquier corrupción produzca fallback explícito.
+Estado: congelada; Fase 113 validada con salidas selectivas
+Impacto en contratos/fases: reemplaza la evidencia numérica de Fases 84A, 88,
+94, 103, 104, 105 y 106 cuando dependa de las rutas corregidas. No amplía los
+mercados aprobados ni autoriza ROI, Kelly, apuestas combinadas o despliegue.
+Evidencia obtenida: fórmula exacta, invariancia al orden intra-kickoff, 27
+fronteras compartidas reducidas a cero, 45 cold starts excluidos, hashes
+completos, PMF adaptativas válidas, runtime fail-closed, replays sellados y
+suite integral de 485 pruebas aprobadas con 8 integraciones opcionales
+omitidas. La cadena oficial conserva sólo 1X2 y over 2.5; BTTS usa la
+reparación causal de Fase 106 y hay ocho mercados de equipo en shadow.
+
 ```text
 DEC-NNN
 Fecha:

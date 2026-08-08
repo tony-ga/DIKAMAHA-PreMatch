@@ -1,5 +1,15 @@
 # Roadmap vigente de DIKAMAHA
 
+**Actualizado:** 2026-08-07
+**Objetivo operativo:** preservar integridad matemática y causal tras la
+revalidación completa de Fase 113. La investigación Markov v4 continúa bajo
+los gates históricos, sin ampliar mercados ni afirmar ventaja económica.
+
+Fase 113 reemplaza las cifras de Fases 84A, 88, 94, 95, 96, 103, 104, 105 y
+106 cuando dependían de recorridos intra-kickoff, fronteras fraccionales o
+métricas mixtas. La salida vigente conserva 1X2 y over 2.5 en la cadena
+oficial, BTTS reparado por Fase 106 y ocho mercados de equipo en shadow.
+
 ## Objetivo congelado
 
 Generar predicciones pre-match mediante simulación de trayectorias históricas.
@@ -190,27 +200,28 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 86 | `count_market_prospective_confirmation` | ready_for_next_phase | 523 predicciones/18 ligas raw-first, modelo+baseline congelados y cero outcomes leídos |
 | 87 | `count_market_outcome_materialization` | activa, 0/523 | Colector raw-first validado; espera `kickoff + 3h`, predicciones intactas y scoring bloqueado |
 | 88 | `team_market_markov` | parcialmente validada | Tiros comerciales corregidos; 4/12 líneas ganan log-loss y Brier, bloque completo no sustituye baseline |
-| 89 | `team_market_markov_integration` | ready_for_next_phase | 4 líneas Markov + 5 agregadas: 9 shadow, fallback 84A, paridad y replay |
+| 89 | `team_market_markov_integration` | ready_for_next_phase | 4 líneas Markov + 4 agregadas: 8 shadow, fallback 84A, paridad y replay |
 | 90 | `markov_market_prospective_cohort` | ready_for_next_phase | 520 predicciones pre-kickoff/18 ligas, 4 mercados, hash comercial v2 y cero outcomes |
 | 91 | `markov_market_outcomes` | activa, 0/520 | Settlement por mitad raw-first listo; todavía 0 fixtures elegibles |
 | 92 | `markov_market_promotion_gate` | insufficient_coverage | Gate individual con 10,000 bootstraps implementado; scoring sellado |
-| 93 | `user_market_contract` | ready_for_next_phase | Vista tipada de 9 mercados, paridad oficial y replay |
-| 94 | `historical_500_semiofficial` | validada como evidencia histórica | 500 partidos, 4,500 decisiones, PBP reconciliado y log-loss 0.660556 vs 0.677244 |
-| 95 | `market_probability_calibration` | validada, shadow | 400 partidos prequential; log-loss 0.644836 vs 0.659177 y ECE 0.032275 vs 0.057422 |
-| 96 | `market_dependency_exposure` | validada, shadow | 500 partidos, seis pares dependientes, 9 perfectos vs 6.72 esperados y política sin stakes |
-| 97 | `telegram_shadow_interface` | ready_for_next_phase | Bot privado por allowlist, seis comandos, nueve mercados, replay E2E y 410 pruebas |
+| 93 | `user_market_contract` | ready_for_next_phase | Vista tipada de 8 mercados, paridad oficial y replay |
+| 94 | `historical_500_semiofficial` | validada como evidencia histórica | 500 partidos, 4,000 decisiones y PBP reconciliado; cifras previas reemplazadas por Fase 113 |
+| 95 | `market_probability_calibration` | validada, shadow | 395 partidos/3,160 decisiones tras warm-up atómico; log-loss 0.650708 vs 0.662019 |
+| 96 | `market_dependency_exposure` | validada, shadow | 500 partidos, 3 pares dependientes, 10 perfectos vs 9.47 esperados y política sin stakes |
+| 97 | `telegram_shadow_interface` | ready_for_next_phase | Bot privado por allowlist, seis comandos, ocho mercados y replay E2E |
 | 98 | `telegram_data_explorer` | ready_for_next_phase | 18 ligas, navegación visual y goles PBP reconciliados con marcador; 418 pruebas |
 | 99 | `discord_shadow_interface` | promising_unconfirmed | Paridad Telegram, 6 comandos sincronizados y 425 pruebas; falta smoke manual de callbacks |
 | 100 | `espn_bot_context_enrichment` | programada | Contexto visible, disponibilidad y candidatos causales ESPN; raw-first y sin alterar router |
 | 101 | `telegram_channel_broadcast` | validated v1.4 | Servicio propio, full/lite, snapshots append-only y seis mercados distribucionales variables por partido |
 | 102 | `distributional_team_market_ladders` | validated v1.1 | 21 PMF, 269 líneas y rejilla visible de tres cortes entre 1.5–9.5 con over/under |
-| 103 | `distributional_market_walkforward` | 12 líneas Markov validadas; SOT pendiente | 9,646 partidos, selección 1,891, confirmación 1,895, 10,000 bootstraps y gate por liga |
-| 104 | `official_goal_chain` | promoción selectiva | Dixon-Coles/Kalman oficial en 1X2 y over 2.5; BTTS baseline; Markov de goles shadow |
-| 105 | `historical_1000_complete_model` | diagnóstico validado | 1,000 partidos, 12,000 decisiones, comparación por motor y extremos 100%/0% |
+| 103 | `distributional_market_walkforward` | 12 líneas Markov validadas; SOT pendiente | 9,646 partidos, selección 1,892, confirmación 1,895, 10,000 bootstraps y gate por liga |
+| 104 | `official_goal_chain` | promoción selectiva revalidada | Dixon-Coles/Kalman corregido en 1X2 y over 2.5; BTTS Fase 106; 45 cold starts excluidos |
+| 105 | `historical_1000_complete_model` | diagnóstico revalidado | 1,000 partidos, 11,000 decisiones y Brier normalizado por evento |
 | 106 | `probability_repair_selective` | integrada selectivamente | BTTS causal por liga aprobado; fallback exacto de la línea Markov degradada |
 | 107 | `railway_user_pilot_readiness` | validada | imagen, auth, volumen, logs, 100 solicitudes concurrentes y Telegram público aprobados |
 | 108 | `repository_hygiene` | validada | runtime mínimo, snapshot gzip y exclusión de cachés/evidencia local para GitHub |
 | 109 | `premium_telegram_railway` | validada v1.2 | acceso private/public, paridad con canal, worker independiente y contrato móvil medible |
+| 113 | `model_integrity_v1` | validada con salidas selectivas | fórmula, causalidad, PMF, métricas, hashes, fallbacks, replays y 485 pruebas aprobadas |
 
 ## Componentes heredados
 

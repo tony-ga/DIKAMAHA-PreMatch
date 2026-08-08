@@ -36,12 +36,14 @@ from scripts.run_phase_104_official_goal_chain import (  # noqa: E402
 )
 from src.dixon_coles_v1 import DixonColesEstimatorV1  # noqa: E402
 from src.official_goal_chain import _dc_config, _team_ids  # noqa: E402
+from src.temporal_integrity import aligned_fraction_boundaries  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 OUTPUT = ROOT / "artifacts/phase_105_historical_1000_complete"
 PHASE84 = ROOT / "artifacts/phase_84a_team_count_markets/predictions.json"
 BOOTSTRAP = 10_000
 MARKETS = ("1x2", "over_2_5", "btts") + AGGREGATE + MARKOV
+OFFICIAL_CACHE_VERSION = "phase113_integrity_v1"
 
 
 def _read_json(path: Path) -> Any:
@@ -66,6 +68,7 @@ def _score(probability: float, actual: bool) -> dict[str, Any]:
         "probability": float(probability), "actual": bool(actual),
         "predicted": predicted, "correct": predicted == actual,
         "log_loss": log_loss, "brier": brier,
+        "normalized_brier": brier,
     }
 
 
@@ -78,13 +81,14 @@ def _score_1x2(prediction: dict[str, float], actual: str) -> dict[str, Any]:
         "away": float(prediction["away"]),
     }
     selected = max(probabilities, key=probabilities.get)
+    brier = sum((value - float(key == actual)) ** 2
+                for key, value in probabilities.items())
     return {
         "probabilities": probabilities, "actual": actual,
         "predicted": selected, "correct": selected == actual,
         "confidence": probabilities[selected],
         "log_loss": -math.log(max(probabilities[actual], 1e-12)),
-        "brier": sum((value - float(key == actual)) ** 2
-                     for key, value in probabilities.items()),
+        "brier": brier, "normalized_brier": brier / 2.0,
     }
 
 
@@ -105,22 +109,27 @@ def _official_rows() -> dict[int, dict[str, Any]]:
 
     cache = OUTPUT / "official_goal_rows.json"
     if cache.exists():
-        return {int(key): value for key, value in _read_json(cache).items()}
+        cached = _read_json(cache)
+        if cached.get("version") == OFFICIAL_CACHE_VERSION:
+            return {
+                int(key): value for key, value in cached["rows"].items()}
     rows: dict[int, dict[str, Any]] = {}
     frame = _frame()
     for _, league in frame.groupby("league_slug", sort=True):
         league = league.sort_values(["match_date", "match_id"]).reset_index(drop=True)
         if len(league) < 40:
             continue
-        start = int(len(league) * 0.60)
+        start = aligned_fraction_boundaries(league, (0.60,))[0]
         model = DixonColesEstimatorV1(_dc_config()).fit(
-            league.iloc[:start], team_universe=_team_ids(league))
+            league.iloc[:start], team_universe=_team_ids(league.iloc[:start]))
         state = _initial_state(
             model, league.iloc[:start], league.iloc[start].match_date.isoformat())
         for row in _evaluate_tail(model, state, league, start):
             rows[int(row["match_id"])] = row
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps(rows, default=str), encoding="utf-8")
+    cache.write_text(json.dumps({
+        "version": OFFICIAL_CACHE_VERSION, "rows": rows,
+    }, default=str), encoding="utf-8")
     return rows
 
 
@@ -160,7 +169,7 @@ def _score_match(
     match: dict[str, Any], official: dict[str, Any],
     aggregate: dict[str, Any], markov: dict[str, Any],
 ) -> dict[str, Any]:
-    """Compara los 12 mercados de un partido contra outcomes reconciliados."""
+    """Compara los mercados revalidados contra outcomes reconciliados."""
 
     actual = {**_goal_actual(match), **_outcomes(_counts(match))}
     markets: dict[str, dict[str, Any]] = {}
@@ -179,13 +188,16 @@ def _score_match(
             scored["baseline_brier"] = sum(
                 (value - float(key == actual["1x2"])) ** 2
                 for key, value in base_probs.items())
+            scored["baseline_normalized_brier"] = (
+                scored["baseline_brier"] / 2.0)
         else:
             scored = _score(probability, bool(actual[name]))
             base = _score(_market_baseline(name, official, aggregate, markov), bool(actual[name]))
             scored.update({
                 "baseline_correct": base["correct"],
                 "baseline_log_loss": base["log_loss"],
-                "baseline_brier": base["brier"]})
+                "baseline_brier": base["brier"],
+                "baseline_normalized_brier": base["normalized_brier"]})
         scored["baseline_probability"] = _market_baseline(
             name, official, aggregate, markov)
         scored["model"] = (
@@ -221,15 +233,23 @@ def _aggregate_metrics(rows: list[dict[str, Any]], names: tuple[str, ...]) -> di
     """Resume acierto, confianza, log-loss y Brier por familia."""
 
     values = [row["markets"][name] for row in rows for name in names]
+    mixed_cardinality = "1x2" in names and any(
+        name != "1x2" for name in names)
     return {
         "predictions": len(values),
         "accuracy": float(np.mean([value["correct"] for value in values])),
         "mean_confidence": float(np.mean([_confidence(value) for value in values])),
         "log_loss": float(np.mean([value["log_loss"] for value in values])),
-        "brier": float(np.mean([value["brier"] for value in values])),
+        "brier": None if mixed_cardinality else float(np.mean([
+            value["brier"] for value in values])),
+        "normalized_brier": float(np.mean([
+            value["normalized_brier"] for value in values])),
         "baseline_accuracy": float(np.mean([value["baseline_correct"] for value in values])),
         "baseline_log_loss": float(np.mean([value["baseline_log_loss"] for value in values])),
-        "baseline_brier": float(np.mean([value["baseline_brier"] for value in values])),
+        "baseline_brier": None if mixed_cardinality else float(np.mean([
+            value["baseline_brier"] for value in values])),
+        "baseline_normalized_brier": float(np.mean([
+            value["baseline_normalized_brier"] for value in values])),
     }
 
 
@@ -245,9 +265,13 @@ def _market_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "mean_confidence": float(np.mean([_confidence(value) for value in values])),
             "log_loss": float(np.mean([value["log_loss"] for value in values])),
             "brier": float(np.mean([value["brier"] for value in values])),
+            "normalized_brier": float(np.mean([
+                value["normalized_brier"] for value in values])),
             "baseline_accuracy": float(np.mean([value["baseline_correct"] for value in values])),
             "baseline_log_loss": float(np.mean([value["baseline_log_loss"] for value in values])),
             "baseline_brier": float(np.mean([value["baseline_brier"] for value in values])),
+            "baseline_normalized_brier": float(np.mean([
+                value["baseline_normalized_brier"] for value in values])),
             "model": values[0]["model"],
         }
     return output
@@ -330,9 +354,9 @@ def _report(result: dict[str, Any]) -> None:
     lines = ["# Fase 105 — evaluación completa de 1,000 partidos", "", f"Partidos: **{result['coverage']['matches']}** · Ligas: **{result['coverage']['leagues']}** · Decisiones: **{result['coverage']['decisions']}**", "", "## Rendimiento por mercado", "", "| Mercado | Motor | Acierto | Baseline | Confianza | Log-loss | Brier |", "|---|---|---:|---:|---:|---:|---:|"]
     for name, value in result["metrics_by_market"].items():
         lines.append(f"| {name} | {value['model']} | {value['accuracy']:.2%} | {value['baseline_accuracy']:.2%} | {value['mean_confidence']:.2%} | {value['log_loss']:.6f} | {value['brier']:.6f} |")
-    lines.extend(["", "## Confianza por familia", "", "| Familia | Acierto | Confianza | Log-loss | Brier |", "|---|---:|---:|---:|---:|"])
+    lines.extend(["", "## Confianza por familia", "", "| Familia | Acierto | Confianza | Log-loss | Brier normalizado |", "|---|---:|---:|---:|---:|"])
     for name, value in result["families"].items():
-        lines.append(f"| {name} | {value['accuracy']:.2%} | {value['mean_confidence']:.2%} | {value['log_loss']:.6f} | {value['brier']:.6f} |")
+        lines.append(f"| {name} | {value['accuracy']:.2%} | {value['mean_confidence']:.2%} | {value['log_loss']:.6f} | {value['normalized_brier']:.6f} |")
     lines.extend(["", "## Partidos con 100% de acierto", "", "| Partido | Liga | Marcador | Aciertos | 1X2 | Over 2.5 | BTTS |", "|---|---|---:|---:|---|---|---|"])
     for row in result["perfect_100_percent"]:
         markets = row["markets"]
@@ -348,7 +372,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     report = run()
     assert report["coverage"]["matches"] == 1000
-    assert report["coverage"]["decisions"] == 12000
+    assert report["coverage"]["decisions"] == 1000 * len(MARKETS)
     LOGGER.info("Fase 105 completada: %s", report["classification"])
 
 # Version: 1.0.0

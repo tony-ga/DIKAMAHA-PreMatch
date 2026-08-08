@@ -286,7 +286,8 @@ class UniversalPrematchEngine:
 
         try:
             return self._btts_provider.predict(matches)
-        except (OSError, ValueError, json.JSONDecodeError) as error:
+        except (OSError, TypeError, ValueError, FloatingPointError,
+                json.JSONDecodeError) as error:
             LOGGER.warning("btts_probability_fallback: %s", error)
             return fallback, {
                 "model": "structural_poisson_baseline",

@@ -29,9 +29,9 @@ import numpy as np
 import pandas as pd
 
 try:
-    from src.dixon_coles_v1 import hash_json
+    from src.dixon_coles_v1 import hash_json, low_score_tau
 except ModuleNotFoundError:  # pragma: no cover - fallback para ejecución directa.
-    from dixon_coles_v1 import hash_json
+    from dixon_coles_v1 import hash_json, low_score_tau
 
 logger = None
 logger = logging.getLogger(__name__)
@@ -144,16 +144,17 @@ def poisson_matrix(lambda_home: float, lambda_away: float, max_goals: int, tau: 
         raise ValueError("Las tasas deben ser finitas.")
     if lambda_home <= 0 or lambda_away <= 0:
         raise ValueError("Las tasas deben ser positivas.")
+    if isinstance(max_goals, bool) or not isinstance(max_goals, (int, np.integer)) or max_goals < 1:
+        raise ValueError("max_goals debe ser un entero positivo.")
     xs = np.arange(max_goals + 1)
     ys = np.arange(max_goals + 1)
     home_p = np.exp(-lambda_home) * np.power(lambda_home, xs) / np.array([_factorial(int(x)) for x in xs], dtype=float)
     away_p = np.exp(-lambda_away) * np.power(lambda_away, ys) / np.array([_factorial(int(y)) for y in ys], dtype=float)
     grid = np.outer(home_p, away_p)
     if enabled and tau != 0.0:
-        grid[0, 0] *= max(1e-9, 1.0 - (lambda_home * lambda_away * tau))
-        grid[1, 0] *= max(1e-9, 1.0 + (lambda_home * tau))
-        grid[0, 1] *= max(1e-9, 1.0 + (lambda_away * tau))
-        grid[1, 1] *= max(1e-9, 1.0 - tau)
+        for x, y in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            grid[x, y] *= low_score_tau(
+                x, y, lambda_home, lambda_away, tau)
     total = grid.sum()
     if not np.isfinite(total) or total <= 0:
         raise FloatingPointError("La matriz Poisson es inválida.")
@@ -367,11 +368,21 @@ class KalmanV2Filter:
         over_25 = -math.log(max(1e-15, pred.prob_over_2_5 if bool(row.over_2_5) else 1.0 - pred.prob_over_2_5))
         btts = -math.log(max(1e-15, pred.prob_btts if bool(row.btts) else 1.0 - pred.prob_btts))
         mae = abs(pred.expected_home_goals + pred.expected_away_goals - float(row.total_goals))
+        home_goals, away_goals = int(row.home_goals), int(row.away_goals)
+        score_grid = poisson_matrix(
+            pred.lambda_home,
+            pred.lambda_away,
+            max(self.config.max_goals_grid, home_goals, away_goals),
+            self.config.dixon_coles_tau,
+            self.config.use_dixon_coles_correction,
+        )
+        goal_log_score = -math.log(max(
+            1e-15, float(score_grid[home_goals, away_goals])))
         return {
             "log_loss_1x2": log_loss,
             "brier_1x2": brier,
             "calibration_1x2": calibration,
-            "log_score_goals": -math.log(max(1e-15, pred.prob_1 * pred.prob_x)),
+            "log_score_goals": goal_log_score,
             "mae_goals": mae,
             "over_2_5": over_25,
             "btts": btts,
@@ -439,26 +450,33 @@ class KalmanV2Filter:
             state = self._initial_state_from_dc(team_ids, frozen_dc, str(fold["train_cutoff_ts"]))
             train_df = trainable[trainable["match_id"].isin(fold["train_ids"])].copy().sort_values(["match_date", "match_id"])
             valid_df = trainable[trainable["match_id"].isin(fold["validation_ids"])].copy().sort_values(["match_date", "match_id"])
-            # Replay del train estrictamente anterior al bloque de validación.
-            for _, row in train_df.iterrows():
-                _, extra = self._predict_one(
-                    state,
-                    int(row.home_team_id),
-                    int(row.away_team_id),
-                    fold_id,
-                    int(row.match_id),
-                    str(row.match_date.isoformat()),
-                )
-                state = self._update(
-                    state,
-                    int(row.home_team_id),
-                    int(row.away_team_id),
-                    int(row.home_goals),
-                    int(row.away_goals),
-                    float(extra["lambda_home"]),
-                    float(extra["lambda_away"]),
-                )
-                state.cutoff_ts = str(row.match_date.isoformat())
+            if train_df.empty or valid_df.empty:
+                raise RuntimeError("Fold temporal vacío.")
+            if set(train_df["match_date"]) & set(valid_df["match_date"]):
+                raise RuntimeError("Un kickoff cruza train y validación.")
+            if train_df["match_date"].max() >= valid_df["match_date"].min():
+                raise RuntimeError("El fold no respeta el orden temporal.")
+            # Replay causal: todos los partidos del mismo kickoff se predicen
+            # antes de incorporar cualquiera de sus resultados.
+            for cutoff, bucket in train_df.groupby("match_date", sort=True):
+                batch_updates: list[tuple[int, int, int, int, float, float]] = []
+                for _, row in bucket.iterrows():
+                    _, extra = self._predict_one(
+                        state,
+                        int(row.home_team_id),
+                        int(row.away_team_id),
+                        fold_id,
+                        int(row.match_id),
+                        str(cutoff.isoformat()),
+                    )
+                    batch_updates.append((
+                        int(row.home_team_id), int(row.away_team_id),
+                        int(row.home_goals), int(row.away_goals),
+                        float(extra["lambda_home"]),
+                        float(extra["lambda_away"]),
+                    ))
+                state = self._update_batch(state, batch_updates)
+                state.cutoff_ts = str(cutoff.isoformat())
             fold_predictions: list[dict[str, Any]] = []
             fold_audits: list[dict[str, Any]] = []
             for cutoff, bucket in valid_df.groupby("match_date", sort=True):
@@ -481,9 +499,8 @@ class KalmanV2Filter:
                         "jacobian": self._jacobian(self._vector_from_state(state), state.team_ids.index(int(row.home_team_id)), state.team_ids.index(int(row.away_team_id)), len(state.team_ids), state.home_advantage, state.league_intercept).tolist(),
                     })
                     batch_updates.append((int(row.home_team_id), int(row.away_team_id), int(row.home_goals), int(row.away_goals), extra["lambda_home"], extra["lambda_away"]))
-                for home, away, hg, ag, lh, la in batch_updates:
-                    state = self._update(state, home, away, hg, ag, lh, la)
-                    state.cutoff_ts = cutoff.isoformat()
+                state = self._update_batch(state, batch_updates)
+                state.cutoff_ts = cutoff.isoformat()
                 fold_audits.append({"cutoff_ts": cutoff.isoformat(), "state_before": state_before, "state_after": json.loads(json.dumps(asdict(state), default=_json_default))})
             fold_payloads.append(
                 {
@@ -571,20 +588,55 @@ class KalmanV2Filter:
     def _update(self, state: KalmanV2State, home_team_id: int, away_team_id: int, home_goals: int, away_goals: int, lambda_home: float, lambda_away: float) -> KalmanV2State:
         """Actualiza el estado con EKF y proyecta identificabilidad."""
 
+        return self._update_batch(state, [(
+            home_team_id, away_team_id, home_goals, away_goals,
+            lambda_home, lambda_away,
+        )])
+
+    def _update_batch(
+        self,
+        state: KalmanV2State,
+        updates: list[tuple[int, int, int, int, float, float]],
+    ) -> KalmanV2State:
+        """Aplica simultáneamente las observaciones de un mismo kickoff."""
+
+        if not updates:
+            return state
+
         n = len(state.team_ids)
         vector = self._vector_from_state(state)
         cov = np.asarray(state.covariance, dtype=float)
-        home_idx = state.team_ids.index(home_team_id)
-        away_idx = state.team_ids.index(away_team_id)
-        h = self._jacobian(vector, home_idx, away_idx, n, state.home_advantage, state.league_intercept)
-        r = np.diag([lambda_home + self.config.epsilon, lambda_away + self.config.epsilon])
-        y = np.array([home_goals, away_goals], dtype=float)
-        mu = np.array([lambda_home, lambda_away], dtype=float)
+        jacobians: list[np.ndarray] = []
+        observations: list[float] = []
+        means: list[float] = []
+        variances: list[float] = []
+        canonical = sorted(updates, key=lambda item: tuple(item))
+        for home_team_id, away_team_id, home_goals, away_goals, lambda_home, lambda_away in canonical:
+            self._validate_lambdas(lambda_home, lambda_away)
+            if home_goals < 0 or away_goals < 0:
+                raise ValueError("Los goles observados no pueden ser negativos.")
+            home_idx = state.team_ids.index(home_team_id)
+            away_idx = state.team_ids.index(away_team_id)
+            jacobians.append(self._jacobian(
+                vector, home_idx, away_idx, n,
+                state.home_advantage, state.league_intercept))
+            observations.extend((float(home_goals), float(away_goals)))
+            means.extend((float(lambda_home), float(lambda_away)))
+            variances.extend((
+                float(lambda_home + self.config.epsilon),
+                float(lambda_away + self.config.epsilon),
+            ))
+        h = np.vstack(jacobians)
+        r = np.diag(variances)
+        y = np.asarray(observations, dtype=float)
+        mu = np.asarray(means, dtype=float)
         s = h @ cov @ h.T + r
         k = cov @ h.T @ np.linalg.pinv(s)
         innovation = y - mu
         updated = vector + k @ innovation
-        updated_cov = (np.eye(cov.shape[0]) - k @ h) @ cov
+        identity_minus_kh = np.eye(cov.shape[0]) - k @ h
+        updated_cov = (
+            identity_minus_kh @ cov @ identity_minus_kh.T + k @ r @ k.T)
         updated_cov = 0.5 * (updated_cov + updated_cov.T)
         updated, updated_cov = self._project_sum_zero(updated, updated_cov, n)
         return self._state_from_vector(state, updated, updated_cov, state.cutoff_ts)
@@ -615,9 +667,8 @@ class KalmanV2Filter:
                 batch_updates.append((int(row.home_team_id), int(row.away_team_id), int(row.home_goals), int(row.away_goals), extra["lambda_home"], extra["lambda_away"]))
             for idx, pred in enumerate(batch_predictions):
                 predictions.append(asdict(pred))
-            for home, away, hg, ag, lh, la in batch_updates:
-                state = self._update(state, home, away, hg, ag, lh, la)
-                state.cutoff_ts = cutoff.isoformat()
+            state = self._update_batch(state, batch_updates)
+            state.cutoff_ts = cutoff.isoformat()
             states.append({"cutoff_ts": cutoff.isoformat(), "state_before": state_before, "state_after": json.loads(json.dumps(asdict(state), default=_json_default))})
         result = {
             "state": asdict(state),

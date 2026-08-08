@@ -14,12 +14,17 @@ import hashlib
 import json
 import logging
 import math
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from src.dixon_coles_v1 import DixonColesEstimatorV1
 from src.kalman_v2 import KalmanV2Config, KalmanV2Filter, poisson_matrix
@@ -32,6 +37,10 @@ from src.official_goal_chain import (
     _team_ids,
 )
 from src.prematch_snapshot_registry import resolve_active_snapshot
+from src.temporal_integrity import (  # noqa: E402
+    aligned_fraction_boundaries,
+    split_boundary_is_causal,
+)
 from src.universal_prematch import (
     UpcomingMatchInput,
     _lambdas,
@@ -39,7 +48,6 @@ from src.universal_prematch import (
     _markets as baseline_markets,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "artifacts/phase_104_official_goal_chain"
 LOGGER = logging.getLogger(__name__)
 BOOTSTRAP_SAMPLES = 10_000
@@ -121,12 +129,24 @@ def _league_predictions(league: pd.DataFrame) -> list[dict[str, Any]]:
     league = league.sort_values(["match_date", "match_id"]).reset_index(drop=True)
     if len(league) < 40:
         return []
-    dc_end, evaluation_start = int(len(league) * 0.60), int(len(league) * 0.80)
+    dc_end, evaluation_start = aligned_fraction_boundaries(
+        league, (0.60, 0.80))
+    split_causal = (
+        split_boundary_is_causal(league, dc_end)
+        and split_boundary_is_causal(league, evaluation_start))
+    if not split_causal:
+        raise RuntimeError("phase104_kickoff_split_violation")
     model = DixonColesEstimatorV1(_dc_config()).fit(
-        league.iloc[:dc_end], team_universe=_team_ids(league))
+        league.iloc[:dc_end],
+        team_universe=_team_ids(league.iloc[:evaluation_start]))
     state = _initial_state(model, league.iloc[:dc_end], league.iloc[dc_end].match_date.isoformat())
     state = _replay_prefix(state, league.iloc[dc_end:evaluation_start])
-    return _evaluate_tail(model, state, league, evaluation_start)
+    rows = _evaluate_tail(model, state, league, evaluation_start)
+    for row in rows:
+        row["audit"]["split_boundaries_causal"] = split_causal
+        row["audit"]["dc_fit_end"] = dc_end
+        row["audit"]["evaluation_start"] = evaluation_start
+    return rows
 
 
 def _replay_prefix(state: Any, frame: pd.DataFrame) -> Any:
@@ -135,8 +155,7 @@ def _replay_prefix(state: Any, frame: pd.DataFrame) -> Any:
     filter_ = KalmanV2Filter(KalmanV2Config())
     for cutoff, bucket in frame.groupby("match_date", sort=True):
         updates = [_predict_update(filter_, state, row) for _, row in bucket.iterrows()]
-        for update in updates:
-            state = filter_._update(state, *update)
+        state = filter_._update_batch(state, updates)
         state.cutoff_ts = cutoff.isoformat()
     return state
 
@@ -152,11 +171,22 @@ def _evaluate_tail(
         updates = []
         history = league[league["match_date"] < cutoff]
         for _, row in bucket.iterrows():
+            if (int(row.home_team_id) not in model.team_ids
+                    or int(row.away_team_id) not in model.team_ids):
+                continue
             candidate, update = _candidate(model, state, row)
-            rows.append(_prediction_row(row, candidate, _baseline(history, row)))
+            materialized = _prediction_row(
+                row, candidate, _baseline(history, row))
+            materialized["audit"] = {
+                "cutoff_causal": bool(
+                    history.empty or history["match_date"].max() < cutoff),
+                "history_max_ts": None if history.empty else
+                    history["match_date"].max().isoformat(),
+                "teams_observed_before_evaluation": True,
+            }
+            rows.append(materialized)
             updates.append(update)
-        for update in updates:
-            state = filter_._update(state, *update)
+        state = filter_._update_batch(state, updates)
         state.cutoff_ts = cutoff.isoformat()
     return rows
 
@@ -252,6 +282,7 @@ def run() -> dict[str, Any]:
     """Ejecuta Fase 104 y materializa su gate por mercado."""
 
     frame = _frame()
+    cold_start_audit = _cold_start_audit(frame)
     predictions = []
     for _, league in frame.groupby("league_slug", sort=True):
         predictions.extend(_league_predictions(league))
@@ -266,7 +297,14 @@ def run() -> dict[str, Any]:
         else "rejected_keep_baseline",
         "prediction_count": len(selected), "league_count": len({
             row["league_slug"] for row in selected}),
-        "all_cutoff_causal": True, "bootstrap_samples": BOOTSTRAP_SAMPLES,
+        "all_cutoff_causal": bool(selected) and all(
+            row.get("audit", {}).get("cutoff_causal") is True
+            for row in selected),
+        "all_split_boundaries_causal": bool(selected) and all(
+            row.get("audit", {}).get("split_boundaries_causal") is True
+            for row in selected),
+        **cold_start_audit,
+        "bootstrap_samples": BOOTSTRAP_SAMPLES,
         "promoted_markets": [
             key for key, value in metrics.items() if value["passed"]]}
     _write("predictions.json", selected)
@@ -275,6 +313,29 @@ def run() -> dict[str, Any]:
     _write_hashes()
     _report(audit, metrics)
     return audit
+
+
+def _cold_start_audit(frame: pd.DataFrame) -> dict[str, int]:
+    """Cuenta filas no servibles sin identidad observada antes del fold."""
+
+    total, excluded = 0, 0
+    for _, league in frame.groupby("league_slug", sort=True):
+        league = league.sort_values(
+            ["match_date", "match_id"]).reset_index(drop=True)
+        if len(league) < 40:
+            continue
+        evaluation_start = aligned_fraction_boundaries(
+            league, (0.60, 0.80))[1]
+        known = set(_team_ids(league.iloc[:evaluation_start]))
+        tail = league.iloc[evaluation_start:]
+        total += len(tail)
+        excluded += int((
+            ~tail["home_team_id"].isin(known)
+            | ~tail["away_team_id"].isin(known)).sum())
+    return {
+        "evaluation_rows_before_cold_start_filter": total,
+        "cold_start_rows_excluded": excluded,
+    }
 
 
 def _write_hashes() -> None:

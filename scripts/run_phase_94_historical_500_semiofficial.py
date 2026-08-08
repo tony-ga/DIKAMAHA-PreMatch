@@ -31,6 +31,7 @@ from scripts.run_phase_88_team_market_markov import (  # noqa: E402
     _matches, _prediction_row, _read_2024, _read_current, _team_mapping,
 )
 from src.team_market_markov import TeamMarketMarkov  # noqa: E402
+from src.temporal_integrity import kickoff_buckets  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 OUTPUT = ROOT / "artifacts/phase_94_historical_500_semiofficial"
@@ -41,7 +42,7 @@ PHASE01 = ROOT / "artifacts/phase_01_event_windows_v1/event_windows.json"
 BOOTSTRAP = 10_000
 AGGREGATE = (
     "away_corners_over_4_5", "away_shots_over_10_5",
-    "home_corners_over_4_5", "home_shots_over_10_5",
+    "home_corners_over_4_5",
     "shots_on_target_total_over_7_5",
 )
 MARKOV = (
@@ -128,12 +129,14 @@ def _markov_predictions(
 
     model = TeamMarketMarkov()
     output: dict[int, dict[str, Any]] = {}
-    for match in matches:
-        match_id = int(match["match_id"])
-        if match_id in target_ids:
-            output[match_id] = _prediction_row(
-                match, model.predict_match(match))
-        model.update(match)
+    for bucket in kickoff_buckets(matches):
+        for match in bucket:
+            match_id = int(match["match_id"])
+            if match_id in target_ids:
+                output[match_id] = _prediction_row(
+                    match, model.predict_match(match))
+        for match in bucket:
+            model.update(match)
     if set(output) != target_ids:
         raise ValueError("phase94_markov_coverage_failed")
     return output
@@ -340,9 +343,9 @@ def _metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "markov_temporal": _family(rows, MARKOV),
     }
     total = _family(rows, AGGREGATE + MARKOV)
-    total["matches_all_nine_correct"] = sum(
+    total["matches_all_markets_correct"] = sum(
         row["all_markets_correct"] for row in rows)
-    total["matches_all_nine_correct_rate"] = float(np.mean([
+    total["matches_all_markets_correct_rate"] = float(np.mean([
         row["all_markets_correct"] for row in rows]))
     total["mean_correct_markets_per_match"] = float(np.mean([
         row["correct_markets"] for row in rows]))
@@ -385,9 +388,9 @@ def _write_json(name: str, payload: Any) -> None:
 
 
 def _csv(rows: list[dict[str, Any]]) -> None:
-    """Publica las 4,500 decisiones en formato tabular."""
+    """Publica todas las decisiones revalidadas en formato tabular."""
 
-    path = OUTPUT / "market_comparisons_4500.csv"
+    path = OUTPUT / "market_comparisons.csv"
     fields = [
         "rank", "match_id", "match_date", "league_slug", "home_team_id",
         "away_team_id", "market", "probability", "baseline_probability",
@@ -419,6 +422,7 @@ def _report(result: dict[str, Any]) -> str:
     """Renderiza el reporte ejecutivo de la fase."""
 
     total = result["metrics"]["total"]
+    market_count = len(AGGREGATE + MARKOV)
     lines = [
         "# Fase 94 — 500 partidos semi-oficiales", "",
         f"**Estado:** `{result['classification']}`", "",
@@ -428,10 +432,10 @@ def _report(result: dict[str, Any]) -> str:
         f"- accuracy baseline: `{total['baseline_accuracy']:.2%}`",
         f"- log-loss modelo/baseline: `{total['model_log_loss']:.6f}` / "
         f"`{total['baseline_log_loss']:.6f}`",
-        f"- aciertos perfectos 9/9: "
-        f"`{total['matches_all_nine_correct']}/500`",
+        f"- aciertos perfectos {market_count}/{market_count}: "
+        f"`{total['matches_all_markets_correct']}/500`",
         f"- promedio de aciertos: "
-        f"`{total['mean_correct_markets_per_match']:.2f}/9`",
+        f"`{total['mean_correct_markets_per_match']:.2f}/{market_count}`",
         "", "## Mercados", "",
         "| Mercado | Aciertos | Accuracy | Baseline | Log-loss |",
         "| --- | ---: | ---: | ---: | ---: |",
@@ -459,7 +463,8 @@ def _audit(
         "play_by_play_reconciled": True,
         "phase84_outcomes_equal_recomputed_pbp": True,
         "matches_unique": len(target_ids) == 500,
-        "decisions_complete": sum(len(row["markets"]) for row in rows) == 4500,
+        "decisions_complete": sum(len(row["markets"]) for row in rows)
+        == len(rows) * len(AGGREGATE + MARKOV),
         "overlap_with_phase88_100": len(target_ids & prior_ids),
         "official_goal_router_modified": False,
         "prospective_independence_claimed": False,
@@ -527,7 +532,8 @@ def _result(
             "threshold": 0.5, "bootstrap_replicates": BOOTSTRAP,
         },
         "coverage": {
-            "matches": len(ranked), "decisions": len(ranked) * 9,
+            "matches": len(ranked),
+            "decisions": len(ranked) * len(AGGREGATE + MARKOV),
             "available_confirmation_matches": sum(
                 match["split"] == "confirmation" for match in matches),
             "leagues": len({row["league_slug"] for row in ranked}),
@@ -567,7 +573,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     RESULT = run()
     assert RESULT["coverage"]["matches"] == 500
-    assert RESULT["coverage"]["decisions"] == 4500
+    assert RESULT["coverage"]["decisions"] == 500 * len(AGGREGATE + MARKOV)
     assert RESULT["audit"]["overlap_with_phase88_100"] == 0
     LOGGER.info("Fase 94: %s", RESULT["classification"])
 

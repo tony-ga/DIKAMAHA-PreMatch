@@ -24,9 +24,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-for extra_path in (Path("/tmp/codex_pg_linux"), Path("/tmp/codex_pg")):
-    if extra_path.exists() and str(extra_path) not in sys.path:
-        sys.path.insert(0, str(extra_path))
+if os.name != "nt":
+    for extra_path in (Path("/tmp/codex_pg_linux"), Path("/tmp/codex_pg")):
+        if extra_path.exists() and str(extra_path) not in sys.path:
+            sys.path.insert(0, str(extra_path))
 
 try:
     import psycopg2

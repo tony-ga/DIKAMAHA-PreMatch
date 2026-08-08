@@ -15,9 +15,14 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from src.kalman_v1 import KalmanConfig, KalmanFilterV1, generate_synthetic_kalman_dataset, run_synthetic_kalman
+from src.kalman_v1 import (
+    KalmanConfig, KalmanFilterV1, _goal_matrix,
+    _metrics_from_prediction, generate_synthetic_kalman_dataset,
+    run_synthetic_kalman,
+)
 from src.kalman_v1 import run_real_kalman_dry_run
 
 
@@ -69,6 +74,36 @@ class KalmanV1Tests(unittest.TestCase):
         self.assertIn("2025-01-01T12:00:00+00:00", dates)
         cold_start_rows = [row for row in self.frame.itertuples() if row.kalman_cold_start]
         self.assertGreater(len(cold_start_rows), 0)
+
+    def test_same_kickoff_state_is_invariant_to_match_id_order(self) -> None:
+        """La actualización conjunta no depende del orden intra-kickoff."""
+
+        swapped = self.frame.copy()
+        swapped.loc[swapped["match_id"] == 1, "match_id"] = 101
+        swapped.loc[swapped["match_id"] == 2, "match_id"] = 1
+        swapped.loc[swapped["match_id"] == 101, "match_id"] = 2
+        first = self.filter.fit_predict(self.frame.copy())
+        second = KalmanFilterV1(self.config).fit_predict(swapped)
+        self.assertEqual(first["state"], second["state"])
+
+    def test_goal_log_score_indexes_the_observed_scoreline(self) -> None:
+        """Fija el log-score exacto del marcador observado."""
+
+        pred = {
+            "prob_1_kalman": 0.4, "prob_x_kalman": 0.3,
+            "prob_2_kalman": 0.3, "prob_over_2_5_kalman": 0.5,
+            "prob_btts_kalman": 0.4,
+            "expected_home_goals_kalman": 1.4,
+            "expected_away_goals_kalman": 0.9,
+        }
+        row = pd.Series({
+            "result_1x2": "1", "over_2_5": False, "btts": False,
+            "total_goals": 1, "home_goals": 1, "away_goals": 0,
+        })
+        metrics = _metrics_from_prediction(pred, row)
+        grid = _goal_matrix(1.4, 0.9, 10)
+        self.assertAlmostEqual(
+            metrics["log_score_goals"], -np.log(grid[1, 0]))
 
     def test_probabilities_and_no_nan(self) -> None:
         """Verifica probabilidades válidas y ausencia de NaN."""

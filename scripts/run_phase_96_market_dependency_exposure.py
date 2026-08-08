@@ -1,4 +1,4 @@
-"""Audita dependencia y exposición conjunta de nueve mercados.
+"""Audita dependencia y exposición conjunta de mercados revalidados.
 
 # Requirements:
 # numpy>=2
@@ -72,7 +72,8 @@ def _correct_distribution(
     """Cuenta partidos por número exacto de mercados acertados."""
 
     counts = Counter(int(row["correct_markets"]) for row in rows)
-    return {str(value): counts[value] for value in range(10)}
+    market_count = len(rows[0]["markets"])
+    return {str(value): counts[value] for value in range(market_count + 1)}
 
 
 def _independence_reference(
@@ -211,7 +212,10 @@ def _result(
 def _validate(result: dict[str, Any]) -> None:
     """Valida cobertura y propiedades matriciales."""
 
-    if result["coverage"] != {"matches": 500, "markets": 9, "decisions": 4500}:
+    coverage = result["coverage"]
+    if (coverage["matches"] != 500 or coverage["markets"] <= 0
+            or coverage["decisions"]
+            != coverage["matches"] * coverage["markets"]):
         raise ValueError("phase96_coverage_failed")
     for key in ("outcome_correlation", "probability_correlation"):
         matrix = np.asarray(result[key], dtype=float)

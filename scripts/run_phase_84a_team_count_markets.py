@@ -33,6 +33,10 @@ from src.team_count_markets import (  # noqa: E402
     negative_binomial_over_probability,
     poisson_deviance,
 )
+from src.temporal_integrity import (  # noqa: E402
+    kickoff_buckets,
+    normalize_kickoff_splits,
+)
 
 LOGGER = logging.getLogger(__name__)
 SOURCE = ROOT / "artifacts/phase_74_causal_sequence_corpus/micro_windows_15m.jsonl"
@@ -76,8 +80,7 @@ def _matches(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         grouped[int(row["match_id"])].append(row)
     matches = [_aggregate_match(values) for values in grouped.values()]
-    return sorted(matches, key=lambda row: (
-        str(row["match_date"]), int(row["match_id"])))
+    return normalize_kickoff_splits(matches)
 
 
 def _aggregate_match(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -125,9 +128,11 @@ def _examples(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     team: dict[tuple[str, int, str], list[float]] = {}
     league: dict[tuple[str, bool, str], list[float]] = {}
     output = []
-    for match in matches:
-        output.extend(_match_examples(match, team, league))
-        _update_history(match, team, league)
+    for bucket in kickoff_buckets(matches):
+        for match in bucket:
+            output.extend(_match_examples(match, team, league))
+        for match in bucket:
+            _update_history(match, team, league)
     return output
 
 
@@ -599,7 +604,7 @@ def _result(
     return {
         "classification": classification,
         "config": {
-            "version": "team_count_markets_v2_commercial_shots",
+            "version": "team_count_markets_v3_kickoff_integrity",
             "alphas": alphas, "dispersions": dispersions,
             "model_weights": weights,
             "market_lines": MARKET_LINES,
@@ -615,6 +620,8 @@ def _result(
         },
         "audit": {
             "features_strictly_prior": True,
+            "same_kickoff_batch_safe": True,
+            "split_kickoff_atomic": True,
             "target_match_events_in_features": False,
             "selection_uses_confirmation": False,
             "goal_model_modified": False, "router_modified": False,

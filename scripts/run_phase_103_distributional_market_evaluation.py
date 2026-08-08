@@ -28,6 +28,7 @@ from scripts.run_phase_88_team_market_markov import (  # noqa: E402
 )
 from src.team_count_market_runtime import LADDER_MAXIMUMS  # noqa: E402
 from src.team_market_markov import METRICS, TeamMarketMarkov  # noqa: E402
+from src.temporal_integrity import kickoff_buckets  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 OUTPUT = ROOT / "artifacts/phase_103_distributional_market_walkforward"
@@ -119,12 +120,16 @@ def _walk_forward(matches: list[dict[str, Any]],
     """Ejecuta replay causal y conserva una sola partición."""
 
     model, rows = TeamMarketMarkov(), []
-    for index, match in enumerate(matches, start=1):
-        if match["split"] == split:
-            rows.extend(_prediction_rows(match, model))
-        model.update(match)
-        if index % 1000 == 0:
-            LOGGER.info("%s: %s/%s partidos", split, index, len(matches))
+    processed = 0
+    for bucket in kickoff_buckets(matches):
+        for match in bucket:
+            if match["split"] == split:
+                rows.extend(_prediction_rows(match, model))
+        for match in bucket:
+            model.update(match)
+        processed += len(bucket)
+        if processed // 1000 > (processed - len(bucket)) // 1000:
+            LOGGER.info("%s: %s/%s partidos", split, processed, len(matches))
     return rows
 
 

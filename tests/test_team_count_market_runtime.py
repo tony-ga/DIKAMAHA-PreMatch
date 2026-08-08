@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import hashlib
+import json
 from pathlib import Path
+import shutil
 
 import pytest
 
 from src.team_count_market_runtime import (
     APPROVED_MARKETS,
+    DEFAULT_ARTIFACT,
+    DEFAULT_MARKOV_ARTIFACT,
     MARKOV_APPROVED_MARKETS,
     MARKOV_BASELINE_FALLBACKS,
     ArtifactTeamCountMarketProvider,
@@ -29,7 +34,7 @@ def _request(match_id: int = 990001) -> UpcomingMatchInput:
 
 
 def test_runtime_exposes_only_approved_markets() -> None:
-    """Publica exactamente las siete líneas shadow aprobadas."""
+    """Publica exactamente las ocho líneas shadow revalidadas."""
 
     prediction = UniversalPrematchEngine().predict(_request())
     shadow = prediction.experimental_team_markets
@@ -161,6 +166,45 @@ def test_markov_rejects_kickoff_before_training_cutoff() -> None:
     assert set(result["probabilities"]) == APPROVED_MARKETS
     assert result["provenance"]["team_market_markov"]["status"] == (
         "shadow_unavailable")
+
+
+def test_count_artifact_rejects_tampered_config_even_with_updated_hash(
+    tmp_path: Path,
+) -> None:
+    """El hash no sustituye la validación semántica de configuración."""
+
+    artifact = tmp_path / "phase84"
+    shutil.copytree(DEFAULT_ARTIFACT, artifact)
+    config_path = artifact / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["dispersions"]["corners"] = float("nan")
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    hashes_path = artifact / "hashes.json"
+    hashes = json.loads(hashes_path.read_text(encoding="utf-8"))
+    hashes["config.json"] = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    hashes_path.write_text(json.dumps(hashes), encoding="utf-8")
+    with pytest.raises(ValueError, match="dispersions_nonfinite"):
+        ArtifactTeamCountMarketProvider(artifact)._load()
+
+
+def test_markov_artifact_rejects_tampered_config_even_with_updated_hash(
+    tmp_path: Path,
+) -> None:
+    """La versión Markov forma parte del contrato servible."""
+
+    artifact = tmp_path / "phase88"
+    shutil.copytree(DEFAULT_MARKOV_ARTIFACT, artifact)
+    config_path = artifact / "config.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["version"] = "tampered"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    hashes_path = artifact / "hashes.json"
+    hashes = json.loads(hashes_path.read_text(encoding="utf-8"))
+    hashes["config.json"] = hashlib.sha256(config_path.read_bytes()).hexdigest()
+    hashes_path.write_text(json.dumps(hashes), encoding="utf-8")
+    with pytest.raises(ValueError, match="version_mismatch"):
+        ArtifactTeamCountMarketProvider(
+            markov_artifact_path=artifact)._load_markov()
 
 
 # Version: 1.0.0
