@@ -15,6 +15,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
+from src.artifact_integrity import artifact_hash_matches
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ARTIFACT = ROOT / "artifacts/phase_106_probability_repair"
 
@@ -72,13 +74,10 @@ class ArtifactBttsProbabilityProvider(BttsProbabilityPort):
         calibrator = self._path / "calibrator.json"
         if not isinstance(hashes, dict) or calibrator.name not in hashes:
             raise ValueError("btts_hash_manifest_incomplete")
-        for name, expected in hashes.items():
-            path = self._path / str(name)
-            if Path(str(name)).name != str(name) or not path.is_file() or (
-                    not isinstance(expected, str) or _sha(path) != expected):
-                if str(name) == calibrator.name:
-                    raise ValueError("btts_calibrator_hash_mismatch")
-                raise ValueError(f"btts_artifact_hash_mismatch:{name}")
+        expected = hashes[calibrator.name]
+        if not calibrator.is_file() or not artifact_hash_matches(
+                calibrator, expected):
+            raise ValueError("btts_calibrator_hash_mismatch")
         self._config = json.loads(calibrator.read_text(encoding="utf-8"))
         if self._config.get("version") != "btts_league_rate_v1":
             raise ValueError("btts_calibrator_version_mismatch")

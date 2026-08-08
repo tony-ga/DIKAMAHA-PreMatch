@@ -35,6 +35,7 @@ COPY artifacts/prematch_snapshots/phase57_incremental_v1_20260727/event_windows.
 COPY artifacts/phase_84a_team_count_markets/audit.json artifacts/phase_84a_team_count_markets/config.json artifacts/phase_84a_team_count_markets/hashes.json artifacts/phase_84a_team_count_markets/models.joblib /app/artifacts/phase_84a_team_count_markets/
 COPY artifacts/phase_88_team_market_markov/config.json artifacts/phase_88_team_market_markov/hashes.json artifacts/phase_88_team_market_markov/team_market_markov.joblib /app/artifacts/phase_88_team_market_markov/
 COPY artifacts/phase_106_probability_repair/calibrator.json artifacts/phase_106_probability_repair/hashes.json /app/artifacts/phase_106_probability_repair/
+COPY artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json /app/artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 
 RUN addgroup --system app && adduser --system --ingroup app app \
     && mkdir -p /app/data /data \

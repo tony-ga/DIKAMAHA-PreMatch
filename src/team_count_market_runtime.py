@@ -21,6 +21,7 @@ from typing import Any
 import joblib
 import numpy as np
 
+from src.artifact_integrity import artifact_hash_matches
 from src.team_count_markets import (
     negative_binomial_distribution,
     negative_binomial_over_probability,
@@ -103,13 +104,14 @@ def _verify_hash_manifest(
 
     if not isinstance(hashes, dict) or not required.issubset(hashes):
         raise ValueError("artifact_hash_manifest_incomplete")
-    for name, expected in hashes.items():
+    for name in sorted(required):
+        expected = hashes[name]
         if not isinstance(name, str) or Path(name).name != name:
             raise ValueError("artifact_hash_manifest_invalid_path")
         if not isinstance(expected, str) or len(expected) != 64:
             raise ValueError("artifact_hash_manifest_invalid_digest")
         path = artifact_path / name
-        if not path.is_file() or _sha(path) != expected:
+        if not path.is_file() or not artifact_hash_matches(path, expected):
             raise ValueError(f"artifact_hash_mismatch:{name}")
 
 

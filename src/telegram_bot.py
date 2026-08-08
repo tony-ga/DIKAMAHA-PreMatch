@@ -4,7 +4,7 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.3.1
+Version: 2.4.0
 Created: 2026-07-30
 """
 from __future__ import annotations
@@ -87,6 +87,25 @@ class PredictionGateway(ABC):
         """Lista partidos futuros navegables."""
 
         return {"fixtures": []}
+
+    def list_live(
+        self, limit: int = 12, leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Lista partidos activos desde la API DIKAMAHA."""
+
+        return {"fixtures": []}
+
+    def predict_live_fixture(
+        self, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Ejecuta las capas live para un fixture activo."""
+
+        raise PredictionGatewayError("live_prediction_not_implemented")
+
+    def models(self) -> dict[str, Any]:
+        """Lista modelos realmente operativos y su clasificación."""
+
+        return {"status": "unavailable", "models": []}
 
     def explorer_leagues(self) -> dict[str, Any]:
         """Lista ligas del explorador."""
@@ -341,6 +360,29 @@ class DikamahaHttpGateway(PredictionGateway):
             params["date"] = date
         return self._get("/v1/upcoming", params)
 
+    def list_live(
+        self, limit: int = 12, leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Obtiene el catálogo actual de fixtures en vivo."""
+
+        params: dict[str, Any] = {"limit": max(1, min(limit, 20))}
+        if leagues:
+            params["leagues"] = leagues
+        return self._get("/v1/live", params, timeout_multiplier=3.0)
+
+    def predict_live_fixture(
+        self, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Solicita Markov Live, Hawkes residual y su combinación."""
+
+        return self._post(
+            "/v1/predict/live/fixture", payload, timeout_multiplier=3.0)
+
+    def models(self) -> dict[str, Any]:
+        """Obtiene el inventario operativo de la API."""
+
+        return self._get("/v1/models")
+
     def explorer_leagues(self) -> dict[str, Any]:
         """Obtiene ligas navegables."""
 
@@ -419,14 +461,17 @@ class DikamahaHttpGateway(PredictionGateway):
             headers["X-Dikamaha-Key"] = self._config.dikamaha_api_key
         return headers
 
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _post(
+        self, path: str, payload: dict[str, Any],
+        timeout_multiplier: float = 1.0,
+    ) -> dict[str, Any]:
         """Ejecuta POST y normaliza errores."""
 
         try:
             response = self._session.post(
                 self._config.dikamaha_base_url.rstrip("/") + path,
                 json=payload, headers=self._headers(),
-                timeout=self._config.request_timeout_seconds)
+                timeout=self._config.request_timeout_seconds * timeout_multiplier)
             return _gateway_payload(response)
         except requests.RequestException as error:
             raise PredictionGatewayError(
@@ -434,6 +479,7 @@ class DikamahaHttpGateway(PredictionGateway):
 
     def _get(
         self, path: str, params: dict[str, Any] | None = None,
+        timeout_multiplier: float = 1.0,
     ) -> dict[str, Any]:
         """Ejecuta GET y normaliza errores."""
 
@@ -441,7 +487,7 @@ class DikamahaHttpGateway(PredictionGateway):
             response = self._session.get(
                 self._config.dikamaha_base_url.rstrip("/") + path,
                 params=params, headers=self._headers(),
-                timeout=self._config.request_timeout_seconds)
+                timeout=self._config.request_timeout_seconds * timeout_multiplier)
             return _gateway_payload(response)
         except requests.RequestException as error:
             raise PredictionGatewayError(
@@ -572,7 +618,7 @@ class TelegramPredictionBot:
             return self._team_search_reply(user_id, league, text)
         if not self._rate.allow(user_id, time.monotonic()):
             return [(_rate_limit_text(), None)]
-        return self._authorized_reply(command, text)
+        return self._authorized_reply(user_id, command, text)
 
     def _is_authorized(self, user_id: int) -> bool:
         """Autoriza por modo público o por membresía privada explícita."""
@@ -581,7 +627,9 @@ class TelegramPredictionBot:
             self._config.access_mode == "public"
             or user_id in self._config.allowed_user_ids)
 
-    def _authorized_reply(self, command: str, text: str) -> list[tuple[str, dict[str, Any] | None]]:
+    def _authorized_reply(
+        self, user_id: int, command: str, text: str,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
         """Ejecuta comandos autorizados con errores sanitizados."""
 
         try:
@@ -597,6 +645,10 @@ class TelegramPredictionBot:
                     _prediction_fixture(prediction), prediction)
             if command == "/estado":
                 return [(_format_readiness(self._gateway.readiness()), _main_keyboard())]
+            if command == "/en_vivo":
+                return self._live_reply(user_id)
+            if command == "/modelos":
+                return [(_format_models(self._gateway.models()), _main_keyboard())]
             if command in {"/partidos", "/menu"}:
                 return self._upcoming_root()
             if command == "/buscar_equipo":
@@ -628,6 +680,53 @@ class TelegramPredictionBot:
             "<i>Elige cómo quieres encontrar el partido</i>",
             keyboard,
         )]
+
+    def _live_reply(
+        self, user_id: int,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """Lista partidos activos y prepara su inferencia on-demand."""
+
+        catalog = self._gateway.list_live(limit=20)
+        fixtures = [
+            row for row in catalog.get("fixtures", [])
+            if isinstance(row, dict)
+        ]
+        self._menus[user_id] = {
+            f"l{index}": row for index, row in enumerate(fixtures)
+        }
+        if not fixtures:
+            return [(
+                "📭 <b>SIN PARTIDOS EN VIVO</b>\n"
+                "No hay encuentros activos en las ligas monitoreadas.",
+                _live_keyboard(),
+            )]
+        buttons = [[{
+            "text": _live_fixture_button(row),
+            "callback_data": f"live:l{index}",
+        }] for index, row in enumerate(fixtures)]
+        buttons.extend(_live_navigation_rows())
+        return [(
+            "🔴 <b>PARTIDOS EN VIVO</b>\n"
+            "<i>Toca un partido para calcular Markov + Hawkes ahora</i>",
+            {"inline_keyboard": buttons},
+        )]
+
+    def _live_prediction_reply(
+        self, user_id: int, key: str,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """Ejecuta y presenta todas las capas live disponibles."""
+
+        fixture = self._menus.get(user_id, {}).get(key)
+        if not fixture:
+            return [(
+                "El menú expiró. Pulsa Partidos en vivo.", _main_keyboard(),
+            )]
+        result = self._gateway.predict_live_fixture({
+            "league_slug": str(fixture["league_slug"]),
+            "match_id": int(fixture["match_id"]),
+        })
+        result.setdefault("fixture", fixture)
+        return [(_format_live_prediction(result), _live_prediction_keyboard(key))]
 
     def _upcoming_reply(
         self, user_id: int, leagues: str | None = None,
@@ -675,6 +774,10 @@ class TelegramPredictionBot:
 
         if data == "menu:upcoming":
             return self._upcoming_root()
+        if data in {"menu:live", "live:refresh"}:
+            return self._live_reply(user_id)
+        if data == "menu:models":
+            return [(_format_models(self._gateway.models()), _main_keyboard())]
         if data == "upcoming:all":
             leagues = ",".join(
                 str(row.get("slug")) for row in
@@ -702,6 +805,9 @@ class TelegramPredictionBot:
             return self._league_menu(data.split(":", 1)[1])
         if data.startswith("match:"):
             return self._match_menu(user_id, data.split(":", 1)[1])
+        if data.startswith("live:"):
+            return self._live_prediction_reply(
+                user_id, data.split(":", 1)[1])
         if data.startswith("context:"):
             return self._context_reply(user_id, data.split(":", 1)[1])
         if data.startswith("predict:"):
@@ -1099,10 +1205,14 @@ def _main_keyboard() -> dict[str, Any]:
     return {"inline_keyboard": [
         [{"text": "🔮 Próximos y predicciones",
           "callback_data": "menu:upcoming"}],
+        [{"text": "🔴 Partidos en vivo",
+          "callback_data": "menu:live"}],
         [{"text": "▶️ Play-by-play", "callback_data": "menu:plays"},
          {"text": "📊 Estadísticas", "callback_data": "menu:stats"}],
         [{"text": "👤 Equipos y jugadores",
           "callback_data": "menu:players"}],
+        [{"text": "🧠 Modelos en operación",
+          "callback_data": "menu:models"}],
         [{"text": "✅ Estado", "callback_data": "menu:status"},
          {"text": "ℹ️ Ayuda", "callback_data": "menu:help"}],
     ]}
@@ -1118,12 +1228,57 @@ def _upcoming_keyboard() -> dict[str, Any]:
     ], [{"text": "🏠 Inicio", "callback_data": "menu:status"}]]}
 
 
+def _live_keyboard() -> dict[str, Any]:
+    """Ofrece reintento y navegación cuando no hay fixtures activos."""
+
+    return {"inline_keyboard": _live_navigation_rows()}
+
+
+def _live_navigation_rows() -> list[list[dict[str, str]]]:
+    """Construye navegación común del módulo live."""
+
+    return [
+        [{"text": "🔄 Actualizar", "callback_data": "live:refresh"},
+         {"text": "🧠 Modelos", "callback_data": "menu:models"}],
+        [{"text": "🏠 Inicio", "callback_data": "menu:status"}],
+    ]
+
+
+def _live_prediction_keyboard(key: str) -> dict[str, Any]:
+    """Permite recalcular el snapshot seleccionado o volver al catálogo."""
+
+    return {"inline_keyboard": [
+        [{"text": "🔄 Actualizar partido", "callback_data": f"live:{key}"}],
+        [{"text": "🔴 Otros en vivo", "callback_data": "menu:live"},
+         {"text": "🧠 Modelos", "callback_data": "menu:models"}],
+        [{"text": "🏠 Inicio", "callback_data": "menu:status"}],
+    ]}
+
+
 def _fixture_button(fixture: dict[str, Any]) -> str:
     """Construye texto corto para un botón de partido."""
 
     home, away = _team_names({"fixture": fixture})
     title = f"{_compact(home, 11)}–{_compact(away, 11)}"
     return f"{title} · {_button_time(fixture.get('kickoff_ts'))}"
+
+
+def _live_fixture_button(fixture: dict[str, Any]) -> str:
+    """Resume marcador y reloj del scoreboard en un botón móvil."""
+
+    home, away = _team_names({"fixture": fixture})
+    title = f"{_compact(home, 9)}–{_compact(away, 9)}"
+    home_score = fixture.get("home_score", fixture.get("score_home"))
+    away_score = fixture.get("away_score", fixture.get("score_away"))
+    score = (
+        f" {home_score}-{away_score}"
+        if home_score is not None and away_score is not None else ""
+    )
+    clock = _compact(str(
+        fixture.get("display_clock")
+        or fixture.get("provider_status_detail") or "LIVE"
+    ), 8)
+    return _compact(f"{title}{score} · {clock}", 32)
 
 
 def _button_time(value: Any) -> str:
@@ -1845,6 +2000,179 @@ def _percent_plain(value: Any) -> str:
         return "N/D"
 
 
+def _format_live_prediction(payload: dict[str, Any]) -> str:
+    """Presenta Markov, Hawkes residual y combinado como capas distintas."""
+
+    fixture = payload.get("fixture")
+    fixture = fixture if isinstance(fixture, dict) else {}
+    markov = payload.get("experimental_markov_live")
+    hawkes = payload.get("experimental_hawkes_residual")
+    combined = payload.get("experimental_combined_live")
+    if not all(isinstance(value, dict) for value in (markov, hawkes, combined)):
+        return (
+            "🔴 <b>PREDICCIÓN LIVE NO DISPONIBLE</b>\n"
+            "El snapshot no produjo todas las capas shadow requeridas."
+        )
+    home, away = _team_names({"fixture": fixture})
+    score_home = fixture.get("score_home", fixture.get("home_score", "–"))
+    score_away = fixture.get("score_away", fixture.get("away_score", "–"))
+    clock = _live_clock(fixture)
+    admission = payload.get("hawkes_league_admission")
+    admission = admission if isinstance(admission, dict) else {}
+    admitted = bool(admission.get("admitted"))
+    fallback = bool(admission.get("fallback_exact_markov_live"))
+    lines = [
+        "🔴 <b>PREDICCIÓN EN VIVO · SHADOW</b>",
+        f"<b>{html.escape(_compact(home, 26))} "
+        f"{html.escape(str(score_home))}-{html.escape(str(score_away))} "
+        f"{html.escape(_compact(away, 26))}</b>",
+        f"🏆 {html.escape(str(fixture.get('league_slug') or ''))} · "
+        f"⏱ {html.escape(clock)}",
+        "",
+        "🧭 <b>Markov Live · baseline universal</b>",
+        _live_market_table(markov.get("markets"), (home, away)),
+        f"Estado: <b>{html.escape(str((markov.get('state') or {}).get('dominant') or 'N/D'))}</b> · "
+        f"goles restantes λ {float(markov.get('lambda_remaining_home', 0.0)):.2f} / "
+        f"{float(markov.get('lambda_remaining_away', 0.0)):.2f}",
+        "",
+        "🌊 <b>Hawkes Live · residual selectivo</b>",
+        _hawkes_live_line(admitted, fallback, hawkes),
+        "",
+        "🧩 <b>Combinado · Markov + residual Hawkes</b>",
+        _live_market_table(combined.get("markets"), (home, away)),
+    ]
+    lines.extend(_next_event_lines(combined.get("next_event"), home, away))
+    prior = payload.get("prior")
+    if isinstance(prior, dict):
+        lines.extend([
+            "",
+            "🔒 <i>Prior causal reconstruido sólo con historia anterior al kickoff.</i>",
+        ])
+    lines.extend([
+        "⚠️ <i>Modelos experimentales shadow; no están promovidos a salida oficial.</i>",
+        "<i>Análisis informativo, no constituye una apuesta.</i>",
+    ])
+    return "\n".join(lines)
+
+
+def _live_market_table(
+    value: Any, team_names: tuple[str, str],
+) -> str:
+    """Renderiza mercados finales de una capa live."""
+
+    markets = value if isinstance(value, dict) else {}
+    rows = [
+        [f"1 · {_compact(team_names[0], 14)}",
+         _percent_plain(markets.get("probability_home"))],
+        ["X · Empate", _percent_plain(markets.get("probability_draw"))],
+        [f"2 · {_compact(team_names[1], 14)}",
+         _percent_plain(markets.get("probability_away"))],
+        ["Más 2.5 final", _percent_plain(markets.get("probability_over_2_5"))],
+        ["Ambos marcan", _percent_plain(markets.get("probability_btts"))],
+    ]
+    return _pre_table(["Mercado", "Prob."], rows, [20, 7], numeric={1})
+
+
+def _hawkes_live_line(
+    admitted: bool, fallback: bool, hawkes: dict[str, Any],
+) -> str:
+    """Explica cuándo Hawkes complementa y cuándo replica Markov."""
+
+    stability = hawkes.get("stability")
+    stability = stability if isinstance(stability, dict) else {}
+    stable = "estable" if stability.get("subcritical") is True else "no disponible"
+    if not admitted:
+        return (
+            "Liga fuera de allowlist: <b>fallback Markov exacto</b>.\n"
+            f"Hawkes queda calculado con ρ=0 · {stable}."
+        )
+    if fallback:
+        return (
+            "Liga admitida, sin residual efectivo en este corte.\n"
+            f"<b>Markov exacto</b> · {stable}."
+        )
+    return (
+        "Liga admitida: Hawkes ajusta sólo mercados de gol.\n"
+        f"Próximo evento conserva Markov · {stable}."
+    )
+
+
+def _next_event_lines(
+    value: Any, home: str, away: str,
+) -> list[str]:
+    """Muestra hasta tres riesgos competitivos del próximo horizonte."""
+
+    data = value if isinstance(value, dict) else {}
+    probabilities = data.get("probabilities")
+    if not isinstance(probabilities, dict):
+        return []
+    labels = {
+        "home:goal": f"Gol · {home}", "away:goal": f"Gol · {away}",
+        "home:shot": f"Tiro · {home}", "away:shot": f"Tiro · {away}",
+        "home:card": f"Tarjeta · {home}", "away:card": f"Tarjeta · {away}",
+    }
+    ranked = sorted(
+        ((str(key), value) for key, value in probabilities.items()),
+        key=lambda item: float(item[1]), reverse=True,
+    )[:3]
+    horizon = data.get("horizon_minutes")
+    lines = ["", f"<b>Próximo evento · {float(horizon or 0.0):.0f} min</b>"]
+    lines.extend(
+        f"• {html.escape(_compact(labels.get(key, key), 44))}: {_percent(probability)}"
+        for key, probability in ranked
+    )
+    lines.append(
+        f"• Sin evento: {_percent(data.get('probability_no_event'))}")
+    return lines
+
+
+def _live_clock(fixture: dict[str, Any]) -> str:
+    """Prioriza reloj publicado y usa segundos period-aware como fallback."""
+
+    published = fixture.get("display_clock") or fixture.get(
+        "provider_status_detail")
+    if published:
+        return _compact(str(published), 24)
+    try:
+        seconds = float(fixture.get("match_clock_seconds"))
+        return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
+    except (TypeError, ValueError):
+        return "En vivo"
+
+
+def _format_models(payload: dict[str, Any]) -> str:
+    """Expone el inventario de modelos sin ocultar su estado shadow."""
+
+    rows = payload.get("models")
+    models = [row for row in rows or [] if isinstance(row, dict)]
+    lines = [
+        "🧠 <b>MODELOS EN OPERACIÓN</b>",
+        "<i>Oficiales y shadow visibles, con responsabilidades separadas.</i>",
+    ]
+    for mode, title in (("official", "✅ Oficiales"), ("shadow", "🧪 Shadow")):
+        selected = [row for row in models if row.get("mode") == mode]
+        if not selected:
+            continue
+        lines.extend(["", f"<b>{title}</b>"])
+        lines.extend(
+            f"• {html.escape(str(row.get('name') or 'Modelo'))}"
+            for row in selected
+        )
+    policy = payload.get("hawkes_policy")
+    if isinstance(policy, dict):
+        lines.extend([
+            "",
+            f"Hawkes: {int(policy.get('allowed_league_count') or 0)} ligas "
+            f"admitidas · ρ gol {float(policy.get('rho_goal') or 0.0):.1f} · "
+            f"ρ próximo evento {float(policy.get('rho_next_event') or 0.0):.1f}.",
+        ])
+    lines.extend([
+        "",
+        "<i>Shadow significa operativo y visible, pero no promovido a oficial.</i>",
+    ])
+    return "\n".join(lines)
+
+
 def _format_readiness(payload: dict[str, Any]) -> str:
     """Resume readiness DIKAMAHA."""
 
@@ -1856,8 +2184,9 @@ def _format_readiness(payload: dict[str, Any]) -> str:
         f"{icon} <b>ESTADO DEL SISTEMA</b>\n"
         + _pre_table(["Componente", "Estado"], [
             ["API DIKAMAHA", state],
-            ["Predicción", "Lista" if ready else "Bloqueada"],
-            ["Explorador", "Listo" if ready else "Bloqueado"],
+             ["Predicción", "Lista" if ready else "Bloqueada"],
+             ["Modelos live", "Listos" if payload.get("live_models_ready") else "N/D"],
+             ["Explorador", "Listo" if ready else "Bloqueado"],
             ["Contrato", contract],
         ], [16, 18])
     )
@@ -1891,7 +2220,7 @@ def _help_text() -> str:
 
     return (
         "💎 <b>DIKAMAHA PREMIUM</b>\n"
-        "<i>Centro privado de análisis pre-match</i>\n\n"
+        "<i>Centro privado de análisis pre-match y en vivo</i>\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "📋 <b>COMANDOS PRINCIPALES</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1907,6 +2236,10 @@ def _help_text() -> str:
         "   <i>Ej: /predict la_liga 8634 8633 2026-08-15T20:00:00Z</i>\n\n"
         "📡 <b>/estado</b>\n"
         "   Consulta disponibilidad del servicio DIKAMAHA.\n\n"
+        "🔴 <b>/en_vivo</b>\n"
+        "   Lista partidos activos y calcula Markov Live + Hawkes residual.\n\n"
+        "🧠 <b>/modelos</b>\n"
+        "   Muestra modelos oficiales y shadow realmente operativos.\n\n"
         "📅 <b>/partidos</b> | <b>/menu</b>\n"
         "   Abre el menú de próximos partidos con navegación:\n"
         "   • 🌍 <b>Todos los próximos</b> — catálogo completo\n"
@@ -1929,10 +2262,14 @@ def _help_text() -> str:
         "   <i>Probabilidades 1X2, goles, BTTS, corners, tarjetas</i>\n\n"
         "🏟 <b>Contexto del partido</b>\n"
         "   Partido → 🏟 Contexto → Clasificación, lesiones, sede, TV\n\n"
+        "🔴 <b>Partidos en vivo</b>\n"
+        "   Partido → Markov Live → residual Hawkes → salida combinada\n"
+        "   <i>Hawkes complementa a Markov y usa fallback exacto por liga.</i>\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "ℹ️ <b>Sobre las predicciones</b>\n"
-        "Probabilidades calculadas antes del inicio del partido.\n"
-        "Incluyen resultados, goles y mercados por 1T, 2T y partido completo.\n\n"
+        "Pre-match usa datos anteriores al inicio. Live usa snapshots ESPN y\n"
+        "un prior causal reconstruido sólo con historia anterior al kickoff.\n"
+        "Las salidas shadow están visibles, pero no promovidas a oficiales.\n\n"
         "<i>La información es analítica y no constituye una apuesta.</i>")
 
 
@@ -1941,9 +2278,9 @@ def _welcome_text() -> str:
 
     return (
         "💎 <b>DIKAMAHA PREMIUM</b>\n"
-        "<i>Predicciones y análisis pre-match</i>\n\n"
+        "<i>Predicciones y análisis pre-match + en vivo</i>\n\n"
         "Bienvenido. Usa el menú para consultar próximos partidos,\n"
-        "predicciones, mercados, play-by-play, estadísticas y jugadores.\n\n"
+        "predicciones, modelos live, mercados, eventos y estadísticas.\n\n"
         "Pulsa <b>Ayuda</b> o escribe /help para ver todas las opciones.")
 
 
@@ -2015,5 +2352,5 @@ class LongPollingRunner:
                 time.sleep(2)
 
 
-# Version: 2.3.1
+# Version: 2.4.0
 # Created: 2026-07-30

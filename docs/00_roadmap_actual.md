@@ -2,13 +2,16 @@
 
 **Actualizado:** 2026-08-08
 **Objetivo operativo:** preservar la integridad matemática y causal de Fase
-113. Fase 114 valida históricamente Markov Live y Hawkes residual selectivo
-por objetivo, sin ampliar mercados ni afirmar ventaja económica.
+113. Fase 114 valida e integra en producto Markov Live y Hawkes residual
+selectivo por objetivo, sin ampliar mercados ni afirmar ventaja económica.
 
 Fase 113 reemplaza las cifras de Fases 84A, 88, 94, 95, 96, 103, 104, 105 y
 106 cuando dependían de recorridos intra-kickoff, fronteras fraccionales o
 métricas mixtas. La salida vigente conserva 1X2 y over 2.5 en la cadena
 oficial, BTTS reparado por Fase 106 y ocho mercados de equipo en shadow.
+La revisión operativa de artefactos queda validada para despliegue: la imagen
+Linux verifica sólo los componentes que consume y acepta la representación
+LF/CRLF sin relajar contenido, esquema ni hashes binarios.
 
 ## Objetivo congelado
 
@@ -222,9 +225,9 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 106 | `probability_repair_selective` | integrada selectivamente | BTTS causal por liga aprobado; fallback exacto de la línea Markov degradada |
 | 107 | `railway_user_pilot_readiness` | validada | imagen, auth, volumen, logs, 100 solicitudes concurrentes y Telegram público aprobados |
 | 108 | `repository_hygiene` | validada | runtime mínimo, snapshot gzip y exclusión de cachés/evidencia local para GitHub |
-| 109 | `premium_telegram_railway` | validada v1.2 | acceso private/public, paridad con canal, worker independiente y contrato móvil medible |
-| 113 | `model_integrity_v1` | validada con salidas selectivas | fórmula, causalidad, PMF, métricas, hashes, fallbacks, replays y 485 pruebas aprobadas |
-| 114 | `live_markov_hawkes_v1` | Markov y Hawkes selectivo validados históricamente en shadow | 7,400 partidos/34 ligas; allowlist Hawkes de 17 ligas elegida sólo en validación; ambos alcanzan 84.4% de ligas no degradadas |
+| 109 | `premium_telegram_railway` | validada v1.6 | acceso private/public, pre-match y live shadow visibles, worker independiente y contrato móvil medible |
+| 113 | `model_integrity_v1` | validada con salidas selectivas; hotfix portable listo | fórmula, causalidad, PMF, métricas, hashes runtime portables, fallbacks, replays y 522 pruebas aprobadas |
+| 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
 
 ## Componentes heredados
 
@@ -248,10 +251,11 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Ejecutar un replay operativo raw-first con un partido realmente activo y
-vigilar drift de la allowlist Hawkes sin reabrir confirmación; no se exige
-esperar una cohorte de 500 partidos. Ambos componentes permanecen en `shadow`
-hasta una decisión explícita de integración en producto.
+Desplegar API y bot, ejecutar el primer replay operativo raw-first cuando ESPN
+publique un partido realmente activo y vigilar drift de la allowlist Hawkes
+sin reabrir confirmación. No se exige esperar una cohorte de 500 partidos.
+Ambos componentes permanecen en `shadow` hasta una decisión explícita de
+promoción.
 
 La fase no autoriza staking real. ROI, CLV y Kelly continúan bloqueados hasta
 contar con cuotas históricas comparables.

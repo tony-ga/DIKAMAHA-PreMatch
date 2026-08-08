@@ -370,5 +370,80 @@ def test_inference_timeout_is_controlled(monkeypatch) -> None:
     assert response.json()["detail"]["code"] == "inference_timeout"
 
 
+class _FakeLiveRuntime:
+    """Runtime determinista para contratos HTTP live sin red."""
+
+    policy = {
+        "version": "hawkes_live_v2_league_admission_v1",
+        "allowed_leagues": ["esp.1"],
+        "rho_goal": 1.0,
+        "rho_next_event": 0.0,
+    }
+
+    def list_active(
+        self, leagues: str, limit: int, selected_date: str | None,
+    ) -> dict[str, object]:
+        return {
+            "fixtures": [{
+                "league_slug": "esp.1", "match_id": 900001,
+                "competition_id": "900001", "home_team_id": 1,
+                "away_team_id": 2, "home_team_name": "Equipo A",
+                "away_team_name": "Equipo B",
+                "kickoff_ts": "2026-08-08T20:00:00+00:00",
+                "provider_status": "in", "home_score": 1,
+                "away_score": 0, "display_clock": "32'",
+            }],
+            "count": 1, "date": selected_date or "20260808",
+            "league_count": len(leagues.split(",")),
+            "partial_failure_count": 0,
+            "status": "live_shadow_catalog",
+        }
+
+    def predict_fixture(
+        self, league: str, match_id: int, selected_date: str | None,
+    ) -> dict[str, object]:
+        return {
+            "status": "shadow_predicted",
+            "fixture": {"league_slug": league, "match_id": match_id},
+            "experimental_markov_live": {
+                "status": "experimental_shadow_not_promoted"},
+            "experimental_hawkes_residual": {
+                "status": "experimental_shadow_not_promoted"},
+            "experimental_combined_live": {
+                "status": "experimental_shadow_not_promoted"},
+        }
+
+
+def test_live_catalog_prediction_and_model_inventory_are_exposed() -> None:
+    """Publica modelos live sólo por la API central y conserva shadow."""
+
+    app = create_app(ServiceConfig(
+        mode="operational_readonly", external_calls_enabled=True,
+    ), live_runtime=_FakeLiveRuntime())
+    client = TestClient(app)
+
+    catalog = client.get("/v1/live", params={"leagues": "esp.1"})
+    prediction = client.post("/v1/predict/live/fixture", json={
+        "league_slug": "esp.1", "match_id": 900001,
+    })
+    models = client.get("/v1/models")
+
+    assert catalog.status_code == 200
+    assert catalog.json()["fixtures"][0]["display_clock"] == "32'"
+    assert prediction.status_code == 200
+    assert prediction.json()["experimental_markov_live"]["status"] == (
+        "experimental_shadow_not_promoted")
+    assert prediction.json()["experimental_hawkes_residual"]["status"] == (
+        "experimental_shadow_not_promoted")
+    assert models.status_code == 200
+    assert {row["name"] for row in models.json()["models"]} >= {
+        "Markov Live v1", "Hawkes Live v2 residual",
+        "Markov + Hawkes combinado",
+    }
+    counters = client.get("/v1/metrics").json()["counters"]
+    assert counters["live_responses"] == 1
+    assert counters["pre_match_responses"] == 0
+
+
 # Version: 1.0.0
 # Created: 2026-07-15

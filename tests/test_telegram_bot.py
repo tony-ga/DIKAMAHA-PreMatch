@@ -12,6 +12,7 @@ from src.telegram_bot import (
     TelegramTransport,
     _split_message,
 )
+from src.telegram_mobile_layout import mobile_layout_issues
 
 
 class FakeTransport(TelegramTransport):
@@ -46,6 +47,7 @@ class FakeGateway(PredictionGateway):
 
         self.fixture_payloads: list[dict[str, Any]] = []
         self.upcoming_payloads: list[dict[str, Any]] = []
+        self.live_payloads: list[dict[str, Any]] = []
 
     def predict_fixture(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Devuelve una predicción completa de ejemplo."""
@@ -63,6 +65,39 @@ class FakeGateway(PredictionGateway):
         """Simula servicio listo."""
 
         return {"ready": True, "contract_version": "test-v1"}
+
+    def list_live(
+        self, limit: int = 12, leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Devuelve un partido activo navegable."""
+
+        return {"fixtures": [{
+            "league_slug": "esp.1", "match_id": 900001,
+            "home_team_id": 1, "away_team_id": 2,
+            "home_team_name": "Real Madrid",
+            "away_team_name": "Barcelona",
+            "home_score": 1, "away_score": 0, "display_clock": "32'",
+        }]}
+
+    def predict_live_fixture(
+        self, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Registra selección y devuelve las tres capas live."""
+
+        self.live_payloads.append(payload)
+        return _live_prediction()
+
+    def models(self) -> dict[str, Any]:
+        """Expone inventario oficial y shadow."""
+
+        return {"models": [
+            {"name": "Dixon-Coles + Kalman", "mode": "official"},
+            {"name": "Markov Live v1", "mode": "shadow"},
+            {"name": "Hawkes Live v2 residual", "mode": "shadow"},
+        ], "hawkes_policy": {
+            "allowed_league_count": 17, "rho_goal": 1.0,
+            "rho_next_event": 0.0,
+        }}
 
 
 class _Response:
@@ -112,6 +147,49 @@ def _prediction() -> dict[str, Any]:
             "period": "full_match", "line": 4.5, "probability": 0.6,
             "baseline_probability": 0.5, "source_model": "phase84a",
         }]},
+    }
+
+
+def _live_prediction() -> dict[str, Any]:
+    """Construye una inferencia live complementaria representativa."""
+
+    markets = {
+        "probability_home": 0.62, "probability_draw": 0.24,
+        "probability_away": 0.14, "probability_over_2_5": 0.51,
+        "probability_btts": 0.44,
+    }
+    next_event = {
+        "horizon_minutes": 5.0,
+        "probabilities": {"home:goal": 0.12, "away:goal": 0.06},
+        "probability_no_event": 0.82,
+    }
+    return {
+        "status": "shadow_predicted",
+        "fixture": {
+            "league_slug": "esp.1", "match_id": 900001,
+            "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
+            "score_home": 1, "score_away": 0,
+            "match_clock_seconds": 1920.0,
+        },
+        "prior": {"status": "reconstructed_causal_prematch_prior"},
+        "experimental_markov_live": {
+            "status": "experimental_shadow_not_promoted",
+            "markets": markets, "next_event": next_event,
+            "state": {"dominant": "home_pressure"},
+            "lambda_remaining_home": 1.2, "lambda_remaining_away": 0.5,
+        },
+        "experimental_hawkes_residual": {
+            "status": "experimental_shadow_not_promoted",
+            "stability": {"subcritical": True},
+        },
+        "experimental_combined_live": {
+            "status": "experimental_shadow_not_promoted",
+            "markets": markets, "next_event": next_event,
+            "fallback_exact_markov_live": False,
+        },
+        "hawkes_league_admission": {
+            "admitted": True, "fallback_exact_markov_live": False,
+        },
     }
 
 
@@ -300,6 +378,41 @@ def test_upcoming_command_preserves_ids_and_kickoff() -> None:
         "away_team_id": 86, "kickoff_ts": "2030-01-10T20:00:00+00:00",
         "match_id": 99,
     }
+
+
+def test_live_command_runs_markov_hawkes_and_combined_layers() -> None:
+    """Hace visible el menú live y mantiene las capas separadas."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    bot = _bot(transport, gateway)
+    bot.process_update(_update(1, "/en_vivo"))
+    bot.process_update(_callback(2, "live:l0"))
+
+    assert gateway.live_payloads == [{
+        "league_slug": "esp.1", "match_id": 900001,
+    }]
+    message = transport.sent[-1][1]
+    assert "Markov Live" in message
+    assert "Hawkes Live" in message
+    assert "Combinado" in message
+    assert "SHADOW" in message
+    assert "Markov + residual Hawkes" in message
+    assert not mobile_layout_issues(message)
+    assert len(message) <= 3900
+
+
+def test_models_command_exposes_official_and_shadow_models() -> None:
+    """No oculta modelos operativos por conservar estado shadow."""
+
+    transport, gateway = FakeTransport(), FakeGateway()
+    _bot(transport, gateway).process_update(_update(1, "/modelos"))
+
+    message = transport.sent[-1][1]
+    assert "Dixon-Coles + Kalman" in message
+    assert "Markov Live v1" in message
+    assert "Hawkes Live v2 residual" in message
+    assert "Shadow" in message
+    assert not mobile_layout_issues(message)
 
 
 def test_long_polling_ignores_duplicate_update() -> None:

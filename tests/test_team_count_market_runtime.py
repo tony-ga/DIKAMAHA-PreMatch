@@ -17,6 +17,7 @@ from src.team_count_market_runtime import (
     MARKOV_APPROVED_MARKETS,
     MARKOV_BASELINE_FALLBACKS,
     ArtifactTeamCountMarketProvider,
+    _verify_hash_manifest,
 )
 from src.universal_prematch import (
     UniversalPrematchEngine,
@@ -205,6 +206,45 @@ def test_markov_artifact_rejects_tampered_config_even_with_updated_hash(
     with pytest.raises(ValueError, match="version_mismatch"):
         ArtifactTeamCountMarketProvider(
             markov_artifact_path=artifact)._load_markov()
+
+
+def test_runtime_manifest_is_portable_and_scoped_to_required_files(
+    tmp_path: Path,
+) -> None:
+    """No exige evidencia no empaquetada y acepta LF frente al hash CRLF."""
+
+    runtime_lf = b'{\n  "status": "valid"\n}\n'
+    (tmp_path / "runtime.json").write_bytes(runtime_lf)
+    runtime_crlf = runtime_lf.replace(b"\n", b"\r\n")
+    hashes = {
+        "runtime.json": hashlib.sha256(runtime_crlf).hexdigest(),
+        "evidence_not_packaged.json": "0" * 64,
+    }
+
+    _verify_hash_manifest(tmp_path, hashes, {"runtime.json"})
+
+
+def test_cambridge_barnet_exposes_probabilities_for_every_period() -> None:
+    """Congela la regresión observada en el primer fixture de producción."""
+
+    request = UpcomingMatchInput(
+        league_slug="eng.league_cup",
+        home_team_id=351,
+        away_team_id=280,
+        kickoff_ts="2026-08-08T12:00:00+00:00",
+        match_id=401880614,
+    )
+
+    shadow = UniversalPrematchEngine().predict(
+        request).experimental_team_markets
+
+    assert shadow is not None
+    assert shadow["status"] == "experimental_shadow_not_promoted"
+    assert len(shadow["user_market_view"]) == 8
+    assert len(shadow["bounded_market_grid_view"]) == 21
+    assert {
+        row["period"] for row in shadow["bounded_market_grid_view"]
+    } == {"first_half", "second_half", "full_match"}
 
 
 # Version: 1.0.0

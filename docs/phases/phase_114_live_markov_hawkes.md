@@ -14,6 +14,9 @@ complementario, sin modificar salidas oficiales ni la ruta pre-match.
 - filtro Markov Live con mercados de goles restantes y próximo evento;
 - residual Hawkes subcrítico y combinación logarítmica con shrinkage;
 - bloques API shadow compatibles con `/v1/predict/live`;
+- catálogo `/v1/live` y selección `/v1/predict/live/fixture` para producto;
+- prior causal reconstruido desde el snapshot histórico versionado cuando el
+  kickoff ya pasó, con hash, identidad y cutoff estricto auditables;
 - pruebas de causalidad, replay, fallback y estabilidad.
 
 ## Gate técnico de esta entrega
@@ -43,13 +46,32 @@ partidos; en confirmación mejora `-0.000398`, IC95%
 Hawkes selectivo quedan históricamente validados en shadow; el resto usa
 fallback Markov exacto.
 
+## Integración de producto v1.3
+
+DEC-147 activa las capas ya validadas sin promoverlas. La API descubre sólo
+fixtures ESPN con estado `in|live`, captura scoreboard/event/plays/situation
+raw-first y ejecuta Markov Live como baseline universal. Hawkes usa la
+allowlist congelada de 17 ligas y sólo ajusta mercados de gol; próximo evento
+y ligas no admitidas conservan Markov exacto.
+
+Telegram no llama ESPN ni contiene modelos. El menú `Partidos en vivo`
+consulta la API, permite recalcular el snapshot y muestra por separado Markov,
+residual Hawkes y combinado. `Modelos en operación` declara oficiales y
+shadow visibles. Si no hay encuentros activos, responde vacío de forma normal
+y permite actualizar.
+
+El prior reconstruido no se denomina prospectivamente congelado: se declara
+`reconstructed_causal_prematch_prior`, excluye el match objetivo y usa sólo
+historia anterior al kickoff. Esto permite operar con la base existente sin
+esperar partidos nuevos.
+
 ## Exclusiones
 
-- activación oficial o en bots;
+- promoción oficial de Markov Live, Hawkes o combinado;
 - reentrenamiento sobre holdouts pre-match clausurados;
 - cuotas, ROI, Kelly o staking;
 - uso de `probabilities` ESPN como feature;
 - cambios a `match_features v1`.
 
-Version: 1.2.0
+Version: 1.3.0
 Created: 2026-08-07; updated: 2026-08-08

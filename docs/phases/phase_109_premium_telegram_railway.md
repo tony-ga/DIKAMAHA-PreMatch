@@ -94,3 +94,34 @@ El modo público conserva rate limit individual, una réplica de long polling,
 API key, HTTPS y rechazo completo de grupos. Cambiar el modo es reversible y
 no requiere reconstruir modelos. Aprobaron 30 pruebas dirigidas y 457 pruebas
 integrales; 8 integraciones opcionales fueron omitidas.
+
+### Revisión v1.5 — regresión Cambridge United–Barnet
+
+El flujo `Todos los próximos` resolvió correctamente el fixture `401880614`,
+pero la API desplegada devolvía `shadow_unavailable` por verificación de
+artefactos no portable. El bot quedaba sin dashboard por periodo aunque la
+predicción oficial existía.
+
+Con la corrección de Fase 113 v1.1, la imagen mínima devuelve 8 filas de
+mercado y 21 grupos distribucionales. La presentación compartida genera una
+tarjeta de 345 caracteres y un dashboard de 2,941 caracteres con primer
+tiempo, segundo tiempo y partido completo. Estado:
+`validated_for_deployment`; no modifica probabilidades ni modelos.
+
+### Revisión v1.6 — modelos live visibles
+
+El menú principal incorpora `Partidos en vivo` y `Modelos en operación`.
+Telegram sigue siendo un cliente ligero: lista fixtures activos mediante
+`GET /v1/live` y solicita la inferencia con
+`POST /v1/predict/live/fixture`; nunca llama ESPN ni carga artefactos.
+
+La tarjeta live separa Markov Live, Hawkes residual y combinado, muestra
+marcador/reloj, 1X2, over 2.5, BTTS y próximo evento, y rotula todo el bloque
+como `shadow`. Hawkes se describe como complemento; fuera de allowlist usa
+fallback Markov exacto. `/en_vivo` y `/modelos` ofrecen las mismas rutas por
+comando.
+
+La política Hawkes queda empaquetada sólo en la imagen API. La imagen del bot
+continúa ejecutando como `app` y sin modelos, snapshots ni artefactos. Las dos
+imágenes construyeron y sus smoke tests aprobaron; regresión integral:
+529 aprobadas y 8 integraciones opcionales omitidas.

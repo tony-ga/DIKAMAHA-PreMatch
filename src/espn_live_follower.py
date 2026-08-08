@@ -425,6 +425,8 @@ def normalize_live_snapshot(
         "competition_id": competition_id,
         "home_team_id": home_id,
         "away_team_id": away_id,
+        "home_team_name": _team_name(home),
+        "away_team_name": _team_name(away),
         "kickoff_ts": kickoff.isoformat(),
         "source_fetched_at": _utc(source_fetched_at).isoformat(),
         "provider_status": str((status_type or {}).get("state") or "unknown").lower(),
@@ -503,6 +505,17 @@ def _team_id(competitor: dict[str, Any]) -> int:
     if value is None or not str(value).isdigit() or int(value) <= 0:
         raise ValueError("invalid_live_team_id")
     return int(value)
+
+
+def _team_name(competitor: dict[str, Any]) -> str:
+    """Obtiene el nombre ESPN sin inferir orientación ni identidad."""
+
+    team = competitor.get("team") if isinstance(competitor.get("team"), dict) else {}
+    value = (
+        team.get("displayName") or team.get("name")
+        or team.get("shortDisplayName") or competitor.get("displayName")
+    )
+    return str(value or _team_id(competitor))
 
 
 def _score(competitor: dict[str, Any]) -> int:

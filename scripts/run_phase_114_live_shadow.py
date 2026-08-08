@@ -36,6 +36,7 @@ from src.espn_prospective_connector import (  # noqa: E402
     EspnProspectiveConnector,
     EspnResourceUnavailable,
 )
+from src.live_prediction_runtime import load_hawkes_league_policy  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 CATALOG = ROOT / "docs" / "league_catalog_v1.json"
@@ -105,27 +106,7 @@ def _load_hawkes_policy(path: Path | None) -> dict[str, Any] | None:
         if path.resolve() == DEFAULT_HAWKES_POLICY.resolve():
             return None
         raise FileNotFoundError(path)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if (
-        payload.get("version") != "hawkes_live_v2_league_admission_v1"
-        or payload.get("selection_split") != "validation_only"
-        or payload.get("confirmation_used_for_selection") is not False
-        or not isinstance(payload.get("allowed_leagues"), list)
-    ):
-        raise ValueError("invalid_hawkes_league_policy")
-    allowed = sorted({str(value) for value in payload["allowed_leagues"]})
-    if any(not value for value in allowed):
-        raise ValueError("invalid_hawkes_allowed_league")
-    for name in ("rho_goal", "rho_next_event"):
-        value = float(payload[name])
-        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
-            raise ValueError("invalid_hawkes_policy_rho")
-    return {
-        **payload,
-        "allowed_leagues": allowed,
-        "rho_goal": float(payload["rho_goal"]),
-        "rho_next_event": float(payload["rho_next_event"]),
-    }
+    return load_hawkes_league_policy(path)
 
 
 def _prediction(
