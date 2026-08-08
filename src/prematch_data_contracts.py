@@ -32,6 +32,7 @@ class CaptureKind(StrEnum):
 
     HISTORICAL_RECONSTRUCTION = "historical_reconstruction"
     PROSPECTIVE_SNAPSHOT = "prospective_snapshot"
+    LIVE_SNAPSHOT = "live_snapshot"
 
 
 @dataclass(frozen=True, slots=True)

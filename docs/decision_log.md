@@ -1634,6 +1634,137 @@ suite integral de 485 pruebas aprobadas con 8 integraciones opcionales
 omitidas. La cadena oficial conserva sólo 1X2 y over 2.5; BTTS usa la
 reparación causal de Fase 106 y hay ocho mercados de equipo en shadow.
 
+DEC-142
+Fecha: 2026-08-07
+Problema: el producto sólo tiene una ruta Markov pre-match promovible y una
+envoltura `markov_v1` live sintética. Para predicción in-play se necesita
+actualizar el régimen con observaciones del partido sin convertir Hawkes en un
+modelo competidor ni sumar dos intensidades que explican la misma señal.
+Opciones: usar únicamente Hawkes; sustituir Markov pre-match por un modelo
+live; o mantener el prior pre-match, añadir un filtro Markov Live y aplicar
+Hawkes exclusivamente como residual de memoria corta.
+Decisión: abrir Fase 114 con tres capas versionadas. Dixon-Coles/Kalman y
+Markov pre-match fijan el prior anterior al kickoff; `markov_live_v1` actualiza
+estado, intensidades restantes y hazards con marcador, reloj y eventos
+observados hasta cada snapshot; `hawkes_live_v2` sólo modula esos hazards en
+escala logarítmica mediante shrinkage acotado. `rho=0` debe reproducir Markov
+Live exactamente. Las tres salidas (`markov_live`, `hawkes_residual` y
+`combined_live`) se conservan separadas y permanecen shadow.
+Motivo: Markov representa régimen, marcador y tiempo restante; Hawkes
+representa clustering transitorio. La composición residual evita doble conteo
+y permite medir valor incremental de Hawkes contra un Markov Live congelado.
+Estado: congelada; Markov y Hawkes selectivo validados históricamente en shadow
+Impacto en contratos/fases: amplía DEC-002 sólo para una nueva ruta in-play;
+no reabre ni modifica Markov pre-match v4, DEC-100, `match_features v1`, el
+router oficial o mercados pre-match. Extiende 100E con captura live raw-first.
+Probabilidades y odds ESPN quedan como benchmark/archivo y nunca son features.
+Evidencia requerida: replay determinista, causalidad por snapshot, reloj
+monótono, fallbacks exactos, shrinkage por objetivo, estabilidad subcrítica,
+API compatible y gate histórico DEC-143 antes de cualquier integración.
+Evidencia obtenida: contratos y runner Fase 114 implementados; 519 pruebas
+aprobadas y 8 integraciones opcionales omitidas; `py_compile` y diff limpios;
+replay Markov y combinado idéntico; radio espectral Hawkes
+`0.31428571428571433`; score/PBP y eventos futuros rechazados fail-closed. El
+smoke ESPN inicial recibió HTTP 403. DEC-144 corrigió el transporte; el gate
+histórico posterior usa 7,400 partidos/34 ligas. DEC-145 añade admisión Hawkes
+por liga seleccionada sólo en validación y mantiene el router intacto.
+
+DEC-143
+Fecha: 2026-08-07
+Problema: esperar 500 partidos futuros no satisface el ritmo de validación
+requerido, mientras `prospective_staging_v2` ya contiene más de diez mil
+partidos completos y timelines ESPN históricos suficientes para reconstruir
+snapshots pseudo-live.
+Opciones: conservar el gate prospectivo; promover sin evidencia; o reemplazar
+la espera por una evaluación histórica causal con separación temporal.
+Decisión propuesta: reemplazar el umbral prospectivo de Fase 114 por un gate
+histórico read-only. Sólo cuentan partidos con marcador reconciliado, periodo
+reglamentario e identidad completa. Los priors pre-match se reconstruyen
+walk-forward usando exclusivamente partidos con kickoff anterior; snapshots,
+targets y splits se agrupan por partido y por kickoff atómico. Desarrollo
+selecciona parámetros Markov, validación selecciona únicamente shrinkage
+Hawkes y confirmación permanece intacta hasta el scoring final.
+Motivo: aprovecha la base existente sin convertir snapshots correlacionados en
+unidades IID ni permitir que el resultado del partido objetivo contamine su
+prior. También mide por separado Markov contra un baseline score/tiempo y la
+combinación contra Markov congelado.
+Estado: congelada; gate histórico ejecutado
+Impacto en contratos/fases: revisa sólo el gate de Fase 114 y no reabre
+holdouts clausurados de Markov pre-match, no modifica `match_features v1` ni
+autoriza salidas oficiales. El gate mínimo será 5,000 partidos reconciliados y
+20 ligas, con confirmación temporal, bootstrap por partido y replay idéntico.
+Evidencia requerida: inventario read-only, cero solapamiento de kickoffs,
+priors estrictamente anteriores, score/PBP reconciliado, métricas de 1X2,
+over 2.5, BTTS y próximo evento, resultados por liga, intervalos bootstrap y
+hashes reproducibles.
+Evidencia obtenida: 10,251 partidos y 1,349,977 eventos permanecieron
+idénticos antes/después; 9,649 partidos de regulación reconciliaron; 7,400
+partidos/34 ligas superaron warm-up. Splits 4,417/1,586/1,397 sin kickoffs
+compartidos. Markov mejoró objetivo `-0.002259`, IC95%
+`[-0.002858, -0.001635]`, con 84.375% de ligas no degradadas. Hawkes para
+goles global mejoró agregado `-0.000648`, IC95%
+`[-0.001026, -0.000272]`, sin tocar próximo evento, pero sólo no degradó
+59.375% de ligas. DEC-145 corrige la heterogeneidad mediante selección causal
+por liga. Replay final
+`c926fd712c596e4d475856cf6259db766cbb1f950a83e0d6e2da7bad47612b53`.
+
+DEC-144
+Fecha: 2026-08-07
+Problema: `site.api.espn.com` devuelve HTTP 403 de Akamai desde el entorno
+actual, aunque Core ESPN continúa en HTTP 200. La implementación trataba ese
+403 regional como indisponibilidad total del proveedor.
+Opciones: desactivar ESPN; usar CDN pese a responder 202 sin JSON; o conservar
+Site API como primario y usar el host ESPN `site.web.api.espn.com` como
+fallback equivalente sólo ante bloqueos de transporte.
+Decisión propuesta: mantener los paths Site/Core documentados, permitir ambos
+hosts ESPN en la allowlist y reintentar una sola vez el mismo path y parámetros
+en `site.web.api.espn.com` cuando el primario Site responda 403. Core sigue sin
+fallback; CDN no entra mientras no entregue JSON 200. La URL efectiva se
+conserva en provenance y raw-first.
+Motivo: las pruebas reales devolvieron 200 JSON para scoreboard, summary y
+standings en el fallback, y 200 para Core event, mientras CDN devolvió 202
+vacío. El cambio es acotado, auditable y no oculta el origen efectivo.
+Estado: congelada; corrección validada
+Impacto en contratos/fases: corrige transporte ESPN de Fases 72, 73, 100 y
+114 sin cambiar semántica de features ni habilitar probabilities/odds.
+Evidencia requerida: tests de fallback, allowlist, caché/provenance, smoke
+scoreboard-summary-standings-event-plays y fallo cerrado si ambos hosts fallan.
+Evidencia obtenida: tests de fallback y doble 403 aprobados. Smoke real:
+scoreboard histórico, summary y standings 200 por `site.web.api.espn.com`;
+event 200 y 206 plays por `sports.core.api.espn.com`. El parser usa
+`displayClock` para conservar descuento `90'+N'`; el ciclo Fase 114 terminó
+sin errores y el CDN quedó excluido tras responder 202 sin JSON.
+
+DEC-145
+Fecha: 2026-08-08
+Problema: Hawkes global mejora el agregado confirmatorio, pero degrada más del
+40% de ligas y por tanto no cumple el gate robusto. Descartarlo perdería señal
+útil; habilitarlo globalmente degradaría ligas sin soporte.
+Opciones: retirar Hawkes; aceptar la media global; o congelar una política de
+admisión por liga seleccionada antes de abrir confirmación y usar Markov fuera.
+Decisión: seleccionar una allowlist Hawkes exclusivamente con validación. Una
+liga requiere al menos 30 partidos de validación y mejora estricta en log-loss
+de mercados de gol. `rho_goal=1` se aplica sólo a ligas admitidas;
+`rho_next_event=0` y todas las ligas rechazadas reproducen Markov exactamente.
+Se exigen al menos cinco ligas admitidas, IC95% objetivo confirmatorio bajo
+cero y 70% de ligas no degradadas. El prior live se vincula a identidad de
+evento/equipos/liga y a un cutoff estrictamente anterior al kickoff.
+Motivo: Markov permanece baseline universal; Hawkes aporta sólo memoria corta
+donde validación demuestra soporte, sin competir, reemplazar ni doble-contar
+la intensidad estructural.
+Estado: congelada; gate histórico selectivo aprobado en shadow
+Impacto en contratos/fases: añade
+`hawkes_live_v2_league_admission_v1` y su artefacto versionado. El runner carga
+la política por defecto, pero el router oficial, bots y pre-match no cambian.
+Evidencia requerida: selección `validation_only`, confirmación no consultada,
+fallback exacto, bootstrap por partido, replay idéntico y robustez por liga.
+Evidencia obtenida: validación admitió 17 ligas. En 1,397 partidos/6,985
+snapshots de confirmación, Hawkes selectivo mejoró objetivo `-0.000398`, IC95%
+`[-0.000650, -0.000135]`, con 84.375% de ligas no degradadas. La variante
+global quedó en 59.375%. Dos ejecuciones reprodujeron
+`c926fd712c596e4d475856cf6259db766cbb1f950a83e0d6e2da7bad47612b53` y
+PostgreSQL conservó 10,251 partidos/1,349,977 eventos sin escrituras.
+
 ```text
 DEC-NNN
 Fecha:

@@ -205,6 +205,33 @@ def test_shadow_requires_both_flags() -> None:
     assert response.status_code == 422
 
 
+def test_http_exposes_complementary_live_blocks_only_in_shadow() -> None:
+    """La API conserva v1 y añade las tres capas live experimentales."""
+
+    client = TestClient(create_app())
+    payload = live_payload(
+        period=1,
+        match_clock_seconds=600.0,
+        score_home=0,
+        score_away=0,
+        markov_live_enabled=True,
+        markov_live_shadow_mode=True,
+        hawkes_enabled=True,
+        hawkes_shadow_mode=True,
+    )
+    response = client.post("/v1/predict/live", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["official_source"] == "markov_v1"
+    assert data["experimental_hawkes"] is None
+    assert data["experimental_markov_live"]["status"] == "experimental_shadow_not_promoted"
+    assert data["experimental_hawkes_residual"]["status"] == "experimental_shadow_not_promoted"
+    assert data["experimental_combined_live"]["status"] == "experimental_shadow_not_promoted"
+    counters = client.get("/v1/metrics").json()["counters"]
+    assert counters["markov_live_enabled"] == 1
+    assert counters["combined_live_shadow_enabled"] == 1
+
+
 def test_service_config_rejects_external_or_persistent_mode() -> None:
     """Confirma que red sólo existe en modo operativo sin persistencia."""
 

@@ -1,0 +1,247 @@
+{
+  "allowed_league_count": 17,
+  "allowed_leagues": [
+    "bra.1",
+    "chi.1",
+    "col.1",
+    "eng.1",
+    "eng.2",
+    "eng.3",
+    "eng.4",
+    "eng.5",
+    "esp.1",
+    "esp.2",
+    "esp.w.1",
+    "fifa.friendly",
+    "fifa.worldq.uefa",
+    "fra.1",
+    "ger.1",
+    "uefa.champions",
+    "usa.1"
+  ],
+  "confirmation_used_for_selection": false,
+  "decisions": [
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.00026044512575740253,
+      "league_slug": "arg.1",
+      "reason": "no_validation_improvement",
+      "validation_matches": 107
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0009482192857342975,
+      "league_slug": "bra.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 106
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0011723006503019384,
+      "league_slug": "chi.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 36
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.001913121780882765,
+      "league_slug": "col.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 84
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0011943161276237735,
+      "league_slug": "conmebol.libertadores",
+      "reason": "insufficient_support",
+      "validation_matches": 4
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": -0.008154314130299656,
+      "league_slug": "conmebol.sudamericana",
+      "reason": "insufficient_support",
+      "validation_matches": 4
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0021670905988226963,
+      "league_slug": "eng.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 60
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0015778790061732328,
+      "league_slug": "eng.2",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 108
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.00024650010528581845,
+      "league_slug": "eng.3",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 79
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.00047928366427640867,
+      "league_slug": "eng.4",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 85
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -8.717983521344674e-05,
+      "league_slug": "eng.5",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 101
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": -0.0017345727089952412,
+      "league_slug": "eng.fa",
+      "reason": "insufficient_support",
+      "validation_matches": 21
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0001320874921146853,
+      "league_slug": "eng.league_cup",
+      "reason": "insufficient_support",
+      "validation_matches": 7
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0010088025624731545,
+      "league_slug": "eng.w.1",
+      "reason": "no_validation_improvement",
+      "validation_matches": 34
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.001987575470506986,
+      "league_slug": "esp.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 60
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0006432268594460666,
+      "league_slug": "esp.2",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 86
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.00023333072885611816,
+      "league_slug": "esp.w.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 54
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0001713501790265859,
+      "league_slug": "fifa.friendly",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 30
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0027770788109904854,
+      "league_slug": "fifa.friendly.w",
+      "reason": "insufficient_support",
+      "validation_matches": 8
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0009744582347656072,
+      "league_slug": "fifa.worldq.concacaf",
+      "reason": "insufficient_support",
+      "validation_matches": 22
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.00033074701146662555,
+      "league_slug": "fifa.worldq.uefa",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 94
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.00012623589046889538,
+      "league_slug": "fra.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 63
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.001304673657976485,
+      "league_slug": "ger.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 51
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0003680107056280857,
+      "league_slug": "ita.1",
+      "reason": "no_validation_improvement",
+      "validation_matches": 67
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0005181456036452703,
+      "league_slug": "mex.1",
+      "reason": "no_validation_improvement",
+      "validation_matches": 62
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0005083668112371154,
+      "league_slug": "uefa.champions",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 46
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.003543177860140967,
+      "league_slug": "uefa.europa",
+      "reason": "insufficient_support",
+      "validation_matches": 28
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": -0.009560496299386045,
+      "league_slug": "uefa.europa.conf",
+      "reason": "insufficient_support",
+      "validation_matches": 4
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0038736454322787495,
+      "league_slug": "uefa.wchampions",
+      "reason": "insufficient_support",
+      "validation_matches": 3
+    },
+    {
+      "admitted": false,
+      "goal_market_log_loss_delta": 0.0,
+      "league_slug": "uru.1",
+      "reason": "insufficient_support",
+      "validation_matches": 3
+    },
+    {
+      "admitted": true,
+      "goal_market_log_loss_delta": -0.0027720962052900644,
+      "league_slug": "usa.1",
+      "reason": "validation_improvement_with_support",
+      "validation_matches": 69
+    }
+  ],
+  "minimum_validation_matches": 30,
+  "rho_goal": 1.0,
+  "rho_next_event": 0.0,
+  "selection_split": "validation_only",
+  "version": "hawkes_live_v2_league_admission_v1"
+}

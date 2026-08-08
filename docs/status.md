@@ -1,9 +1,47 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-07
-**Fase activa:** Fase 113 auditoría integral de modelos
-**Objetivo:** operar la cadena predictiva corregida, causal y fail-closed,
-manteniendo únicamente las salidas que superaron su revalidación.
+**Actualizado:** 2026-08-08
+**Fase activa:** Fase 114 Markov Live + Hawkes residual
+**Objetivo:** integrar la validación histórica causal de Markov Live y mantener
+Hawkes como residual selectivo por objetivo, sin cambiar salidas oficiales ni
+la ruta pre-match revalidada.
+
+## Fase 114 — Markov Live y Hawkes residual
+
+Implementada y validada históricamente en `shadow`. La ruta nueva
+congela el prior pre-match, actualiza un filtro Markov con marcador, reloj y
+eventos observados, y después permite que Hawkes module los hazards sólo como
+residual acotado en escala logarítmica.
+
+- polling fresco de scoreboard/event/plays/situation, sin caché live;
+- persistencia raw-first append-only y errores aislados por fixture;
+- eventos futuros, identidad inválida y score/PBP incoherente rechazados;
+- mercados de goles restantes y próximo evento normalizados;
+- `rho=0` y ausencia de Hawkes reproducen Markov Live exactamente;
+- Hawkes subcrítico, radio espectral `0.31428571428571433`, con
+  `rho_goal=1.0` y `rho_next_event=0.0` seleccionados fuera de confirmación;
+- replay determinista sellado para Markov y la combinación;
+- API aditiva: bloques Markov, residual y combinado separados;
+- runner gradual multiliga sobre el catálogo habilitado;
+- gate histórico read-only: 9,649 partidos reconciliados de regulación;
+- 7,400 partidos elegibles/34 ligas tras warm-up causal;
+- bloques de 4,417/1,586/1,397 partidos sin kickoffs compartidos;
+- Markov delta objetivo `-0.002259`, IC95%
+  `[-0.002858, -0.001635]`, 84.375% de ligas no degradadas;
+- Hawkes global delta agregado `-0.000648`, IC95%
+  `[-0.001026, -0.000272]`, pero sólo 59.375% de ligas no degradadas;
+- proveedor ESPN corregido: fallback Site 200 y Core event/plays 200;
+- política Hawkes elegida sólo en validación: 17 ligas con al menos 30 partidos;
+- Hawkes selectivo delta objetivo `-0.000398`, IC95%
+  `[-0.000650, -0.000135]`, y 84.375% de ligas no degradadas;
+- fuera de la allowlist y para próximo evento se aplica fallback Markov exacto;
+- clocks ESPN de descuento `90'+N'` ya no quedan truncados en 90 minutos.
+
+Estado: `historically_validated_markov_and_selective_hawkes_shadow`. Markov
+Live supera el gate histórico; Hawkes global conserva su diagnóstico
+heterogéneo, pero la política selectiva supera el gate robusto sin alterar
+próximo evento. No se modificaron router oficial, modelos pre-match, bots ni
+mercados promovidos.
 
 ## Fase 113 — integridad completa de modelos
 

@@ -45,3 +45,14 @@ artifacts/phase_88_team_market_markov/*
 artifacts/phase_106_probability_repair/*
 !artifacts/phase_106_probability_repair/calibrator.json
 !artifacts/phase_106_probability_repair/hashes.json
+!artifacts/phase_114_live_markov_hawkes_v1/
+artifacts/phase_114_live_markov_hawkes_v1/*
+!artifacts/phase_114_live_markov_hawkes_v1/audit.json
+!artifacts/phase_114_live_markov_hawkes_v1/final_report.md
+!artifacts/phase_114_live_markov_hawkes_v1/hashes.json
+!artifacts/phase_114_live_markov_hawkes_v1/validation_report.json
+!artifacts/phase_114_live_markov_hawkes_v1/historical_audit.json
+!artifacts/phase_114_live_markov_hawkes_v1/historical_metrics.json
+!artifacts/phase_114_live_markov_hawkes_v1/historical_report.md
+!artifacts/phase_114_live_markov_hawkes_v1/historical_validation.json
+!artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
