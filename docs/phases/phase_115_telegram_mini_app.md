@@ -49,6 +49,14 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 8. Las salidas live preservan separación Markov/Hawkes/combinado y etiquetas
    shadow.
 
-## Estado inicial
+## Estado operativo
 
-`implementation_authorized`.
+`railway_deployed_private_smoke_ready`.
+
+- Mini App y PostgreSQL están `Online`; health remoto `ready`.
+- El acceso está habilitado únicamente para la allowlist privada.
+- El worker está `Online` con alertas desactivadas y una sola réplica.
+- El bot activo confirmó `telegram_miniapp_menu_configured`.
+- La activación de alertas exige primero smoke interactivo y dedupe real.
+- Los enlaces directos `startapp` requieren completar el short name en
+  BotFather; el botón global y el botón `web_app` no dependen de ese paso.

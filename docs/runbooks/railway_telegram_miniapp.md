@@ -13,6 +13,18 @@ Ambos servicios de aplicación usan `miniapp/Dockerfile`. La imagen corre como
 En Railway se debe asignar explícitamente el archivo de configuración de cada
 servicio porque ninguno reemplaza el `railway.toml` de la API principal.
 
+Producción creada el 2026-08-08:
+
+```text
+Postgres service: 0276da42-ffdd-48d2-bc7f-bd6ae7fd37e7
+telegram-miniapp: dbd1077b-a34e-4eaf-9385-50ec633aefa7
+telegram-alert-worker: 6d6d036b-109c-46d8-98a5-0e8b0f8bdbcb
+Mini App URL: https://telegram-miniapp-production-cbab.up.railway.app
+```
+
+El acceso Mini App está activo en modo privado. El worker está desplegado con
+alertas desactivadas hasta completar el smoke interactivo y de deduplicación.
+
 ## Variables de la Mini App
 
 ```text
