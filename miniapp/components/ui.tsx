@@ -81,3 +81,43 @@ export function ShadowBadge({ official = false }: { official?: boolean }) {
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return <div className="section-title"><h2>{children}</h2>{aside}</div>;
 }
+
+export function FeatureCard({ href, eyebrow, title, description, meta }: {
+  href: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  meta?: string;
+}) {
+  return (
+    <Link href={href} className="feature-card">
+      <p className="eyebrow">{eyebrow}</p>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      <span>{meta ?? "Abrir módulo"} →</span>
+    </Link>
+  );
+}
+
+export function SegmentedControl({ label, options, value, onChange }: {
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  value: string;
+  onChange(value: string): void;
+}) {
+  return (
+    <div className="segmented" role="group" aria-label={label}>
+      {options.map((option) => (
+        <button
+          type="button"
+          key={option.value}
+          className={value === option.value ? "active" : ""}
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}

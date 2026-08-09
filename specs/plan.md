@@ -7,9 +7,11 @@ API key fuera del navegador y aplique sesiones seguras, CSRF, autorización y
 rate limit por usuario.
 
 La UI incluye dashboard, próximos, live, detalle de predicción, modelos,
-suscripciones y ajustes. Debe ser mobile-first, usar el tema Telegram y mostrar
-Markov Live, Hawkes residual y combinado como capas separadas `shadow`. El
-refresco live es HTTP cada 25 segundos.
+suscripciones, ajustes y un Centro de datos con paridad completa del bot:
+ligas, fechas, partidos históricos, contexto, play-by-play, estadísticas por
+periodo, equipos, plantillas y perfiles de jugador. Debe ser mobile-first, usar
+el tema Telegram y mostrar Markov Live, Hawkes residual y combinado como capas
+separadas `shadow`. El refresco live es HTTP cada 25 segundos.
 
 PostgreSQL persiste usuarios, favoritos, suscripciones y entregas. Se permiten
 10 favoritos y 20 suscripciones activas por usuario, cooldown mínimo de 300 s
@@ -17,6 +19,8 @@ y dedupe por `subscription_id + event_key`. Un worker separado consulta sólo
 DIKAMAHA, envía alertas con `sendMessage` y nunca usa `getUpdates`.
 
 El bot existente añade un botón `web_app`, configura el menú global y conserva
-todos sus comandos como fallback. No se añaden llamadas ESPN, cuotas, ROI,
-Kelly, stakes ni recomendaciones. El gate exige pruebas TypeScript/Python,
-migraciones, builds Docker, revisión de secretos y smoke Railway.
+todos sus comandos como fallback. Las capacidades de consulta se reflejan en
+la Mini App mediante una allowlist cerrada de rutas BFF `/v1/explorer/*`. No se
+añaden llamadas ESPN, cuotas, ROI, Kelly, stakes ni recomendaciones. El gate
+exige pruebas TypeScript/Python, navegación E2E, conexión BFF/API, migraciones,
+builds Docker, revisión de secretos y smoke Railway.

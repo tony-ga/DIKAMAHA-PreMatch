@@ -3,7 +3,7 @@
 import { useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 
-import { FixtureCard, Metric, SectionTitle, StatePanel } from "@/components/ui";
+import { FeatureCard, FixtureCard, Metric, SectionTitle, StatePanel } from "@/components/ui";
 import { api, type Catalog } from "@/lib/client-api";
 
 type ModelsPayload = { status: string; models: unknown[] };
@@ -63,6 +63,12 @@ export default function DashboardPage() {
       ) : (
         <StatePanel title="Calendario en espera">No hay próximos partidos disponibles para los filtros activos.</StatePanel>
       )}
+
+      <SectionTitle aside={<Link className="section-link" href="/explore">Abrir centro →</Link>}>Datos del bot, ahora visuales</SectionTitle>
+      <div className="feature-grid compact-grid">
+        <FeatureCard href="/explore/matches" eyebrow="HISTÓRICO" title="Partidos y estadísticas" description="Play-by-play, contexto, 1T, 2T y total." />
+        <FeatureCard href="/explore/teams" eyebrow="PLANTILLAS" title="Equipos y jugadores" description="Búsqueda, roster y perfiles publicados." />
+      </div>
     </>
   );
 }

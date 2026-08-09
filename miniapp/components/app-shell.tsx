@@ -10,8 +10,8 @@ const navigation = [
   { href: "/", icon: "⌂", label: "Inicio" },
   { href: "/live", icon: "●", label: "En vivo" },
   { href: "/upcoming", icon: "◫", label: "Próximos" },
+  { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/subscriptions", icon: "⌁", label: "Alertas" },
-  { href: "/settings", icon: "⚙", label: "Ajustes" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -37,10 +37,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/" className="wordmark" aria-label="Ir al inicio">
           <span className="wordmark-dot" /> DIKAMAHA
         </Link>
-        <div className="user-chip">
+        <Link href="/settings" className="user-chip" aria-label="Abrir ajustes">
           <span className="status-dot" />
           {user?.firstName ?? "Usuario"}
-        </div>
+        </Link>
       </header>
       <main className="content">{children}</main>
       <nav className="bottom-nav" aria-label="Navegación principal">

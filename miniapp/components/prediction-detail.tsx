@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
+import { FixtureContext } from "@/components/fixture-context";
 import { useAuth } from "@/components/providers";
 import { api, percentage, record } from "@/lib/client-api";
 
@@ -64,6 +65,7 @@ export function PredictionDetail(props: Props) {
             <div className="probability"><span>Modelo</span><strong style={{ fontSize: ".72rem" }}>{String(payload.model ?? "—")}</strong></div>
           </div>
         </article>
+        <FixtureContext league={props.league} eventId={props.fixtureId} />
         <article className="model-card">
           <div className="model-card-header"><h3>Mercados de equipo</h3><ShadowBadge /></div>
           <div className="stack" style={{ marginTop: 14 }}>
