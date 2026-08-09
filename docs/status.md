@@ -44,12 +44,14 @@ Despliegue Railway de producción:
 - `/api/health`: `ready`, PostgreSQL conectado; sesión vacía rechazada con
   HTTP 400 y `telegram_init_data_missing`.
 
-Estado: `bot_parity_implemented_local_release_candidate` sobre
-`railway_deployed_private_smoke_ready`. `MINIAPP_ENABLED=true` sólo para la
-allowlist privada. La nueva paridad aún requiere commit y despliegue Railway;
-también falta el smoke interactivo de un usuario desde Telegram y registrar el
-short name en BotFather para enlaces `startapp`. Hasta entonces las alertas
-permanecen desactivadas. Markov, Hawkes y combinado siguen separados y shadow.
+Estado: `railway_deployed_private_bot_parity_ready`. El commit `95946d7` está
+activo en `telegram-miniapp`; `/api/health` respondió `ready` con PostgreSQL,
+`/explore` respondió HTTP 200 y `/api/readiness` sin sesión falló cerrado con
+HTTP 401. `MINIAPP_ENABLED=true` sólo para la allowlist privada. Falta el smoke
+interactivo de un usuario desde Telegram y registrar el short name en BotFather
+para enlaces `startapp`. El worker reconstruido quedó `Online` y confirmó
+`enabled: false`; las alertas permanecen desactivadas. Markov, Hawkes y
+combinado siguen separados y shadow.
 
 ## Fase 114 — Markov Live y Hawkes residual
 

@@ -55,8 +55,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 
 ## Estado operativo
 
-`bot_parity_implemented_local_release_candidate` sobre el despliegue privado
-existente.
+`railway_deployed_private_bot_parity_ready`.
 
 - Mini App y PostgreSQL están `Online`; health remoto `ready`.
 - El acceso está habilitado únicamente para la allowlist privada.
@@ -65,6 +64,9 @@ existente.
 - La activación de alertas exige primero smoke interactivo y dedupe real.
 - Los enlaces directos `startapp` requieren completar el short name en
   BotFather; el botón global y el botón `web_app` no dependen de ese paso.
-- La extensión de paridad del bot está validada localmente con 536 pruebas
-  Python, 16 Vitest, 7 Playwright, build Next y conexión real a cinco contratos
-  DIKAMAHA. Su publicación en Railway queda pendiente de commit/deploy.
+- La extensión de paridad del bot está desplegada desde `95946d7` y validada
+  con 536 pruebas Python, 16 Vitest, 7 Playwright, build Next y conexión real a
+  cinco contratos DIKAMAHA.
+- Railway confirmó deployment exitoso; health y Centro de datos responden 200,
+  la ruta autenticada falla cerrada sin sesión y el worker permanece apagado
+  lógicamente.
