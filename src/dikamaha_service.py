@@ -1110,7 +1110,8 @@ async def _call_with_timeout(request: Request, call_next: Any, config: ServiceCo
 
     try:
         multiplier = 4.0 if request.url.path in {
-            "/v1/live", "/v1/predict/live/fixture",
+            "/v1/live", "/v1/predict/live/fixture", "/v1/upcoming",
+            "/v1/explorer/teams",
         } else 1.0
         return await asyncio.wait_for(
             call_next(request),
