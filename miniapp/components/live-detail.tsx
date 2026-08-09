@@ -13,18 +13,18 @@ const ProbabilityChart = dynamic(() => import("@/components/probability-chart"),
 
 type Props = { fixtureId: string; league: string };
 
-function probabilities(markets: Record<string, unknown>) {
+function probabilities(markets: Record<string, unknown>, homeName: string, awayName: string) {
   return [
-    { name: "Local", value: Number(markets.probability_home ?? 0) },
+    { name: homeName, value: Number(markets.probability_home ?? 0) },
     { name: "Empate", value: Number(markets.probability_draw ?? 0) },
-    { name: "Visita", value: Number(markets.probability_away ?? 0) },
+    { name: awayName, value: Number(markets.probability_away ?? 0) },
   ].filter((row) => Number.isFinite(row.value));
 }
 
-function Layer({ title, value, note }: { title: string; value: unknown; note: string }) {
+function Layer({ title, value, note, homeName, awayName }: { title: string; value: unknown; note: string; homeName: string; awayName: string }) {
   const layer = record(value);
   const markets = layerMarkets(layer);
-  const values = probabilities(markets);
+  const values = probabilities(markets, homeName, awayName);
   const nextEvent = record(layer.next_event);
   const nextProbabilities = Object.entries(record(nextEvent.probabilities))
     .map(([name, probability]) => ({ name: name.replace(":", " · "), value: Number(probability) }))
@@ -80,12 +80,14 @@ export function LiveDetail({ fixtureId, league }: Props) {
   const updatedAt = typeof fixture.source_fetched_at === "string"
     ? new Date(fixture.source_fetched_at).toLocaleTimeString("es-MX")
     : "—";
+  const homeName = String(fixture.home_team_name ?? `Equipo ${String(fixture.home_team_id ?? "A")}`);
+  const awayName = String(fixture.away_team_name ?? `Equipo ${String(fixture.away_team_id ?? "B")}`);
   if (query.isError) return <StatePanel title="Predicción live no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>El snapshot fue rechazado o el partido ya no está activo.</StatePanel>;
   return (
     <>
-      <PageHeader eyebrow={`${league} · AUTO 25 S`} title={`${String(fixture.home_team_name ?? "Local")} vs ${String(fixture.away_team_name ?? "Visitante")}`} action={
+      <PageHeader eyebrow={`${league} · AUTO 25 S`} title={`${homeName} vs ${awayName}`} action={
         <div style={{ display: "flex", gap: 8 }}>
-          <FavoriteButton entityType="fixture" entityId={fixtureId} label={`${String(fixture.home_team_name ?? "Local")} vs ${String(fixture.away_team_name ?? "Visitante")}`} metadata={{ league }} />
+          <FavoriteButton entityType="fixture" entityId={fixtureId} label={`${homeName} vs ${awayName}`} metadata={{ league }} />
           <button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar predicción">↻</button>
         </div>
       } />
@@ -94,14 +96,14 @@ export function LiveDetail({ fixtureId, league }: Props) {
           <article className="data-panel">
             <p className="eyebrow">MARCADOR LIVE</p>
             <div className="score-row">
-              <div className="fixture-teams"><div><EntityImage source={String(fixture.home_team_logo || "")} label={String(fixture.home_team_name ?? "Local")} size={38} /><strong>{String(fixture.home_team_name ?? "Local")}</strong></div><div><EntityImage source={String(fixture.away_team_logo || "")} label={String(fixture.away_team_name ?? "Visitante")} size={38} /><strong>{String(fixture.away_team_name ?? "Visitante")}</strong></div></div>
+              <div className="fixture-teams"><div><EntityImage source={String(fixture.home_team_logo || "")} label={homeName} size={38} /><strong>{homeName}</strong></div><div><EntityImage source={String(fixture.away_team_logo || "")} label={awayName} size={38} /><strong>{awayName}</strong></div></div>
               <div className="score"><b>{String(fixture.score_home ?? fixture.home_score ?? 0)}</b><b>{String(fixture.score_away ?? fixture.away_score ?? 0)}</b></div>
             </div>
             <p className="muted">{clock} · {String(fixture.provider_status_detail ?? fixture.provider_status ?? "live")} · actualizado {updatedAt}</p>
           </article>
-          <Layer title="Markov Live" value={payload.experimental_markov_live} note="Baseline universal: régimen, marcador y tiempo restante." />
-          <Layer title="Hawkes residual" value={payload.experimental_hawkes_residual} note="Memoria corta complementaria; nunca sustituye a Markov." />
-          <Layer title="Resultado combinado" value={payload.experimental_combined_live} note="Markov más residual Hawkes acotado en escala logarítmica." />
+          <Layer title="Markov Live" value={payload.experimental_markov_live} note="Baseline universal: régimen, marcador y tiempo restante." homeName={homeName} awayName={awayName} />
+          <Layer title="Hawkes residual" value={payload.experimental_hawkes_residual} note="Memoria corta complementaria; nunca sustituye a Markov." homeName={homeName} awayName={awayName} />
+          <Layer title="Resultado combinado" value={payload.experimental_combined_live} note="Markov más residual Hawkes acotado en escala logarítmica." homeName={homeName} awayName={awayName} />
           <div className="notice">Hawkes {admission.admitted ? "está admitido para esta liga" : "usa fallback Markov exacto en esta liga"}. Toda la vista permanece experimental shadow.</div>
         </div>
       )}

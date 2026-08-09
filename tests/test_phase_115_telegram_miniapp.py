@@ -156,5 +156,21 @@ def test_catalog_recovery_and_media_proxy_are_present() -> None:
     assert "X-Dikamaha-Key" in media
 
 
+def test_prediction_detail_preserves_fixture_identity_and_adds_analytics() -> None:
+    """La vista predictiva usa nombres reales y recursos visuales sin tocar modelos."""
+
+    card = (ROOT / "miniapp" / "components" / "ui.tsx").read_text(encoding="utf-8")
+    detail = (ROOT / "miniapp" / "components" / "prediction-detail.tsx").read_text(encoding="utf-8")
+    analytics = (ROOT / "miniapp" / "components" / "prediction-analytics.tsx").read_text(encoding="utf-8")
+    assert "homeName=" in card and "awayName=" in card
+    assert '"prediction-identity"' in detail
+    assert "catalogFixture?.home_team_name" in detail
+    assert "catalogFixture?.away_team_name" in detail
+    assert "Local" not in detail and "Visitante" not in detail
+    assert "PredictionAnalytics" in detail and "ProbabilityChart" in detail
+    assert "Comparativa matemática del partido" in analytics
+    assert "derivada de entropía, no confianza calibrada" in analytics
+
+
 # Version: 1.0.0
 # Created: 2026-08-08

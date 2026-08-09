@@ -61,7 +61,7 @@ export function HistoricalMatchDetail(props: Props) {
   if (!enabled) return <StatePanel title="Identidad incompleta">Regresa al Centro de partidos y selecciona el fixture nuevamente.</StatePanel>;
   return (
     <>
-      <PageHeader eyebrow={`${props.league} · DATOS DEL PARTIDO`} title={`${props.home || String(homeTeam.name ?? "Local")} vs ${props.away || String(awayTeam.name ?? "Visitante")}`} />
+      <PageHeader eyebrow={`${props.league} · DATOS DEL PARTIDO`} title={`${props.home || String(homeTeam.name ?? "Equipo A")} vs ${props.away || String(awayTeam.name ?? "Equipo B")}`} />
       <div className="stack">
         <FixtureContext league={props.league} eventId={props.fixtureId} />
         <article className="data-panel">
@@ -78,7 +78,7 @@ export function HistoricalMatchDetail(props: Props) {
           {statistics.isError ? <StatePanel title="Estadísticas no disponibles">DIKAMAHA rechazó o no recibió datos reconciliables.</StatePanel> : statistics.isLoading ? <p className="muted">Cargando estadísticas…</p> : (
             <>
               <div className="stats-table" role="table" aria-label={`Estadísticas ${period}`}>
-                <div className="stats-row header" role="row"><span>Métrica</span><strong><EntityImage source={String(homeTeam.logo || "")} label={String(homeTeam.name ?? "Local")} size={28} />{String(homeTeam.abbreviation ?? homeTeam.name ?? "LOC")}</strong><strong><EntityImage source={String(awayTeam.logo || "")} label={String(awayTeam.name ?? "Visitante")} size={28} />{String(awayTeam.abbreviation ?? awayTeam.name ?? "VIS")}</strong></div>
+                <div className="stats-row header" role="row"><span>Métrica</span><strong><EntityImage source={String(homeTeam.logo || "")} label={String(homeTeam.name ?? "Equipo A")} size={28} />{String(homeTeam.abbreviation ?? homeTeam.name ?? "EQ A")}</strong><strong><EntityImage source={String(awayTeam.logo || "")} label={String(awayTeam.name ?? "Equipo B")} size={28} />{String(awayTeam.abbreviation ?? awayTeam.name ?? "EQ B")}</strong></div>
                 {statisticKeys.map((key) => <StatRow key={key} label={metricLabels[key]} home={homeStats[key]} away={awayStats[key]} />)}
               </div>
               <div className="notice">1T + 2T: {statsPayload.reconciled ? "reconciliado" : "no confirmado"} · marcador: {statsPayload.score_reconciled ? "reconciliado" : "no confirmado"}.</div>
@@ -95,7 +95,9 @@ function StatRow({ label, home, away }: { label: string; home: unknown; away: un
   const left = Math.max(0, Number(home) || 0);
   const right = Math.max(0, Number(away) || 0);
   const total = left + right;
-  return <div className="stats-row visual-stat" role="row"><span>{label}<i><b style={{ width: `${total ? left / total * 100 : 50}%` }} /></i></span><strong>{String(home ?? 0)}</strong><strong>{String(away ?? 0)}</strong></div>;
+  const leftWidth = total ? left / total * 100 : 0;
+  const rightWidth = total ? right / total * 100 : 0;
+  return <div className="stats-row visual-stat" role="row"><span>{label}<span className="dual-stat-bars"><i><b className="home" style={{ width: `${leftWidth}%` }} /></i><i><b className="away" style={{ width: `${rightWidth}%` }} /></i></span></span><strong>{String(home ?? 0)}</strong><strong>{String(away ?? 0)}</strong></div>;
 }
 
 function Boxscore({ value }: { value: unknown }) {

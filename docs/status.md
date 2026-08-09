@@ -33,7 +33,13 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - logos de equipo y retratos de jugador PNG transparentes mediante proxy
   DIKAMAHA/BFF autenticado, con fallback visual cuando no existen;
 - Cambridge United–Barnet conserva 1T, 2T y partido completo;
-- 542 pruebas Python aprobadas/8 omitidas, 16 Vitest y 7 Playwright; build Next
+- el detalle pre-match conserva los nombres reales del catálogo aunque el
+  payload predictivo sólo contenga IDs; títulos, 1X2 y mercados por periodo ya
+  no presentan etiquetas genéricas de equipo;
+- el área predictiva incorpora gráfica 1X2, indicadores de concentración y
+  separación, comparación de goles esperados e intensidades, tabla matemática
+  y barras por equipo con pistas y colores distinguibles;
+- 543 pruebas Python aprobadas/8 omitidas, 16 Vitest y 8 Playwright; build Next
   aprobado y conexión real validada para readiness, modelos, ligas, fechas y
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.

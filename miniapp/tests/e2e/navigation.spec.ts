@@ -76,6 +76,10 @@ test("renders first half, second half and full-match pre-match markets", async (
       probability_away: 0.3,
       probability_over_2_5: 0.55,
       probability_btts: 0.52,
+      expected_home_goals: 1.42,
+      expected_away_goals: 1.08,
+      lambda_home: 1.42,
+      lambda_away: 1.08,
       experimental_team_markets: {
         user_market_view: [
           { period: "first_half", team_side: "home", metric: "shots", line: 5.5, probability: 0.61 },
@@ -90,6 +94,62 @@ test("renders first half, second half and full-match pre-match markets", async (
   await expect(page.getByText("Primer tiempo")).toBeVisible();
   await expect(page.getByText("Segundo tiempo")).toBeVisible();
   await expect(page.getByText("Partido completo")).toBeVisible();
+  await expect(page.getByText("Goles esperados por equipo")).toBeVisible();
+  await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
+});
+
+test("recovers Cruzeiro and Mirassol names when prediction payload only has ids", async ({ page }) => {
+  await page.route("**/api/upcoming?*", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "ok",
+      count: 1,
+      fixtures: [{
+        match_id: 401991001,
+        league_slug: "bra.1",
+        home_team_id: 2022,
+        away_team_id: 9169,
+        home_team_name: "Cruzeiro",
+        away_team_name: "Mirassol",
+        kickoff_ts: "2030-08-12T22:00:00Z",
+      }],
+    }),
+  }));
+  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      match_id: 401991001,
+      home_team_id: 2022,
+      away_team_id: 9169,
+      probability_home: 0.47,
+      probability_draw: 0.29,
+      probability_away: 0.24,
+      probability_over_2_5: 0.54,
+      probability_btts: 0.49,
+      expected_home_goals: 1.51,
+      expected_away_goals: 0.94,
+      lambda_home: 1.51,
+      lambda_away: 0.94,
+      model: "selective_dc_kalman_official",
+      experimental_team_markets: {
+        user_market_view: [
+          { period: "full_match", team_side: "home", metric: "shots", line: 10.5, probability: 0.64 },
+          { period: "full_match", team_side: "away", metric: "corners", line: 3.5, probability: 0.57 },
+        ],
+      },
+    }),
+  }));
+
+  await page.goto("/predictions/401991001?league=bra.1&home=2022&away=9169&kickoff=2030-08-12T22%3A00%3A00Z");
+
+  await expect(page.getByRole("heading", { name: "Cruzeiro vs Mirassol" })).toBeVisible();
+  await expect(page.getByLabel("Gráfica comparativa de probabilidades")).toBeVisible();
+  await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
+  await expect(page.getByText("Cruzeiro · Tiros · más de 10.5")).toBeVisible();
+  await expect(page.getByText("Mirassol · Córners · más de 3.5")).toBeVisible();
+  await expect(page.getByText(/Local 2022|Visitante 9169/)).toHaveCount(0);
 });
 
 test("renders the real live score, source timestamp and next event", async ({ page }) => {

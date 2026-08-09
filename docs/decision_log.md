@@ -1918,7 +1918,13 @@ Evidencia obtenida: 542 pruebas Python, 16 Vitest, 7 Playwright, builds Next y
 Docker aprobados. Smoke Railway autenticado confirmó 18 ligas en próximos,
 Barnet global, live sin fallos parciales, PNG transparente y predicción con
 1T, 2T y total. La cuenta de GitHub Actions no inició jobs por facturación;
-no se observó un fallo de código.
+no se observó un fallo de código. La extensión visual conserva ahora nombres
+de equipo desde el catálogo hasta títulos, 1X2 y mercados, y recupera la
+identidad para enlaces anteriores aun cuando inferencia sólo devuelve IDs.
+Gráfica 1X2, comparación xG/lambda, tabla e indicadores derivados son sólo
+presentación: no recalculan ni sustituyen probabilidades. Regresión
+Cruzeiro–Mirassol, 543 Python, 16 Vitest, 8 Playwright, typecheck y build Next
+aprobados.
 
 ```text
 DEC-NNN
