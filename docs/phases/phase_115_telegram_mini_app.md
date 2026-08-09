@@ -74,6 +74,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - Railway confirmó deployment exitoso; health y Centro de datos responden 200,
   la ruta autenticada falla cerrada sin sesión y el worker permanece apagado
   lógicamente.
-- La corrección DEC-150 está validada localmente con datos reales: rango de
-  scoreboard, América sin acento, Barnet multicompetición y PNG RGBA. El nuevo
-  despliegue Railway queda pendiente del commit de esta revisión.
+- La corrección DEC-150 está desplegada. El smoke real autenticado confirmó
+  sesión 200, próximos 200 con 18 ligas y logos, Barnet en búsqueda global,
+  live sobre 18 ligas sin fallos parciales, PNG transparente 200 y una
+  predicción 200 con 1T, 2T, total y probabilidades oficiales.
