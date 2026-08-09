@@ -36,7 +36,7 @@ export function Metric({ label, value, accent = false }: {
 export function FixtureCard({ fixture, live = false }: { fixture: Fixture; live?: boolean }) {
   const href = live
     ? `/live/${fixture.match_id}?league=${encodeURIComponent(fixture.league_slug)}`
-    : `/predictions/${fixture.match_id}?league=${encodeURIComponent(fixture.league_slug)}&home=${fixture.home_team_id}&away=${fixture.away_team_id}&kickoff=${encodeURIComponent(fixture.kickoff_ts)}`;
+    : `/predictions/${fixture.match_id}?league=${encodeURIComponent(fixture.league_slug)}&home=${fixture.home_team_id}&away=${fixture.away_team_id}&homeName=${encodeURIComponent(fixture.home_team_name ?? "")}&awayName=${encodeURIComponent(fixture.away_team_name ?? "")}&kickoff=${encodeURIComponent(fixture.kickoff_ts)}`;
   const kickoff = new Date(fixture.kickoff_ts);
   return (
     <Link href={href} className="fixture-card">
@@ -46,8 +46,8 @@ export function FixtureCard({ fixture, live = false }: { fixture: Fixture; live?
       </div>
       <div className="score-row">
         <div className="fixture-teams">
-          <div><EntityImage source={fixture.home_team_logo} label={fixture.home_team_name ?? "Local"} size={34} /><strong>{fixture.home_team_name ?? `Local ${fixture.home_team_id}`}</strong></div>
-          <div><EntityImage source={fixture.away_team_logo} label={fixture.away_team_name ?? "Visitante"} size={34} /><strong>{fixture.away_team_name ?? `Visitante ${fixture.away_team_id}`}</strong></div>
+          <div><EntityImage source={fixture.home_team_logo} label={fixture.home_team_name ?? `Equipo ${fixture.home_team_id}`} size={34} /><strong>{fixture.home_team_name ?? `Equipo ${fixture.home_team_id}`}</strong></div>
+          <div><EntityImage source={fixture.away_team_logo} label={fixture.away_team_name ?? `Equipo ${fixture.away_team_id}`} size={34} /><strong>{fixture.away_team_name ?? `Equipo ${fixture.away_team_id}`}</strong></div>
         </div>
         {live ? (
           <div className="score">

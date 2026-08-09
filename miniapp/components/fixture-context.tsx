@@ -49,7 +49,7 @@ export function FixtureContext({ league, eventId, compact = false }: {
   return (
     <article className="data-panel context-panel">
       <p className="eyebrow">CONTEXTO INFORMATIVO · NO MODELO</p>
-      <div className="context-match"><div><EntityImage source={String(home.logo || "")} label={String(home.name ?? "Local")} size={42} /><strong>{String(home.name ?? "Local")}</strong></div><span>VS</span><div><EntityImage source={String(away.logo || "")} label={String(away.name ?? "Visitante")} size={42} /><strong>{String(away.name ?? "Visitante")}</strong></div></div>
+      <div className="context-match"><div><EntityImage source={String(home.logo || "")} label={String(home.name ?? "Equipo A")} size={42} /><strong>{String(home.name ?? "Equipo A")}</strong></div><span>VS</span><div><EntityImage source={String(away.logo || "")} label={String(away.name ?? "Equipo B")} size={42} /><strong>{String(away.name ?? "Equipo B")}</strong></div></div>
       <div className={compact ? "context-grid compact" : "context-grid"}>
         <div><span>Competición</span><strong>{String(competition.name ?? "No publicada")}</strong></div>
         <div><span>Fase</span><strong>{String(competition.phase ?? "No publicada")}</strong></div>
@@ -60,10 +60,10 @@ export function FixtureContext({ league, eventId, compact = false }: {
       </div>
       {!compact ? (
         <div className="stack context-teams">
-          <div className="subscription-row"><span>{String(home.name ?? "Local")} · tabla</span><strong>{homeStanding.rank ? `#${String(homeStanding.rank)} · ${String(homeStanding.points ?? "–")} pts` : "No publicada"}</strong></div>
-          <div className="subscription-row"><span>{String(away.name ?? "Visitante")} · tabla</span><strong>{awayStanding.rank ? `#${String(awayStanding.rank)} · ${String(awayStanding.points ?? "–")} pts` : "No publicada"}</strong></div>
-          <div className="subscription-row"><span>{String(home.name ?? "Local")} · disponibilidad</span><strong>{availability(availabilityRows.home)}</strong></div>
-          <div className="subscription-row"><span>{String(away.name ?? "Visitante")} · disponibilidad</span><strong>{availability(availabilityRows.away)}</strong></div>
+          <div className="subscription-row"><span>{String(home.name ?? "Equipo A")} · tabla</span><strong>{homeStanding.rank ? `#${String(homeStanding.rank)} · ${String(homeStanding.points ?? "–")} pts` : "No publicada"}</strong></div>
+          <div className="subscription-row"><span>{String(away.name ?? "Equipo B")} · tabla</span><strong>{awayStanding.rank ? `#${String(awayStanding.rank)} · ${String(awayStanding.points ?? "–")} pts` : "No publicada"}</strong></div>
+          <div className="subscription-row"><span>{String(home.name ?? "Equipo A")} · disponibilidad</span><strong>{availability(availabilityRows.home)}</strong></div>
+          <div className="subscription-row"><span>{String(away.name ?? "Equipo B")} · disponibilidad</span><strong>{availability(availabilityRows.away)}</strong></div>
         </div>
       ) : null}
     </article>

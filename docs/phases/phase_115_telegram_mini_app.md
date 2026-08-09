@@ -25,6 +25,12 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   play-by-play, estadísticas 1T/2T/total, equipos, plantillas y perfiles;
 - Predicciones como destino principal, próximos multiliga en ventana de 14
   días, búsqueda global de equipos tolerante a acentos y filtros live;
+- identidad de equipos preservada desde el catálogo hasta el detalle, con
+  recuperación BFF para enlaces anteriores cuyo payload predictivo sólo trae
+  IDs;
+- detalle pre-match con gráfica 1X2, indicadores derivados explícitamente no
+  calibrados, barras xG/mercados diferenciadas y tabla comparativa de
+  probabilidad, goles esperados e intensidad;
 - logos y retratos sólo cuando el proveedor publica PNG transparente,
   transportados por API/BFF y nunca usados como features;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
@@ -78,3 +84,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   sesión 200, próximos 200 con 18 ligas y logos, Barnet en búsqueda global,
   live sobre 18 ligas sin fallos parciales, PNG transparente 200 y una
   predicción 200 con 1T, 2T, total y probabilidades oficiales.
+- La regresión local de identidad Cruzeiro–Mirassol y los recursos
+  estadísticos pasaron 543 pruebas Python, 16 Vitest, 8 Playwright, typecheck y
+  build Next. Este cambio es exclusivamente de presentación y no altera
+  modelos, probabilidades ni promoción.
