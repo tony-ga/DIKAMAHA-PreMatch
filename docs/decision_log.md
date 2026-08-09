@@ -1924,7 +1924,8 @@ identidad para enlaces anteriores aun cuando inferencia sólo devuelve IDs.
 Gráfica 1X2, comparación xG/lambda, tabla e indicadores derivados son sólo
 presentación: no recalculan ni sustituyen probabilidades. Regresión
 Cruzeiro–Mirassol, 543 Python, 16 Vitest, 8 Playwright, typecheck y build Next
-aprobados.
+aprobados. El commit `8aa3aca` fue integrado por PR #13; Railway confirmó
+`SUCCESS` y los smoke posteriores sobre Mini App y API respondieron HTTP 200.
 
 ```text
 DEC-NNN

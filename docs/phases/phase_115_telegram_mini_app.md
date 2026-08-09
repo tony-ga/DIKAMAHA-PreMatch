@@ -84,7 +84,10 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   sesión 200, próximos 200 con 18 ligas y logos, Barnet en búsqueda global,
   live sobre 18 ligas sin fallos parciales, PNG transparente 200 y una
   predicción 200 con 1T, 2T, total y probabilidades oficiales.
-- La regresión local de identidad Cruzeiro–Mirassol y los recursos
+- La regresión de identidad Cruzeiro–Mirassol y los recursos
   estadísticos pasaron 543 pruebas Python, 16 Vitest, 8 Playwright, typecheck y
   build Next. Este cambio es exclusivamente de presentación y no altera
   modelos, probabilidades ni promoción.
+- El commit `8aa3aca` fue integrado mediante PR #13 y desplegado por Railway.
+  Mini App, bot y worker reportaron `SUCCESS`; `/api/health`, `/predictions` y
+  `/v1/health` respondieron HTTP 200 después del merge `525aab2`.
