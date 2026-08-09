@@ -28,6 +28,10 @@ function startPath(startParam?: string): string | null {
   if (!startParam) return null;
   if (startParam === "live") return "/live";
   if (startParam === "models") return "/models";
+  if (startParam === "explore") return "/explore";
+  if (startParam === "matches") return "/explore/matches";
+  if (startParam === "players") return "/explore/teams";
+  if (startParam === "status") return "/status";
   const live = /^fixture_(\d+)_([A-Za-z0-9_-]+)$/.exec(startParam);
   const prediction = /^prediction_(\d+)_([A-Za-z0-9_-]+)_(\d+)_(\d+)_(\d+)$/.exec(startParam);
   const match = live ?? prediction;

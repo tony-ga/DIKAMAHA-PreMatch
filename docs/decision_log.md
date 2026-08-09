@@ -1863,6 +1863,33 @@ sesión vacía rechazada y `setChatMenuButton` confirmado. La Mini App opera par
 la allowlist privada y el worker permanece apagado lógicamente. Quedan el smoke
 interactivo, el short name BotFather y la activación posterior de alertas.
 
+DEC-149
+Fecha: 2026-08-08
+Problema: Fase 115 cubre predicción, live, modelos y suscripciones, pero el bot
+conserva capacidades de exploración que aún no tienen equivalente visual:
+calendario histórico, contexto, play-by-play, estadísticas por periodo,
+equipos, búsqueda, plantillas y perfiles de jugador.
+Opciones: mantener esas funciones sólo en callbacks; duplicar el conector ESPN
+en Next.js; o publicar paridad visual mediante el BFF y los endpoints
+`/v1/explorer/*` ya gobernados por DIKAMAHA.
+Decisión: ampliar Fase 115 con un Centro de datos que cubra todas las funciones
+del bot. El BFF usará una allowlist cerrada de rutas explorer, conservará la
+sesión Telegram y nunca construirá URLs ESPN. Contexto, estadísticas y perfiles
+son presentación; no modifican predicción, modelos ni promoción.
+Motivo: completar la transición a dashboard sin crear una segunda fuente de
+verdad ni perder el fallback nativo del bot.
+Estado: congelada; implementación local validada, publicación pendiente
+Impacto en contratos/fases: extensión de presentación de Fases 98, 100 y 115.
+No cambia Fases 113/114, router, snapshots, probabilidades ni clasificación
+official/shadow.
+Evidencia requerida: matriz de paridad completa, rutas BFF autenticadas,
+pruebas de navegación, contratos de payload y conexión real con API DIKAMAHA.
+Evidencia obtenida: matriz documentada y Centro de datos implementado; allowlist
+de nueve capacidades explorer con rechazo de rutas arbitrarias; transporte BFF
+autenticado probado con credencial sólo servidor; conexión real aprobada para
+readiness, modelos, ligas, fechas y próximos; 536 pruebas Python, 16 Vitest,
+7 Playwright y build Next aprobados. La salida de modelos permanece intacta.
+
 ```text
 DEC-NNN
 Fecha:

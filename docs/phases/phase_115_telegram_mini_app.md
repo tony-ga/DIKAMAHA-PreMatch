@@ -21,6 +21,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 
 - dashboard, próximos, live, detalle pre-match, modelos, suscripciones y
   ajustes;
+- Centro de datos con ligas, fechas, partidos históricos, contexto,
+  play-by-play, estadísticas 1T/2T/total, equipos, plantillas y perfiles;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
 - tema Telegram claro/oscuro, safe areas y navegación inferior persistente.
@@ -48,10 +50,13 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 7. Pruebas TypeScript/Python, builds Docker y smoke Railway aprobados.
 8. Las salidas live preservan separación Markov/Hawkes/combinado y etiquetas
    shadow.
+9. La matriz bot/Mini App tiene paridad completa y toda consulta explorer pasa
+   por una allowlist BFF autenticada.
 
 ## Estado operativo
 
-`railway_deployed_private_smoke_ready`.
+`bot_parity_implemented_local_release_candidate` sobre el despliegue privado
+existente.
 
 - Mini App y PostgreSQL están `Online`; health remoto `ready`.
 - El acceso está habilitado únicamente para la allowlist privada.
@@ -60,3 +65,6 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - La activación de alertas exige primero smoke interactivo y dedupe real.
 - Los enlaces directos `startapp` requieren completar el short name en
   BotFather; el botón global y el botón `web_app` no dependen de ese paso.
+- La extensión de paridad del bot está validada localmente con 536 pruebas
+  Python, 16 Vitest, 7 Playwright, build Next y conexión real a cinco contratos
+  DIKAMAHA. Su publicación en Railway queda pendiente de commit/deploy.

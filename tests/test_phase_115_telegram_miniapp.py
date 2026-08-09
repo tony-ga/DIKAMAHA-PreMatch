@@ -123,5 +123,26 @@ def test_browser_sources_do_not_read_server_secrets_or_espn() -> None:
     assert "initDataUnsafe" not in source
 
 
+def test_miniapp_covers_every_bot_explorer_capability() -> None:
+    """La paridad visual conserva una única puerta BFF hacia DIKAMAHA."""
+
+    explorer = (ROOT / "miniapp" / "lib" / "explorer.ts").read_text(
+        encoding="utf-8",
+    )
+    routes = {
+        "leagues", "dates", "fixtures", "fixture/context", "match/plays",
+        "match/statistics", "teams", "team/roster", "player",
+    }
+    assert all(f'["{route}",' in explorer for route in routes)
+    pages = {
+        "app/explore/page.tsx", "app/explore/matches/page.tsx",
+        "app/explore/teams/page.tsx", "app/status/page.tsx",
+        "app/help/page.tsx",
+    }
+    assert all((ROOT / "miniapp" / page).is_file() for page in pages)
+    assert "site.api.espn.com" not in explorer
+    assert "sports.core.api.espn.com" not in explorer
+
+
 # Version: 1.0.0
 # Created: 2026-08-08

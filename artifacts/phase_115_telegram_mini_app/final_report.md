@@ -13,15 +13,22 @@
   `startapp` a fixtures.
 - Markov Live, residual Hawkes y combinado separados y rotulados shadow; no se
   alteraron modelos, probabilidades, snapshots ni router oficial.
+- Centro de datos con paridad completa para ayuda/estado, ligas, fechas,
+  partidos históricos, contexto, play-by-play, estadísticas por periodo,
+  equipos, plantillas y perfiles de jugador.
+- BFF explorer con allowlist cerrada; el navegador no puede elegir rutas
+  upstream ni recibir la clave DIKAMAHA.
 
 ## Evidencia local
 
 - `npm audit`: 0 vulnerabilidades.
 - TypeScript: aprobado.
-- Vitest: 12 aprobadas.
-- Playwright móvil: 4 aprobadas.
-- Python integral: 535 aprobadas y 8 integraciones opcionales omitidas.
+- Vitest: 16 aprobadas.
+- Playwright móvil: 7 aprobadas.
+- Python integral: 536 aprobadas y 8 integraciones opcionales omitidas.
 - build Next.js producción: aprobado.
+- conexión real: readiness, modelos, ligas, fechas y próximos respondieron con
+  contrato válido; prueba BFF autenticada confirmó el header sólo servidor.
 - build Docker: 258,170,601 bytes, aprobado como usuario `node`.
 - smoke de contenedor: HTTP 200, sin advertencias de arranque.
 - PostgreSQL 17: migración idempotente, límites 10/20 y dedupe aprobados.
@@ -39,6 +46,8 @@
 - una colisión `getUpdates` apareció durante el rolling deploy del bot y no se
   repitió después de retirar el contenedor anterior.
 
-Estado: `railway_deployed_private_smoke_ready`. Quedan el smoke interactivo de
-un usuario permitido, el short name de BotFather para enlaces `startapp` y la
-prueba real de una suscripción antes de habilitar alertas.
+Estado base: `railway_deployed_private_smoke_ready`. La extensión de paridad es
+`bot_parity_implemented_local_release_candidate` y todavía no está publicada.
+Quedan su commit/deploy, el smoke interactivo de un usuario permitido, el short
+name de BotFather para enlaces `startapp` y la prueba real de una suscripción
+antes de habilitar alertas.

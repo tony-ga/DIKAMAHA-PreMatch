@@ -1,0 +1,51 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+let server: Server;
+let baseUrl = "";
+const requests: Array<{ path: string; key: string | undefined }> = [];
+
+beforeAll(async () => {
+  server = createServer((request, response) => {
+    requests.push({ path: request.url ?? "", key: request.headers["x-dikamaha-key"] as string | undefined });
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ leagues: [{ slug: "mex.1", name: "Liga MX" }], count: 1 }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  baseUrl = `http://127.0.0.1:${address.port}`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+});
+
+describe("authenticated BFF to DIKAMAHA connection", () => {
+  it("forwards an allowlisted explorer request with server-only credentials", async () => {
+    vi.resetModules();
+    Object.assign(process.env, {
+      NODE_ENV: "test",
+      TELEGRAM_BOT_TOKEN: "123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+      TELEGRAM_ACCESS_MODE: "private",
+      TELEGRAM_ALLOWED_USER_IDS: "42",
+      DIKAMAHA_BOT_API_URL: baseUrl,
+      DIKAMAHA_API_KEY: "server-only-test-key",
+      DATABASE_URL: "postgres://test:test@example.test:5432/test",
+      MINIAPP_SESSION_SECRET: "0123456789abcdef0123456789abcdef",
+      MINIAPP_ENABLED: "true",
+      MINIAPP_ALERTS_ENABLED: "false",
+    });
+    let token = "";
+    vi.doMock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: token }) }) }));
+    const { issueSession } = await import("@/lib/auth/session");
+    token = issueSession({ userId: 42, firstName: "Marco" }).token;
+    const { NextRequest } = await import("next/server");
+    const { proxyGet } = await import("@/lib/proxy");
+    const response = await proxyGet(new NextRequest("http://mini.local/api/explorer/leagues"), "/v1/explorer/leagues");
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ count: 1 });
+    expect(requests.at(-1)).toEqual({ path: "/v1/explorer/leagues", key: "server-only-test-key" });
+  });
+});

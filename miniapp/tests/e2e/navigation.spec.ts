@@ -20,6 +20,22 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/upcoming**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyCatalog) }));
   await page.route("**/api/models", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", models: [] }) }));
   await page.route("**/api/favorites**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ favorites: [] }) }));
+  await page.route("**/api/readiness", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ready: true, contract_version: "phase_6_1", service_version: "1.6.0" }) }));
+  await page.route("**/api/explorer/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const payloads: Record<string, unknown> = {
+      "/api/explorer/leagues": { leagues: [{ slug: "mex.1", name: "Liga MX" }], count: 1 },
+      "/api/explorer/dates": { dates: [{ date: "20260808", label: "08/08" }], count: 1 },
+      "/api/explorer/fixtures": { fixtures: [{ match_id: 7001, competition_id: "7001", league_slug: "mex.1", home_team_id: 10, away_team_id: 20, home_team_name: "Cruz Azul", away_team_name: "Pumas", kickoff_ts: "2026-08-08T20:00:00Z", home_score: 2, away_score: 1, status_detail: "Final" }], count: 1 },
+      "/api/explorer/fixture/context": { status: "available", fixture: { kickoff_ts: "2026-08-08T20:00:00Z" }, competition: { name: "Liga MX", phase: "Apertura" }, venue: { name: "Estadio Central", city: "CDMX" }, teams: { home: { name: "Cruz Azul" }, away: { name: "Pumas" } }, officials: [{ name: "Árbitro Uno" }], broadcasts: [{ name: "ESPN" }], team_context: {}, availability: {} },
+      "/api/explorer/match/plays": { plays: [{ id: "p1", type: "goal", label: "Gol", clock: "42'", period: 1, text: "Gol de Cruz Azul" }], count: 1, raw_count: 1 },
+      "/api/explorer/match/statistics": { teams: { home: { name: "Cruz Azul", abbreviation: "CAZ" }, away: { name: "Pumas", abbreviation: "PUM" } }, periods: { home: { first_half: { goals: 1 }, second_half: { goals: 1 }, total: { goals: 2, shots: 9 } }, away: { first_half: { goals: 0 }, second_half: { goals: 1 }, total: { goals: 1, shots: 7 } } }, boxscore: [], reconciled: true, score_reconciled: true },
+      "/api/explorer/teams": { teams: [{ id: "10", name: "Cruz Azul", abbreviation: "CAZ" }], count: 1 },
+      "/api/explorer/team/roster": { team: { id: "10", name: "Cruz Azul" }, players: [{ id: "99", name: "Jugador Azul", jersey: "9", position: "Delantero", age: 24 }] },
+      "/api/explorer/player": { id: "99", name: "Jugador Azul", position: "Delantero", age: 24, height: "1.80 m", weight: "75 kg", citizenship: "México", active: true, team: { name: "Cruz Azul" }, statistics: [{ name: "appearances", value: "12" }, { name: "totalGoals", value: "7" }] },
+    };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payloads[path] ?? {}) });
+  });
 });
 
 test("keeps primary navigation available without returning home", async ({ page }) => {
@@ -102,4 +118,35 @@ test("renders the real live score, source timestamp and next event", async ({ pa
   await expect(page.getByText(/PRÓXIMO EVENTO/)).toBeVisible();
   await expect(page.getByText(/32:00/)).toBeVisible();
   await expect(page.getByText(/actualizado/)).toBeVisible();
+});
+
+test("navigates the complete historical match flow", async ({ page }) => {
+  await page.goto("/explore");
+  await page.getByRole("link", { name: /Partidos históricos/ }).click();
+  await page.getByLabel("Liga").selectOption("mex.1");
+  await page.getByLabel("Fecha").selectOption("20260808");
+  await page.getByRole("link", { name: /Cruz Azul/ }).click();
+  await expect(page.getByText("Estadio Central")).toBeVisible();
+  await expect(page.getByText("Gol de Cruz Azul")).toBeVisible();
+  await expect(page.getByRole("table", { name: "Estadísticas total" })).toBeVisible();
+  await page.getByRole("button", { name: "1T" }).click();
+  await expect(page.getByRole("table", { name: "Estadísticas first_half" })).toBeVisible();
+});
+
+test("navigates league, team, roster and player profile", async ({ page }) => {
+  await page.goto("/explore/teams");
+  await page.getByLabel("Liga").selectOption("mex.1");
+  await page.getByLabel("Buscar equipo").fill("Cruz");
+  await page.getByRole("link", { name: /Cruz Azul/ }).click();
+  await expect(page.getByRole("heading", { name: "Cruz Azul" })).toBeVisible();
+  await page.getByRole("link", { name: /Jugador Azul/ }).click();
+  await expect(page.getByRole("heading", { name: "Jugador Azul" })).toBeVisible();
+  await expect(page.getByText("7", { exact: true })).toBeVisible();
+});
+
+test("shows BFF to DIKAMAHA connection status", async ({ page }) => {
+  await page.goto("/status");
+  await expect(page.getByRole("heading", { name: "Estado del sistema" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Conectada" })).toBeVisible();
+  await expect(page.getByText(/navegador → BFF → API DIKAMAHA/)).toBeVisible();
 });

@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
+    "check:connection": "tsx scripts/check-dikamaha-connection.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "worker": "tsx worker/alerts.ts"
   },

@@ -1,10 +1,18 @@
 import { z } from "zod";
 
+function safeApiUrl(value: string): boolean {
+  const url = new URL(value);
+  if (url.protocol === "https:") return true;
+  return process.env.NODE_ENV !== "production"
+    && url.protocol === "http:"
+    && ["127.0.0.1", "localhost", "::1"].includes(url.hostname);
+}
+
 const schema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(20),
   TELEGRAM_ACCESS_MODE: z.enum(["private", "public"]).default("private"),
   TELEGRAM_ALLOWED_USER_IDS: z.string().default(""),
-  DIKAMAHA_BOT_API_URL: z.string().url().refine((value) => value.startsWith("https://")),
+  DIKAMAHA_BOT_API_URL: z.string().url().refine(safeApiUrl, "dikamaha_api_url_https_required"),
   DIKAMAHA_API_KEY: z.string().min(16),
   DATABASE_URL: z.string().min(1),
   MINIAPP_SESSION_SECRET: z.string().min(32),
