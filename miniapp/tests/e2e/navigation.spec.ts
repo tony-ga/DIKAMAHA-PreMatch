@@ -48,6 +48,50 @@ test("keeps primary navigation available without returning home", async ({ page 
   await expect(page.getByRole("navigation", { name: "Navegación principal" })).toBeVisible();
 });
 
+test("confirms the Telegram session before loading protected catalogs", async ({ page }) => {
+  await page.unroute("**/api/session/me");
+  const requests: string[] = [];
+  let sessionChecks = 0;
+  await page.route("**/api/session/me", (route) => {
+    requests.push("session/me");
+    sessionChecks += 1;
+    if (sessionChecks === 1) {
+      return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "authentication_required" }) });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { id: 42, firstName: "Marco" }, csrfToken: "csrf-test" }),
+    });
+  });
+  await page.route("**/api/session/telegram", (route) => {
+    requests.push("session/telegram");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ user: { id: 42, firstName: "Marco" }, csrfToken: "csrf-test" }),
+    });
+  });
+  await page.addInitScript(() => {
+    window.Telegram = {
+      WebApp: {
+        initData: "query_id=test&auth_date=1786250000&hash=test",
+        colorScheme: "dark",
+        ready() {}, expand() {}, close() {},
+        onEvent() {}, offEvent() {},
+        BackButton: { show() {}, hide() {}, onClick() {}, offClick() {} },
+      },
+    };
+  });
+
+  await page.goto("/upcoming");
+  await expect(page.getByLabel("Liga").locator("option")).toHaveCount(2);
+  const loginIndex = requests.indexOf("session/telegram");
+  const confirmationIndex = requests.indexOf("session/me", loginIndex + 1);
+  expect(loginIndex).toBeGreaterThanOrEqual(0);
+  expect(confirmationIndex).toBeGreaterThan(loginIndex);
+});
+
 test("explains a failed catalog and restores league selection on retry", async ({ page }) => {
   let failuresRemaining = 2;
   await page.route("**/api/explorer/leagues", (route) => {

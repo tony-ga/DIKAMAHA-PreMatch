@@ -88,6 +88,12 @@ con reintento si ligas/fechas no responden, en vez de selectores silenciosamente
 vacíos. Gates locales: 544 Python/8 omitidas, 17 Vitest, 9 Playwright,
 typecheck y build Next aprobados.
 
+Incidencia de producción DEC-151 aislada por Network Logs: el login Telegram
+respondía 200 y todos los catálogos posteriores 401 por cookie `SameSite=Lax`
+en el contexto embebido. El hotfix de cookie segura particionada y confirmación
+post-login aprobó 18 Vitest, 10 Playwright, typecheck y build Next. No toca
+datos ni modelos; queda pendiente el smoke posterior al despliegue.
+
 ## Fase 114 — Markov Live y Hawkes residual
 
 Implementada y validada históricamente en `shadow`. La ruta nueva

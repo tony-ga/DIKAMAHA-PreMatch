@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 beforeAll(() => {
   Object.assign(process.env, {
@@ -11,6 +11,11 @@ beforeAll(() => {
     MINIAPP_SESSION_SECRET: "0123456789abcdef0123456789abcdef",
   });
 });
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("signed Mini App sessions", () => {
   it("round-trips and rejects tampering", async () => {
     const { issueSession, parseSession, sessionCookieOptions, validCsrf } = await import("@/lib/auth/session");
@@ -20,5 +25,17 @@ describe("signed Mini App sessions", () => {
     expect(validCsrf(issued.session, issued.session.csrf)).toBe(true);
     expect(validCsrf(issued.session, "wrong")).toBe(false);
     expect(sessionCookieOptions()).toMatchObject({ httpOnly: true, sameSite: "lax" });
+  });
+
+  it("uses a secure partitioned cookie inside Telegram Web and Desktop", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { sessionCookieOptions } = await import("@/lib/auth/session");
+    expect(sessionCookieOptions()).toMatchObject({
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      partitioned: true,
+      path: "/",
+    });
   });
 });

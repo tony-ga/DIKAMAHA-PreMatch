@@ -6,6 +6,7 @@ export async function api<T>(
   const response = await fetch(path, {
     ...options,
     cache: "no-store",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
