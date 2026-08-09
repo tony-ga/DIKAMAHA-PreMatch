@@ -1848,7 +1848,7 @@ Markov Live, Hawkes residual y combinado permanecerán separados y shadow.
 Motivo: entregar una experiencia móvil de aplicación sin crear una segunda
 fuente de verdad, competir por el long polling ni modificar la cadena
 matemática validada.
-Estado: congelada; validada localmente y lista para despliegue gradual
+Estado: congelada; desplegada en Railway con acceso privado gradual
 Impacto en contratos/fases: presentación, autenticación, preferencias y
 notificaciones de Fase 115. No cambia Fases 113/114, router oficial, snapshots,
 parámetros, políticas de promoción ni semántica de mercados.
@@ -1857,8 +1857,11 @@ bundle, ownership y dedupe PostgreSQL, worker sin `getUpdates`, paridad BFF,
 pruebas responsive, Docker y smoke Railway.
 Evidencia obtenida: firma/expiración/grupos/CSRF cubiertos; bundle sin secretos
 ni URLs ESPN; límites y dedupe comprobados sobre PostgreSQL 17; 535 pruebas
-Python, 12 Vitest y 4 Playwright; build Docker no-root y smoke HTTP 200. Queda
-pendiente únicamente el smoke Railway/Telegram con servicios apagados.
+Python, 12 Vitest y 4 Playwright; build Docker no-root y smoke HTTP 200.
+PostgreSQL, Mini App y worker están `Online` en Railway; health remoto `ready`,
+sesión vacía rechazada y `setChatMenuButton` confirmado. La Mini App opera para
+la allowlist privada y el worker permanece apagado lógicamente. Quedan el smoke
+interactivo, el short name BotFather y la activación posterior de alertas.
 
 ```text
 DEC-NNN

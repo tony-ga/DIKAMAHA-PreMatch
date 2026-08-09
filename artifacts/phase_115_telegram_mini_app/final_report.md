@@ -27,6 +27,18 @@
 - PostgreSQL 17: migración idempotente, límites 10/20 y dedupe aprobados.
 - bundle cliente: cero secretos y cero URLs ESPN.
 
-La validación Railway y el smoke Telegram real se agregan después del primer
-despliegue controlado. Hasta entonces, alertas y acceso permanecen apagados por
-defecto mediante variables de entorno.
+## Evidencia Railway
+
+- PostgreSQL, `telegram-miniapp` y `telegram-alert-worker`: `Online`.
+- URL pública: `https://telegram-miniapp-production-cbab.up.railway.app`.
+- `/api/health`: `{"status":"ready","database":true}`.
+- acceso privado habilitado; `initData` ausente falla cerrado con HTTP 400.
+- bot premium activo sobre el commit de Fase 115 y log
+  `telegram_miniapp_menu_configured` confirmado.
+- worker activo con log `telegram_alert_worker_started` y `enabled: false`.
+- una colisión `getUpdates` apareció durante el rolling deploy del bot y no se
+  repitió después de retirar el contenedor anterior.
+
+Estado: `railway_deployed_private_smoke_ready`. Quedan el smoke interactivo de
+un usuario permitido, el short name de BotFather para enlaces `startapp` y la
+prueba real de una suscripción antes de habilitar alertas.

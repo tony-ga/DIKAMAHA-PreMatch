@@ -7,7 +7,7 @@ sin cambiar salidas oficiales, modelos ni la ruta pre-match revalidada.
 
 ## Fase 115 — Telegram Mini App híbrida
 
-Implementada y validada localmente; pendiente del smoke Railway/Telegram.
+Implementada, desplegada y validada en Railway con acceso privado gradual.
 
 - Next.js 16/TypeScript mobile-first con dashboard, live, próximos,
   predicciones, modelos, alertas y ajustes;
@@ -28,9 +28,23 @@ Implementada y validada localmente; pendiente del smoke Railway/Telegram.
 - 535 pruebas Python aprobadas/8 omitidas, 12 Vitest, 4 Playwright, auditoría
   npm sin vulnerabilidades, build Next/Docker y smoke HTTP 200 como `node`.
 
-Estado: `locally_validated_ready_for_railway`. La Mini App y alertas quedan
-apagadas por defecto hasta completar PostgreSQL, dominio, smoke real y
-configuración BotFather. Markov, Hawkes y combinado siguen separados y shadow.
+Despliegue Railway de producción:
+
+- PostgreSQL `0276da42-ffdd-48d2-bc7f-bd6ae7fd37e7`: `Online`;
+- Mini App `dbd1077b-a34e-4eaf-9385-50ec633aefa7`: `Online` en
+  `https://telegram-miniapp-production-cbab.up.railway.app`;
+- worker `6d6d036b-109c-46d8-98a5-0e8b0f8bdbcb`: `Online`, una réplica y
+  `MINIAPP_ALERTS_ENABLED=false`;
+- bot premium `440d330b-1018-4fd9-a6ef-792cd9d671cc`: commit de Fase 115
+  activo, URL configurada y `setChatMenuButton` aceptado por Telegram;
+- `/api/health`: `ready`, PostgreSQL conectado; sesión vacía rechazada con
+  HTTP 400 y `telegram_init_data_missing`.
+
+Estado: `railway_deployed_private_smoke_ready`. `MINIAPP_ENABLED=true` sólo
+para la allowlist privada. Falta el smoke interactivo de un usuario desde
+Telegram y registrar el short name en BotFather para enlaces `startapp`; hasta
+entonces las alertas permanecen desactivadas. Markov, Hawkes y combinado
+siguen separados y shadow.
 
 ## Fase 114 — Markov Live y Hawkes residual
 
