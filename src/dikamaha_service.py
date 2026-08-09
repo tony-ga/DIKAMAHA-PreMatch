@@ -794,9 +794,7 @@ def create_app(
 
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
-        selected = leagues or os.getenv("DIKAMAHA_UPCOMING_LEAGUES")
-        if not selected:
-            selected = ",".join(slug for slug, _ in LEAGUES)
+        selected = leagues or ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 20)
         try:
             fixtures = await _infer_with_timeout(
