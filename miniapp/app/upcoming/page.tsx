@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { FixtureCard, Metric, PageHeader, StatePanel } from "@/components/ui";
+import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel } from "@/components/ui";
 import { api, type Catalog, type ExplorerDate, type League, queryString } from "@/lib/client-api";
 
 export default function UpcomingPage() {
@@ -19,6 +19,9 @@ export default function UpcomingPage() {
   return (
     <>
       <PageHeader eyebrow="PRE-MATCH · CORTE CAUSAL" title="Próximos partidos" />
+      {leagues.isError || dates.isError ? (
+        <CatalogWarning onRetry={() => { void leagues.refetch(); void dates.refetch(); }} />
+      ) : null}
       <div className="form-grid filter-grid" style={{ marginBottom: 14 }}>
         <div className="field">
           <label htmlFor="league-filter">Liga</label>

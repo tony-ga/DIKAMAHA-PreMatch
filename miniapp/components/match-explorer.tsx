@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
-import { PageHeader, StatePanel } from "@/components/ui";
+import { CatalogWarning, PageHeader, StatePanel } from "@/components/ui";
 import { EntityImage } from "@/components/entity-image";
 import { api, type ExplorerDate, type HistoricalFixture, type League, queryString } from "@/lib/client-api";
 
@@ -27,6 +27,9 @@ export function MatchExplorer() {
   return (
     <>
       <PageHeader eyebrow="ARCHIVO RAW-FIRST" title="Centro de partidos" />
+      {leagues.isError || dates.isError ? (
+        <CatalogWarning onRetry={() => { void leagues.refetch(); void dates.refetch(); }} />
+      ) : null}
       <div className="form-grid filter-grid">
         <div className="field">
           <label htmlFor="history-league">Liga</label>

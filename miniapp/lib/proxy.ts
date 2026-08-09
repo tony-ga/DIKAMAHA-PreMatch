@@ -9,7 +9,10 @@ export async function proxyGet(request: NextRequest, path: string) {
     const payload = await dikamahaRequest(`${path}${request.nextUrl.search}`);
     return NextResponse.json(payload);
   } catch (error) {
-    if (error instanceof DikamahaError) return jsonError("upstream_unavailable", error.status >= 500 ? 503 : 422);
+    if (error instanceof DikamahaError) {
+      console.error("[bff] upstream GET unavailable", { path, status: error.status });
+      return jsonError("upstream_unavailable", error.status === 429 ? 429 : error.status >= 500 ? 503 : 422);
+    }
     return authError(error);
   }
 }
@@ -24,7 +27,10 @@ export async function proxyPost(request: NextRequest, path: string) {
     });
     return NextResponse.json(payload);
   } catch (error) {
-    if (error instanceof DikamahaError) return jsonError("upstream_unavailable", error.status >= 500 ? 503 : 422);
+    if (error instanceof DikamahaError) {
+      console.error("[bff] upstream POST unavailable", { path, status: error.status });
+      return jsonError("upstream_unavailable", error.status === 429 ? 429 : error.status >= 500 ? 503 : 422);
+    }
     return authError(error);
   }
 }

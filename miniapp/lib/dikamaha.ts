@@ -12,20 +12,36 @@ export async function dikamahaRequest(
 ): Promise<unknown> {
   if (!path.startsWith("/v1/")) throw new Error("dikamaha_path_rejected");
   const config = env();
-  const response = await fetch(`${config.DIKAMAHA_BOT_API_URL.replace(/\/$/, "")}${path}`, {
-    ...options,
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Dikamaha-Key": config.DIKAMAHA_API_KEY,
-      "X-Request-ID": `miniapp-${crypto.randomUUID()}`,
-      ...options.headers,
-    },
-    signal: AbortSignal.timeout(35_000),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload || typeof payload !== "object") {
-    throw new DikamahaError(response.status);
+  const method = String(options.method ?? "GET").toUpperCase();
+  const attempts = method === "GET" ? 3 : 1;
+  let lastStatus = 503;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(`${config.DIKAMAHA_BOT_API_URL.replace(/\/$/, "")}${path}`, {
+        ...options,
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Dikamaha-Key": config.DIKAMAHA_API_KEY,
+          "X-Request-ID": `miniapp-${crypto.randomUUID()}`,
+          ...options.headers,
+        },
+        signal: AbortSignal.timeout(35_000),
+      });
+      lastStatus = response.status;
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload && typeof payload === "object") return payload;
+      if (response.status < 500 && response.status !== 429) {
+        throw new DikamahaError(response.status);
+      }
+    } catch (error) {
+      if (error instanceof DikamahaError) throw error;
+      lastStatus = 503;
+    }
+    console.warn("[dikamaha] transient request failure", { path, attempt, status: lastStatus });
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 150));
+    }
   }
-  return payload;
+  throw new DikamahaError(lastStatus);
 }

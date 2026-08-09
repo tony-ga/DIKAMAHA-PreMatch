@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
 
-import { PageHeader, StatePanel } from "@/components/ui";
+import { CatalogWarning, PageHeader, StatePanel } from "@/components/ui";
 import { EntityImage } from "@/components/entity-image";
 import { api, type League, type Team, queryString } from "@/lib/client-api";
 
@@ -24,6 +24,7 @@ export function TeamExplorer() {
   return (
     <>
       <PageHeader eyebrow="EQUIPOS Y JUGADORES" title="Plantillas" />
+      {leagues.isError ? <CatalogWarning onRetry={() => void leagues.refetch()} /> : null}
       <div className="form-grid filter-grid">
         <div className="field">
           <label htmlFor="team-league">Liga</label>

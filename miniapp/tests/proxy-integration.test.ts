@@ -6,10 +6,17 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 let server: Server;
 let baseUrl = "";
 const requests: Array<{ path: string; key: string | undefined }> = [];
+let failuresRemaining = 0;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
     requests.push({ path: request.url ?? "", key: request.headers["x-dikamaha-key"] as string | undefined });
+    if (failuresRemaining > 0) {
+      failuresRemaining -= 1;
+      response.writeHead(503, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: "temporarily_unavailable" }));
+      return;
+    }
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ leagues: [{ slug: "mex.1", name: "Liga MX" }], count: 1 }));
   });
@@ -47,5 +54,13 @@ describe("authenticated BFF to DIKAMAHA connection", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ count: 1 });
     expect(requests.at(-1)).toEqual({ path: "/v1/explorer/leagues", key: "server-only-test-key" });
+  });
+
+  it("retries transient GET failures before exposing an empty selector", async () => {
+    const before = requests.length;
+    failuresRemaining = 2;
+    const { dikamahaRequest } = await import("@/lib/dikamaha");
+    await expect(dikamahaRequest("/v1/explorer/leagues")).resolves.toMatchObject({ count: 1 });
+    expect(requests.length - before).toBe(3);
   });
 });

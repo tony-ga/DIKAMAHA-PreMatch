@@ -48,6 +48,24 @@ test("keeps primary navigation available without returning home", async ({ page 
   await expect(page.getByRole("navigation", { name: "Navegación principal" })).toBeVisible();
 });
 
+test("explains a failed catalog and restores league selection on retry", async ({ page }) => {
+  let failuresRemaining = 2;
+  await page.route("**/api/explorer/leagues", (route) => {
+    if (failuresRemaining > 0) {
+      failuresRemaining -= 1;
+      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "upstream_unavailable" }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ leagues: [{ slug: "bra.1", name: "Brasileirão" }], count: 1 }) });
+  });
+
+  await page.goto("/upcoming");
+  await expect(page.getByRole("alert").filter({ hasText: "El catálogo no respondió" })).toBeVisible();
+  await page.getByRole("button", { name: "Reintentar catálogos" }).click();
+  await expect(page.getByLabel("Liga").locator("option")).toHaveCount(2);
+  await page.getByLabel("Liga").selectOption("bra.1");
+  await expect(page.getByLabel("Liga")).toHaveValue("bra.1");
+});
+
 test("applies Telegram light theme and renders the empty live state", async ({ page }) => {
   await page.addInitScript(() => {
     window.Telegram = {

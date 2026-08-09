@@ -1926,6 +1926,10 @@ presentación: no recalculan ni sustituyen probabilidades. Regresión
 Cruzeiro–Mirassol, 543 Python, 16 Vitest, 8 Playwright, typecheck y build Next
 aprobados. El commit `8aa3aca` fue integrado por PR #13; Railway confirmó
 `SUCCESS` y los smoke posteriores sobre Mini App y API respondieron HTTP 200.
+Una regresión posterior de catálogos reveló `PORT=8080` frente al fallback
+interno `8000`. La corrección propaga la URL administrada, añade reintentos GET,
+health dependiente de ligas y error visual recuperable; no duplica catálogos ni
+altera datos/modelos. Gates: 544 Python, 17 Vitest y 9 Playwright aprobados.
 
 ```text
 DEC-NNN

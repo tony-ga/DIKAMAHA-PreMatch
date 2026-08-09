@@ -49,7 +49,7 @@ def main() -> int:
         "DIKAMAHA_BOT_API_URL", f"http://127.0.0.1:{port}")
     try:
         with ManagedDikamahaApi(ROOT, base_url):
-            return TelegramChannelService(ROOT).run()
+            return TelegramChannelService(ROOT, base_url).run()
     except (OSError, RuntimeError, TimeoutError) as error:
         LOGGER.exception("telegram_channel_service_failed error=%s", error)
         return 1
