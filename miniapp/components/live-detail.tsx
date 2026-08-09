@@ -7,6 +7,7 @@ import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
 import { api, layerMarkets, percentage, record } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
+import { EntityImage } from "@/components/entity-image";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
 
@@ -93,7 +94,7 @@ export function LiveDetail({ fixtureId, league }: Props) {
           <article className="data-panel">
             <p className="eyebrow">MARCADOR LIVE</p>
             <div className="score-row">
-              <div><strong>{String(fixture.home_team_name ?? "Local")}</strong><strong>{String(fixture.away_team_name ?? "Visitante")}</strong></div>
+              <div className="fixture-teams"><div><EntityImage source={String(fixture.home_team_logo || "")} label={String(fixture.home_team_name ?? "Local")} size={38} /><strong>{String(fixture.home_team_name ?? "Local")}</strong></div><div><EntityImage source={String(fixture.away_team_logo || "")} label={String(fixture.away_team_name ?? "Visitante")} size={38} /><strong>{String(fixture.away_team_name ?? "Visitante")}</strong></div></div>
               <div className="score"><b>{String(fixture.score_home ?? fixture.home_score ?? 0)}</b><b>{String(fixture.score_away ?? fixture.away_score ?? 0)}</b></div>
             </div>
             <p className="muted">{clock} · {String(fixture.provider_status_detail ?? fixture.provider_status ?? "live")} · actualizado {updatedAt}</p>

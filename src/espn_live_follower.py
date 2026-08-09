@@ -427,6 +427,8 @@ def normalize_live_snapshot(
         "away_team_id": away_id,
         "home_team_name": _team_name(home),
         "away_team_name": _team_name(away),
+        "home_team_logo": _team_logo(home),
+        "away_team_logo": _team_logo(away),
         "kickoff_ts": kickoff.isoformat(),
         "source_fetched_at": _utc(source_fetched_at).isoformat(),
         "provider_status": str((status_type or {}).get("state") or "unknown").lower(),
@@ -516,6 +518,18 @@ def _team_name(competitor: dict[str, Any]) -> str:
         or team.get("shortDisplayName") or competitor.get("displayName")
     )
     return str(value or _team_id(competitor))
+
+
+def _team_logo(competitor: dict[str, Any]) -> str | None:
+    """Extrae logo publicado por el proveedor sin construir una URL."""
+
+    team = competitor.get("team") if isinstance(competitor.get("team"), dict) else {}
+    if isinstance(team.get("logo"), str):
+        return str(team["logo"])
+    logos = team.get("logos")
+    if isinstance(logos, list) and logos and isinstance(logos[0], dict):
+        return str(logos[0].get("href") or "") or None
+    return None
 
 
 def _score(competitor: dict[str, Any]) -> int:

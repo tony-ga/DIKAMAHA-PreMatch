@@ -144,5 +144,17 @@ def test_miniapp_covers_every_bot_explorer_capability() -> None:
     assert "sports.core.api.espn.com" not in explorer
 
 
+def test_catalog_recovery_and_media_proxy_are_present() -> None:
+    """Próximos, búsqueda global e imágenes pasan por contratos BFF."""
+
+    teams = (ROOT / "miniapp" / "components" / "team-explorer.tsx").read_text(encoding="utf-8")
+    shell = (ROOT / "miniapp" / "components" / "app-shell.tsx").read_text(encoding="utf-8")
+    media = (ROOT / "miniapp" / "app" / "api" / "media" / "route.ts").read_text(encoding="utf-8")
+    assert "disabled={!league}" not in teams
+    assert 'href: "/predictions"' in shell
+    assert "/v1/media/image" in media
+    assert "X-Dikamaha-Key" in media
+
+
 # Version: 1.0.0
 # Created: 2026-08-08

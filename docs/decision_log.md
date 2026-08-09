@@ -1878,7 +1878,7 @@ sesión Telegram y nunca construirá URLs ESPN. Contexto, estadísticas y perfil
 son presentación; no modifican predicción, modelos ni promoción.
 Motivo: completar la transición a dashboard sin crear una segunda fuente de
 verdad ni perder el fallback nativo del bot.
-Estado: congelada; implementación local validada, publicación pendiente
+Estado: congelada; desplegada en Railway con acceso privado
 Impacto en contratos/fases: extensión de presentación de Fases 98, 100 y 115.
 No cambia Fases 113/114, router, snapshots, probabilidades ni clasificación
 official/shadow.
@@ -1888,7 +1888,32 @@ Evidencia obtenida: matriz documentada y Centro de datos implementado; allowlist
 de nueve capacidades explorer con rechazo de rutas arbitrarias; transporte BFF
 autenticado probado con credencial sólo servidor; conexión real aprobada para
 readiness, modelos, ligas, fechas y próximos; 536 pruebas Python, 16 Vitest,
-7 Playwright y build Next aprobados. La salida de modelos permanece intacta.
+7 Playwright y build Next aprobados. El commit `95946d7` quedó activo en
+Railway; health y `/explore` respondieron 200, auth sin sesión respondió 401 y
+el worker confirmó `enabled: false`. La salida de modelos permanece intacta.
+
+DEC-150
+Fecha: 2026-08-08
+Problema: el dashboard puede quedar vacío porque próximos sólo consulta tres
+ligas y cuatro días, la búsqueda de equipos exige seleccionar liga y las
+entidades deportivas carecen de identidad visual consistente.
+Opciones: mantener los filtros rígidos; consultar proveedores desde el
+navegador; o ampliar los catálogos DIKAMAHA y servir únicamente imágenes PNG
+transparentes validadas mediante el BFF.
+Decisión: próximos usará por defecto el catálogo completo de ligas y una
+ventana futura de 14 días; equipos admitirá búsqueda global con dos caracteres.
+Logos y retratos se propagarán como metadatos de presentación y se entregarán
+por un proxy autenticado DIKAMAHA/BFF con allowlist de hosts, firma PNG y canal
+alfa. Nunca serán features de modelos ni fuentes de inferencia.
+Motivo: recuperar navegación y predicciones, mejorar reconocimiento visual y
+mantener ESPN detrás de la API DIKAMAHA.
+Estado: congelada
+Impacto en contratos/fases: sólo amplía contratos aditivos de catálogo y
+presentación de Fases 100 y 115. No altera snapshots, parámetros, router,
+probabilidades ni clasificación official/shadow.
+Evidencia requerida: búsqueda global tolerante a acentos, catálogo futuro
+multiliga, imágenes sin acceso directo del navegador al proveedor, tests de
+contrato, build y smoke Railway.
 
 ```text
 DEC-NNN

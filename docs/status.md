@@ -26,8 +26,14 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - bot con botón `web_app`, menú global y enlaces `startapp` a fixture live o
   pre-match;
 - marcador, reloj, timestamp y próximo evento live corregidos en la vista;
+- catálogo próximo ampliado a las 18 ligas y 14 días mediante una petición
+  acotada por liga; búsqueda global de equipos tolerante a acentos;
+- navegación principal con acceso directo a Predicciones y diagnóstico visual
+  de cobertura, ligas, fallos parciales y refresco live;
+- logos de equipo y retratos de jugador PNG transparentes mediante proxy
+  DIKAMAHA/BFF autenticado, con fallback visual cuando no existen;
 - Cambridge United–Barnet conserva 1T, 2T y partido completo;
-- 536 pruebas Python aprobadas/8 omitidas, 16 Vitest y 7 Playwright; build Next
+- 542 pruebas Python aprobadas/8 omitidas, 16 Vitest y 7 Playwright; build Next
   aprobado y conexión real validada para readiness, modelos, ligas, fechas y
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.
@@ -44,12 +50,14 @@ Despliegue Railway de producción:
 - `/api/health`: `ready`, PostgreSQL conectado; sesión vacía rechazada con
   HTTP 400 y `telegram_init_data_missing`.
 
-Estado: `bot_parity_implemented_local_release_candidate` sobre
-`railway_deployed_private_smoke_ready`. `MINIAPP_ENABLED=true` sólo para la
-allowlist privada. La nueva paridad aún requiere commit y despliegue Railway;
-también falta el smoke interactivo de un usuario desde Telegram y registrar el
-short name en BotFather para enlaces `startapp`. Hasta entonces las alertas
-permanecen desactivadas. Markov, Hawkes y combinado siguen separados y shadow.
+Estado: `railway_deployed_private_bot_parity_ready`. El commit `95946d7` está
+activo en `telegram-miniapp`; `/api/health` respondió `ready` con PostgreSQL,
+`/explore` respondió HTTP 200 y `/api/readiness` sin sesión falló cerrado con
+HTTP 401. `MINIAPP_ENABLED=true` sólo para la allowlist privada. Falta el smoke
+interactivo de un usuario desde Telegram y registrar el short name en BotFather
+para enlaces `startapp`. El worker reconstruido quedó `Online` y confirmó
+`enabled: false`; las alertas permanecen desactivadas. Markov, Hawkes y
+combinado siguen separados y shadow.
 
 ## Fase 114 — Markov Live y Hawkes residual
 

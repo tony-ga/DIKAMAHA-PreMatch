@@ -36,7 +36,7 @@ export default function DashboardPage() {
         </p>
         <div className="hero-actions">
           <Link className="primary-button" href="/live">Ver partidos en vivo</Link>
-          <Link className="secondary-button" href="/upcoming">Explorar próximos</Link>
+          <Link className="secondary-button" href="/predictions">Ver predicciones</Link>
         </div>
       </section>
 
@@ -57,7 +57,7 @@ export default function DashboardPage() {
         <StatePanel title="Sin partidos activos">El panel se actualizará automáticamente cuando el proveedor publique un fixture live.</StatePanel>
       )}
 
-      <SectionTitle aside={<Link className="section-link" href="/upcoming">Calendario →</Link>}>A continuación</SectionTitle>
+      <SectionTitle aside={<Link className="section-link" href="/predictions">Predicciones →</Link>}>A continuación</SectionTitle>
       {upcoming.data?.fixtures.length ? (
         <div className="fixture-list two-column">{upcoming.data.fixtures.map((fixture) => <FixtureCard key={fixture.match_id} fixture={fixture} />)}</div>
       ) : (

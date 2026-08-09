@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { StatePanel } from "@/components/ui";
 import { api, queryString, record } from "@/lib/client-api";
+import { EntityImage } from "@/components/entity-image";
 
 function names(value: unknown): string {
   if (!Array.isArray(value)) return "No publicado";
@@ -48,7 +49,7 @@ export function FixtureContext({ league, eventId, compact = false }: {
   return (
     <article className="data-panel context-panel">
       <p className="eyebrow">CONTEXTO INFORMATIVO · NO MODELO</p>
-      <h3>{String(home.name ?? "Local")} vs {String(away.name ?? "Visitante")}</h3>
+      <div className="context-match"><div><EntityImage source={String(home.logo || "")} label={String(home.name ?? "Local")} size={42} /><strong>{String(home.name ?? "Local")}</strong></div><span>VS</span><div><EntityImage source={String(away.logo || "")} label={String(away.name ?? "Visitante")} size={42} /><strong>{String(away.name ?? "Visitante")}</strong></div></div>
       <div className={compact ? "context-grid compact" : "context-grid"}>
         <div><span>Competición</span><strong>{String(competition.name ?? "No publicada")}</strong></div>
         <div><span>Fase</span><strong>{String(competition.phase ?? "No publicada")}</strong></div>

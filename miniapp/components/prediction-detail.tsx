@@ -7,6 +7,7 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { useAuth } from "@/components/providers";
 import { api, percentage, record } from "@/lib/client-api";
+import { EntityImage } from "@/components/entity-image";
 
 type Props = {
   fixtureId: string;
@@ -52,6 +53,7 @@ export function PredictionDetail(props: Props) {
         <FavoriteButton entityType="fixture" entityId={props.fixtureId} label={`${String(fixture.home_team_name ?? `Local ${props.home}`)} vs ${String(fixture.away_team_name ?? `Visitante ${props.away}`)}`} metadata={{ league: props.league, kickoff: props.kickoff }} />
       } />
       <div className="stack">
+        <article className="data-panel match-identity"><div><EntityImage source={String(fixture.home_team_logo || "")} label={String(fixture.home_team_name ?? "Local")} size={58} /><strong>{String(fixture.home_team_name ?? `Local ${props.home}`)}</strong></div><span>VS</span><div><EntityImage source={String(fixture.away_team_logo || "")} label={String(fixture.away_team_name ?? "Visitante")} size={58} /><strong>{String(fixture.away_team_name ?? `Visitante ${props.away}`)}</strong></div></article>
         <article className="model-card">
           <div className="model-card-header"><h3>Dixon-Coles + Kalman</h3><ShadowBadge official /></div>
           <div className="probability-grid" style={{ marginTop: 16 }}>

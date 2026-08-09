@@ -43,8 +43,8 @@ test("keeps primary navigation available without returning home", async ({ page 
   await expect(page.getByRole("heading", { name: "Lee el partido. Antes y durante." })).toBeVisible();
   await page.getByRole("link", { name: /En vivo/ }).click();
   await expect(page.getByRole("heading", { name: "Partidos en vivo" })).toBeVisible();
-  await page.getByRole("link", { name: /Próximos/ }).click();
-  await expect(page).toHaveURL(/\/upcoming$/);
+  await page.getByRole("link", { name: /Predicciones/ }).click();
+  await expect(page).toHaveURL(/\/predictions$/);
   await expect(page.getByRole("navigation", { name: "Navegación principal" })).toBeVisible();
 });
 

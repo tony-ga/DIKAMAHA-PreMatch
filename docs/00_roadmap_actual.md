@@ -228,7 +228,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 109 | `premium_telegram_railway` | validada v1.6 | acceso private/public, pre-match y live shadow visibles, worker independiente y contrato móvil medible |
 | 113 | `model_integrity_v1` | validada con salidas selectivas; hotfix portable listo | fórmula, causalidad, PMF, métricas, hashes runtime portables, fallbacks, replays y 522 pruebas aprobadas |
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
-| 115 | `telegram_mini_app` | paridad bot local lista; base desplegada privada | Centro de datos y allowlist BFF completos; 536 Python + 16 Vitest + 7 Playwright; publicación pendiente |
+| 115 | `telegram_mini_app` | paridad visual corregida; despliegue pendiente | Catálogo 18 ligas/14 días, búsqueda global, predicciones, live observable y medios PNG vía BFF; 542 Python + 16 Vitest + 7 Playwright |
 
 ## Componentes heredados
 
@@ -252,14 +252,14 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Publicar la extensión de paridad del bot en Railway y completar el smoke
-interactivo desde un usuario Telegram autorizado. Registrar el short name de
-la Mini App en BotFather y validar una regla de alerta con dedupe real. Sólo
-después activar `MINIAPP_ALERTS_ENABLED=true`. PostgreSQL, la versión anterior
-de la Mini App y el worker ya están desplegados; el menú global del bot está
-activo. En paralelo, vigilar drift de la allowlist Hawkes sin reabrir
-confirmación. No se exige esperar una cohorte de 500 partidos. Markov, Hawkes y
-combinado permanecen en `shadow` hasta una decisión explícita de promoción.
+Completar el smoke interactivo desde un usuario Telegram autorizado. Registrar
+el short name de la Mini App en BotFather y validar una regla de alerta con
+dedupe real. Sólo después activar `MINIAPP_ALERTS_ENABLED=true`. PostgreSQL,
+Mini App con paridad completa y worker están desplegados; el menú global del
+bot está activo y el worker sigue deshabilitado lógicamente. En paralelo,
+vigilar drift de la allowlist Hawkes sin reabrir confirmación. No se exige
+esperar una cohorte de 500 partidos. Markov, Hawkes y combinado permanecen en
+`shadow` hasta una decisión explícita de promoción.
 
 La fase no autoriza staking real. ROI, CLV y Kelly continúan bloqueados hasta
 contar con cuotas históricas comparables.

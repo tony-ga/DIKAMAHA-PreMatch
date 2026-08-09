@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import type { Fixture } from "@/lib/client-api";
+import { EntityImage } from "@/components/entity-image";
 
 export function PageHeader({ eyebrow, title, action }: {
   eyebrow: string;
@@ -44,9 +45,9 @@ export function FixtureCard({ fixture, live = false }: { fixture: Fixture; live?
         {live ? <span className="live-pill"><i /> {fixture.display_clock ?? "LIVE"}</span> : <time>{kickoff.toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" })}</time>}
       </div>
       <div className="score-row">
-        <div>
-          <strong>{fixture.home_team_name ?? `Local ${fixture.home_team_id}`}</strong>
-          <strong>{fixture.away_team_name ?? `Visitante ${fixture.away_team_id}`}</strong>
+        <div className="fixture-teams">
+          <div><EntityImage source={fixture.home_team_logo} label={fixture.home_team_name ?? "Local"} size={34} /><strong>{fixture.home_team_name ?? `Local ${fixture.home_team_id}`}</strong></div>
+          <div><EntityImage source={fixture.away_team_logo} label={fixture.away_team_name ?? "Visitante"} size={34} /><strong>{fixture.away_team_name ?? `Visitante ${fixture.away_team_id}`}</strong></div>
         </div>
         {live ? (
           <div className="score">

@@ -46,8 +46,11 @@
 - una colisión `getUpdates` apareció durante el rolling deploy del bot y no se
   repitió después de retirar el contenedor anterior.
 
-Estado base: `railway_deployed_private_smoke_ready`. La extensión de paridad es
-`bot_parity_implemented_local_release_candidate` y todavía no está publicada.
-Quedan su commit/deploy, el smoke interactivo de un usuario permitido, el short
-name de BotFather para enlaces `startapp` y la prueba real de una suscripción
-antes de habilitar alertas.
+Estado: `railway_deployed_private_bot_parity_ready`. El commit `95946d7` quedó
+activo en el deployment `975c34b7-da2c-4cc2-8b07-eb00c67764bb` de la Mini App.
+Railway reportó éxito; health devolvió `ready` con base conectada, `/explore`
+respondió 200 y readiness sin sesión respondió 401. Todos los servicios
+quedaron `Online`; el worker reconstruido confirmó `enabled: false`. Quedan el
+smoke interactivo de un usuario permitido, el short name de BotFather para
+enlaces `startapp` y la prueba real de una suscripción antes de habilitar
+alertas.

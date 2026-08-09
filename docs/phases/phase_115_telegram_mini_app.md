@@ -23,6 +23,10 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   ajustes;
 - Centro de datos con ligas, fechas, partidos históricos, contexto,
   play-by-play, estadísticas 1T/2T/total, equipos, plantillas y perfiles;
+- Predicciones como destino principal, próximos multiliga en ventana de 14
+  días, búsqueda global de equipos tolerante a acentos y filtros live;
+- logos y retratos sólo cuando el proveedor publica PNG transparente,
+  transportados por API/BFF y nunca usados como features;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
 - tema Telegram claro/oscuro, safe areas y navegación inferior persistente.
@@ -55,8 +59,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 
 ## Estado operativo
 
-`bot_parity_implemented_local_release_candidate` sobre el despliegue privado
-existente.
+`railway_deployed_private_bot_parity_ready`.
 
 - Mini App y PostgreSQL están `Online`; health remoto `ready`.
 - El acceso está habilitado únicamente para la allowlist privada.
@@ -65,6 +68,12 @@ existente.
 - La activación de alertas exige primero smoke interactivo y dedupe real.
 - Los enlaces directos `startapp` requieren completar el short name en
   BotFather; el botón global y el botón `web_app` no dependen de ese paso.
-- La extensión de paridad del bot está validada localmente con 536 pruebas
-  Python, 16 Vitest, 7 Playwright, build Next y conexión real a cinco contratos
-  DIKAMAHA. Su publicación en Railway queda pendiente de commit/deploy.
+- La extensión de paridad del bot está desplegada desde `95946d7` y validada
+  con 536 pruebas Python, 16 Vitest, 7 Playwright, build Next y conexión real a
+  cinco contratos DIKAMAHA.
+- Railway confirmó deployment exitoso; health y Centro de datos responden 200,
+  la ruta autenticada falla cerrada sin sesión y el worker permanece apagado
+  lógicamente.
+- La corrección DEC-150 está validada localmente con datos reales: rango de
+  scoreboard, América sin acento, Barnet multicompetición y PNG RGBA. El nuevo
+  despliegue Railway queda pendiente del commit de esta revisión.
