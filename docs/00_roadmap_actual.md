@@ -2,8 +2,8 @@
 
 **Actualizado:** 2026-08-08
 **Objetivo operativo:** preservar la integridad matemática y causal de Fase
-113. Fase 114 valida e integra en producto Markov Live y Hawkes residual
-selectivo por objetivo, sin ampliar mercados ni afirmar ventaja económica.
+113 mientras Fase 115 presenta Fase 114 mediante una Mini App Telegram
+híbrida, sin ampliar mercados ni afirmar ventaja económica.
 
 Fase 113 reemplaza las cifras de Fases 84A, 88, 94, 95, 96, 103, 104, 105 y
 106 cuando dependían de recorridos intra-kickoff, fronteras fraccionales o
@@ -228,6 +228,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 109 | `premium_telegram_railway` | validada v1.6 | acceso private/public, pre-match y live shadow visibles, worker independiente y contrato móvil medible |
 | 113 | `model_integrity_v1` | validada con salidas selectivas; hotfix portable listo | fórmula, causalidad, PMF, métricas, hashes runtime portables, fallbacks, replays y 522 pruebas aprobadas |
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
+| 115 | `telegram_mini_app` | validada localmente; lista para Railway | BFF Telegram, PostgreSQL, alertas, navegación visual y enlaces startapp; 535 Python + 12 Vitest + 4 Playwright |
 
 ## Componentes heredados
 
@@ -251,11 +252,12 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Desplegar API y bot, ejecutar el primer replay operativo raw-first cuando ESPN
-publique un partido realmente activo y vigilar drift de la allowlist Hawkes
-sin reabrir confirmación. No se exige esperar una cohorte de 500 partidos.
-Ambos componentes permanecen en `shadow` hasta una decisión explícita de
-promoción.
+Crear PostgreSQL y desplegar los servicios `telegram-miniapp` y
+`telegram-alert-worker` apagados por defecto. Después del smoke autenticado,
+publicar dominio/botón BotFather y activar alertas gradualmente. En paralelo,
+vigilar drift de la allowlist Hawkes sin reabrir confirmación. No se exige
+esperar una cohorte de 500 partidos. Markov, Hawkes y combinado permanecen en
+`shadow` hasta una decisión explícita de promoción.
 
 La fase no autoriza staking real. ROI, CLV y Kelly continúan bloqueados hasta
 contar con cuotas históricas comparables.

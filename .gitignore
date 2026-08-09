@@ -3,6 +3,7 @@
 !.env.telegram.example
 !.env.discord.example
 !.env.premium-bot.example
+!miniapp/.env.example
 .venv/
 .venv-*/
 __pycache__/
@@ -10,6 +11,11 @@ __pycache__/
 .pytest_cache/
 *.log
 *.pid
+node_modules/
+.next/
+*.tsbuildinfo
+test-results/
+playwright-report/
 
 # Datos, cachés y estado local: se regeneran o contienen datos operativos.
 data/
@@ -56,3 +62,6 @@ artifacts/phase_114_live_markov_hawkes_v1/*
 !artifacts/phase_114_live_markov_hawkes_v1/historical_report.md
 !artifacts/phase_114_live_markov_hawkes_v1/historical_validation.json
 !artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
+!artifacts/phase_115_telegram_mini_app/
+artifacts/phase_115_telegram_mini_app/*
+!artifacts/phase_115_telegram_mini_app/final_report.md

@@ -9,6 +9,7 @@ Created: 2026-07-30
 """
 from __future__ import annotations
 
+import base64
 import html
 import logging
 import os
@@ -61,6 +62,11 @@ class TelegramTransport(ABC):
 
     def answer_callback_query(self, callback_id: str) -> None:
         """Confirma una pulsación de botón."""
+
+        return None
+
+    def set_chat_menu_button(self, web_app_url: str) -> None:
+        """Configura el acceso persistente a la Mini App cuando existe."""
 
         return None
 
@@ -185,6 +191,9 @@ class TelegramBotConfig:
     rate_limit_requests: int = 10
     rate_limit_window_seconds: int = 60
     access_mode: str = "private"
+    miniapp_url: str | None = None
+    bot_username: str | None = None
+    miniapp_short_name: str | None = None
 
     def __post_init__(self) -> None:
         """Valida límites sin inspeccionar o exponer secretos."""
@@ -197,6 +206,16 @@ class TelegramBotConfig:
             raise ValueError("telegram_rate_limit_invalid")
         if self.access_mode not in {"private", "public"}:
             raise ValueError("telegram_access_mode_invalid")
+        if self.miniapp_url and not self.miniapp_url.startswith("https://"):
+            raise ValueError("telegram_miniapp_url_https_required")
+        if self.bot_username and not re.fullmatch(
+            r"[A-Za-z0-9_]{5,32}", self.bot_username.lstrip("@"),
+        ):
+            raise ValueError("telegram_bot_username_invalid")
+        if self.miniapp_short_name and not re.fullmatch(
+            r"[A-Za-z0-9_]{3,30}", self.miniapp_short_name,
+        ):
+            raise ValueError("telegram_miniapp_short_name_invalid")
 
 
 def telegram_config_from_env() -> TelegramBotConfig:
@@ -217,6 +236,9 @@ def telegram_config_from_env() -> TelegramBotConfig:
             os.getenv("TELEGRAM_RATE_WINDOW_SECONDS", "60")),
         access_mode=os.getenv(
             "TELEGRAM_ACCESS_MODE", "private").strip().casefold(),
+        miniapp_url=os.getenv("DIKAMAHA_MINIAPP_URL") or None,
+        bot_username=os.getenv("TELEGRAM_BOT_USERNAME") or None,
+        miniapp_short_name=os.getenv("TELEGRAM_MINIAPP_SHORT_NAME") or None,
     )
 
 
@@ -299,6 +321,16 @@ class TelegramHttpTransport(TelegramTransport):
         """Confirma callback sin mostrar el identificador sensible."""
 
         self._post("answerCallbackQuery", {"callback_query_id": callback_id}, 10)
+
+    def set_chat_menu_button(self, web_app_url: str) -> None:
+        """Abre el dashboard desde el botón de menú global del bot."""
+
+        self._post("setChatMenuButton", {
+            "menu_button": {
+                "type": "web_app", "text": "Abrir DIKAMAHA",
+                "web_app": {"url": web_app_url},
+            },
+        }, 10)
 
     def _post(
         self, method: str, payload: dict[str, Any], timeout: int,
@@ -726,7 +758,11 @@ class TelegramPredictionBot:
             "match_id": int(fixture["match_id"]),
         })
         result.setdefault("fixture", fixture)
-        return [(_format_live_prediction(result), _live_prediction_keyboard(key))]
+        link = _fixture_miniapp_link(self._config, fixture, "fixture")
+        return [(
+            _format_live_prediction(result),
+            _live_prediction_keyboard(key, link),
+        )]
 
     def _upcoming_reply(
         self, user_id: int, leagues: str | None = None,
@@ -851,10 +887,10 @@ class TelegramPredictionBot:
             f"🕒 <code>{html.escape(_display_kickoff(fixture.get('kickoff_ts')))}</code>\n\n"
             "<i>Genera el resumen y después explora cada periodo.</i>"
         )
-        keyboard = {"inline_keyboard": [[
-            {"text": "🏟 Contexto", "callback_data": f"context:{key}"},
-            {"text": "🔮 Ver predicción", "callback_data": f"predict:{key}"},
-        ], [{"text": "⬅ Próximos partidos", "callback_data": "menu:upcoming"}]]}
+        keyboard = _match_keyboard(
+            key, _fixture_miniapp_link(
+                self._config, fixture, "prediction"),
+        )
         return [(text, keyboard)]
 
     def _context_reply(self, user_id: int, key: str) -> list[tuple[str, dict[str, Any] | None]]:
@@ -868,7 +904,10 @@ class TelegramPredictionBot:
                 str(fixture["league_slug"]), str(fixture["match_id"]))
         except PredictionGatewayError:
             return [("No pude consultar el contexto del partido.", _main_keyboard())]
-        return [(_format_fixture_context(context), _match_keyboard(key))]
+        return [(_format_fixture_context(context), _match_keyboard(
+            key, _fixture_miniapp_link(
+                self._config, fixture, "prediction"),
+        ))]
 
     def _predict_menu(self, user_id: int, key: str) -> list[tuple[str, dict[str, Any] | None]]:
         """Ejecuta la predicción del fixture seleccionado."""
@@ -884,7 +923,10 @@ class TelegramPredictionBot:
             })
             fixture["_prediction"] = result
             return _channel_prediction_replies(
-                fixture, result, _prediction_keyboard(key))
+                fixture, result, _prediction_keyboard(
+                    key, _fixture_miniapp_link(
+                        self._config, fixture, "prediction"),
+                ))
         except PredictionGatewayError:
             return [("No pude generar la predicción ahora. Intenta de nuevo.", _main_keyboard())]
 
@@ -897,7 +939,10 @@ class TelegramPredictionBot:
         prediction = fixture.get("_prediction") if fixture else None
         if not isinstance(prediction, dict):
             return [("Primero pulsa Ver predicción.", _main_keyboard())]
-        return [(_format_market_period(prediction, period), _prediction_keyboard(key))]
+        return [(_format_market_period(prediction, period), _prediction_keyboard(
+            key, _fixture_miniapp_link(
+                self._config, fixture, "prediction"),
+        ))]
 
     def _league_menu(
         self, mode: str,
@@ -1202,7 +1247,14 @@ def _send(transport: TelegramTransport, chat_id: int, text: str, keyboard: dict[
 def _main_keyboard() -> dict[str, Any]:
     """Devuelve el menú principal de navegación."""
 
-    return {"inline_keyboard": [
+    rows: list[list[dict[str, Any]]] = []
+    miniapp_url = os.getenv("DIKAMAHA_MINIAPP_URL", "").strip()
+    if miniapp_url.startswith("https://"):
+        rows.append([{
+            "text": "📊 Abrir dashboard",
+            "web_app": {"url": miniapp_url},
+        }])
+    rows.extend([
         [{"text": "🔮 Próximos y predicciones",
           "callback_data": "menu:upcoming"}],
         [{"text": "🔴 Partidos en vivo",
@@ -1215,7 +1267,8 @@ def _main_keyboard() -> dict[str, Any]:
           "callback_data": "menu:models"}],
         [{"text": "✅ Estado", "callback_data": "menu:status"},
          {"text": "ℹ️ Ayuda", "callback_data": "menu:help"}],
-    ]}
+    ])
+    return {"inline_keyboard": rows}
 
 
 def _upcoming_keyboard() -> dict[str, Any]:
@@ -1244,15 +1297,22 @@ def _live_navigation_rows() -> list[list[dict[str, str]]]:
     ]
 
 
-def _live_prediction_keyboard(key: str) -> dict[str, Any]:
+def _live_prediction_keyboard(
+    key: str, miniapp_link: str | None = None,
+) -> dict[str, Any]:
     """Permite recalcular el snapshot seleccionado o volver al catálogo."""
 
-    return {"inline_keyboard": [
+    rows: list[list[dict[str, str]]] = [
         [{"text": "🔄 Actualizar partido", "callback_data": f"live:{key}"}],
         [{"text": "🔴 Otros en vivo", "callback_data": "menu:live"},
          {"text": "🧠 Modelos", "callback_data": "menu:models"}],
         [{"text": "🏠 Inicio", "callback_data": "menu:status"}],
-    ]}
+    ]
+    if miniapp_link:
+        rows.insert(0, [{
+            "text": "📊 Abrir detalle visual", "url": miniapp_link,
+        }])
+    return {"inline_keyboard": rows}
 
 
 def _fixture_button(fixture: dict[str, Any]) -> str:
@@ -1291,13 +1351,20 @@ def _button_time(value: Any) -> str:
         return "N/D"
 
 
-def _match_keyboard(key: str) -> dict[str, Any]:
+def _match_keyboard(
+    key: str, miniapp_link: str | None = None,
+) -> dict[str, Any]:
     """Construye acciones compactas y reutilizables de un fixture."""
 
-    return {"inline_keyboard": [[
+    rows: list[list[dict[str, str]]] = [[
         {"text": "🏟 Contexto", "callback_data": f"context:{key}"},
         {"text": "🔮 Ver predicción", "callback_data": f"predict:{key}"},
-    ], [{"text": "⬅ Próximos partidos", "callback_data": "menu:upcoming"}]]}
+    ], [{"text": "⬅ Próximos partidos", "callback_data": "menu:upcoming"}]]
+    if miniapp_link:
+        rows.insert(1, [{
+            "text": "📊 Abrir detalle visual", "url": miniapp_link,
+        }])
+    return {"inline_keyboard": rows}
 
 
 def _format_fixture_context(context: dict[str, Any]) -> str:
@@ -1438,16 +1505,60 @@ def _prediction_payload(fixture: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _prediction_keyboard(key: str) -> dict[str, Any]:
+def _prediction_keyboard(
+    key: str, miniapp_link: str | None = None,
+) -> dict[str, Any]:
     """Construye submenú de mercados por periodo."""
 
-    return {"inline_keyboard": [
+    rows: list[list[dict[str, str]]] = [
         [{"text": "⏱ 1T", "callback_data": f"markets:first_half:{key}"},
          {"text": "⏱ 2T", "callback_data": f"markets:second_half:{key}"}],
         [{"text": "📊 Totales", "callback_data": f"markets:full_match:{key}"}],
         [{"text": "⬅ Partidos", "callback_data": "menu:upcoming"},
          {"text": "🏠 Inicio", "callback_data": "menu:status"}],
-    ]}
+    ]
+    if miniapp_link:
+        rows.insert(0, [{
+            "text": "📊 Abrir detalle visual", "url": miniapp_link,
+        }])
+    return {"inline_keyboard": rows}
+
+
+def _fixture_miniapp_link(
+    config: TelegramBotConfig, fixture: dict[str, Any], prefix: str,
+) -> str | None:
+    """Crea un enlace ``startapp`` compacto sin introducir estado externo."""
+
+    if not config.bot_username or not config.miniapp_short_name:
+        return None
+    match_id = str(fixture.get("match_id", "")).strip()
+    league = str(fixture.get("league_slug", "")).strip()
+    if not match_id.isdigit() or not league:
+        return None
+    encoded = base64.urlsafe_b64encode(
+        league.encode("utf-8"),
+    ).decode("ascii").rstrip("=")
+    parameter = f"{prefix}_{match_id}_{encoded}"
+    if prefix == "prediction":
+        home = str(fixture.get("home_team_id", "")).strip()
+        away = str(fixture.get("away_team_id", "")).strip()
+        try:
+            kickoff = int(datetime.fromisoformat(
+                str(fixture.get("kickoff_ts", "")).replace(
+                    "Z", "+00:00"),
+            ).timestamp())
+        except ValueError:
+            return None
+        if not home.isdigit() or not away.isdigit():
+            return None
+        parameter = f"{parameter}_{home}_{away}_{kickoff}"
+    if len(parameter) > 64:
+        return None
+    username = config.bot_username.lstrip("@")
+    return (
+        f"https://t.me/{username}/{config.miniapp_short_name}"
+        f"?startapp={parameter}"
+    )
 
 
 def _format_prediction_summary(payload: dict[str, Any]) -> str:

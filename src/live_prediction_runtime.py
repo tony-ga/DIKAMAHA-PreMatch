@@ -254,6 +254,7 @@ class LivePredictionRuntime:
             "kickoff_ts": str(snapshot["kickoff_ts"]),
             "provider_status": str(snapshot["provider_status"]),
             "provider_status_detail": str(snapshot.get("provider_status_detail") or ""),
+            "source_fetched_at": str(snapshot["source_fetched_at"]),
             "period": int(snapshot["period"]),
             "match_clock_seconds": float(snapshot["match_clock_seconds"]),
             "score_home": int(snapshot["score_home"]),

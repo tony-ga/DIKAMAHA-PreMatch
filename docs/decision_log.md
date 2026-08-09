@@ -1831,6 +1831,35 @@ y bot construyeron como usuario no privilegiado; la API declaró 6 modelos, la
 política de 17 ligas y el catálogo live, mientras el bot conservó cero
 artefactos locales. La verificación Railway se ejecuta tras integrar a `main`.
 
+DEC-148
+Fecha: 2026-08-08
+Problema: la navegación Telegram vigente obliga a recorrer árboles de botones
+y volver al inicio para cambiar de tarea. Una interfaz visual rica necesita
+estado persistente, filtros, gráficas, favoritos y alertas sin exponer la clave
+de inferencia ni duplicar ESPN/modelos en el cliente.
+Opciones: ampliar indefinidamente callbacks; sustituir el bot por una web; o
+crear una Mini App híbrida con BFF autenticado y mantener el bot como fallback
+y canal de notificaciones.
+Decisión: abrir Fase 115. La Mini App será Next.js/TypeScript en un servicio
+Railway separado. Validará `Telegram.WebApp.initData` en servidor, custodiará
+la clave DIKAMAHA, usará PostgreSQL para preferencias y un worker sin
+`getUpdates` para alertas. Todo dato predictivo vendrá de la API DIKAMAHA.
+Markov Live, Hawkes residual y combinado permanecerán separados y shadow.
+Motivo: entregar una experiencia móvil de aplicación sin crear una segunda
+fuente de verdad, competir por el long polling ni modificar la cadena
+matemática validada.
+Estado: congelada; validada localmente y lista para despliegue gradual
+Impacto en contratos/fases: presentación, autenticación, preferencias y
+notificaciones de Fase 115. No cambia Fases 113/114, router oficial, snapshots,
+parámetros, políticas de promoción ni semántica de mercados.
+Evidencia requerida: autenticación Telegram criptográfica, secreto ausente del
+bundle, ownership y dedupe PostgreSQL, worker sin `getUpdates`, paridad BFF,
+pruebas responsive, Docker y smoke Railway.
+Evidencia obtenida: firma/expiración/grupos/CSRF cubiertos; bundle sin secretos
+ni URLs ESPN; límites y dedupe comprobados sobre PostgreSQL 17; 535 pruebas
+Python, 12 Vitest y 4 Playwright; build Docker no-root y smoke HTTP 200. Queda
+pendiente únicamente el smoke Railway/Telegram con servicios apagados.
+
 ```text
 DEC-NNN
 Fecha:
