@@ -26,8 +26,14 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - bot con botón `web_app`, menú global y enlaces `startapp` a fixture live o
   pre-match;
 - marcador, reloj, timestamp y próximo evento live corregidos en la vista;
+- catálogo próximo ampliado a las 18 ligas y 14 días mediante una petición
+  acotada por liga; búsqueda global de equipos tolerante a acentos;
+- navegación principal con acceso directo a Predicciones y diagnóstico visual
+  de cobertura, ligas, fallos parciales y refresco live;
+- logos de equipo y retratos de jugador PNG transparentes mediante proxy
+  DIKAMAHA/BFF autenticado, con fallback visual cuando no existen;
 - Cambridge United–Barnet conserva 1T, 2T y partido completo;
-- 536 pruebas Python aprobadas/8 omitidas, 16 Vitest y 7 Playwright; build Next
+- 542 pruebas Python aprobadas/8 omitidas, 16 Vitest y 7 Playwright; build Next
   aprobado y conexión real validada para readiness, modelos, ligas, fechas y
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.

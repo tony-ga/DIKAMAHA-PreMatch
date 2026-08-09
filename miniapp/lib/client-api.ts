@@ -32,6 +32,8 @@ export type Fixture = {
   home_score?: number;
   away_score?: number;
   display_clock?: string;
+  home_team_logo?: string | null;
+  away_team_logo?: string | null;
 };
 
 export type Catalog = {
@@ -39,6 +41,8 @@ export type Catalog = {
   count: number;
   status: string;
   partial_failure_count?: number;
+  league_count?: number;
+  date_count?: number;
 };
 
 export type League = { slug: string; name: string };
@@ -48,6 +52,7 @@ export type Team = {
   name: string;
   abbreviation?: string;
   logo?: string | null;
+  league_slug?: string;
 };
 export type HistoricalFixture = Fixture & {
   competition_id: string;
@@ -60,6 +65,7 @@ export type Player = {
   jersey?: string;
   position?: string;
   age?: number | null;
+  headshot?: string | null;
   statistics?: Array<{ name: string; label: string; value: string }>;
 };
 

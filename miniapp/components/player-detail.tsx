@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { PageHeader, StatePanel } from "@/components/ui";
+import { EntityImage } from "@/components/entity-image";
 import { api, queryString, record } from "@/lib/client-api";
 
 const preferredStats = [
@@ -28,6 +29,7 @@ export function PlayerDetail({ league, teamId, playerId }: { league: string; tea
     <>
       <PageHeader eyebrow={`${league} · ${String(team.name ?? "JUGADOR")}`} title={String(payload.name ?? "Jugador")} />
       <div className="stack">
+        <div className="player-hero"><EntityImage source={String(payload.headshot || "")} label={String(payload.name ?? "Jugador")} kind="player" size={96} /><div><strong>{String(payload.name ?? "Jugador")}</strong><span>{String(payload.position ?? "Posición no publicada")}</span></div></div>
         <article className="data-panel">
           <p className="eyebrow">PERFIL PUBLICADO</p>
           <div className="context-grid">

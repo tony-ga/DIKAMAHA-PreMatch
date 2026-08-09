@@ -6,6 +6,7 @@ import { useState } from "react";
 import { FixtureContext } from "@/components/fixture-context";
 import { PageHeader, SegmentedControl, StatePanel } from "@/components/ui";
 import { api, queryString, record } from "@/lib/client-api";
+import { EntityImage } from "@/components/entity-image";
 
 type Props = { fixtureId: string; competitionId: string; league: string; home: string; away: string };
 type Play = { id: string; type: string; label: string; clock: string; period: number; text: string };
@@ -77,8 +78,8 @@ export function HistoricalMatchDetail(props: Props) {
           {statistics.isError ? <StatePanel title="Estadísticas no disponibles">DIKAMAHA rechazó o no recibió datos reconciliables.</StatePanel> : statistics.isLoading ? <p className="muted">Cargando estadísticas…</p> : (
             <>
               <div className="stats-table" role="table" aria-label={`Estadísticas ${period}`}>
-                <div className="stats-row header" role="row"><span>Métrica</span><strong>{String(homeTeam.abbreviation ?? homeTeam.name ?? "LOC")}</strong><strong>{String(awayTeam.abbreviation ?? awayTeam.name ?? "VIS")}</strong></div>
-                {statisticKeys.map((key) => <div className="stats-row" role="row" key={key}><span>{metricLabels[key]}</span><strong>{String(homeStats[key] ?? 0)}</strong><strong>{String(awayStats[key] ?? 0)}</strong></div>)}
+                <div className="stats-row header" role="row"><span>Métrica</span><strong><EntityImage source={String(homeTeam.logo || "")} label={String(homeTeam.name ?? "Local")} size={28} />{String(homeTeam.abbreviation ?? homeTeam.name ?? "LOC")}</strong><strong><EntityImage source={String(awayTeam.logo || "")} label={String(awayTeam.name ?? "Visitante")} size={28} />{String(awayTeam.abbreviation ?? awayTeam.name ?? "VIS")}</strong></div>
+                {statisticKeys.map((key) => <StatRow key={key} label={metricLabels[key]} home={homeStats[key]} away={awayStats[key]} />)}
               </div>
               <div className="notice">1T + 2T: {statsPayload.reconciled ? "reconciliado" : "no confirmado"} · marcador: {statsPayload.score_reconciled ? "reconciliado" : "no confirmado"}.</div>
               {period === "total" ? <Boxscore value={statsPayload.boxscore} /> : null}
@@ -88,6 +89,13 @@ export function HistoricalMatchDetail(props: Props) {
       </div>
     </>
   );
+}
+
+function StatRow({ label, home, away }: { label: string; home: unknown; away: unknown }) {
+  const left = Math.max(0, Number(home) || 0);
+  const right = Math.max(0, Number(away) || 0);
+  const total = left + right;
+  return <div className="stats-row visual-stat" role="row"><span>{label}<i><b style={{ width: `${total ? left / total * 100 : 50}%` }} /></i></span><strong>{String(home ?? 0)}</strong><strong>{String(away ?? 0)}</strong></div>;
 }
 
 function Boxscore({ value }: { value: unknown }) {

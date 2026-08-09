@@ -9,7 +9,7 @@ import { useAuth } from "@/components/providers";
 const navigation = [
   { href: "/", icon: "⌂", label: "Inicio" },
   { href: "/live", icon: "●", label: "En vivo" },
-  { href: "/upcoming", icon: "◫", label: "Próximos" },
+  { href: "/predictions", icon: "◫", label: "Predicciones" },
   { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/subscriptions", icon: "⌁", label: "Alertas" },
 ];

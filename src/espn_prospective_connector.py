@@ -18,7 +18,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -191,9 +191,9 @@ class EspnProspectiveConnector:
         self.config.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def scoreboard(self, date: str) -> dict[str, Any]:
-        """Consulta partidos de una fecha ESPN con el parámetro documentado dates."""
+        """Consulta una fecha o rango acotado con el parámetro ESPN ``dates``."""
 
-        if len(date) != 8 or not date.isdigit():
+        if not _valid_scoreboard_dates(date):
             raise EspnConnectorError("invalid_scoreboard_date")
         return self._get(f"{SITE_BASE}/{self.config.league}/scoreboard", {"dates": date})
 
@@ -581,6 +581,19 @@ def _required_date(identifiers: dict[str, str], name: str) -> str:
     if len(value) != 8 or not value.isdigit():
         raise EspnConnectorError(f"invalid_identifier:{name}")
     return value
+
+
+def _valid_scoreboard_dates(value: str) -> bool:
+    """Acepta fecha única o rango inclusivo de hasta 31 días."""
+
+    parts = value.split("-")
+    if len(parts) not in {1, 2} or any(len(part) != 8 or not part.isdigit() for part in parts):
+        return False
+    try:
+        dates = [datetime.strptime(part, "%Y%m%d").date() for part in parts]
+    except ValueError:
+        return False
+    return len(dates) == 1 or dates[0] <= dates[1] <= dates[0] + timedelta(days=30)
 
 
 def _decode_cache(value: dict[str, Any], path: Path) -> EspnFetchResult | None:

@@ -23,6 +23,10 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   ajustes;
 - Centro de datos con ligas, fechas, partidos históricos, contexto,
   play-by-play, estadísticas 1T/2T/total, equipos, plantillas y perfiles;
+- Predicciones como destino principal, próximos multiliga en ventana de 14
+  días, búsqueda global de equipos tolerante a acentos y filtros live;
+- logos y retratos sólo cuando el proveedor publica PNG transparente,
+  transportados por API/BFF y nunca usados como features;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
 - tema Telegram claro/oscuro, safe areas y navegación inferior persistente.
@@ -70,3 +74,6 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - Railway confirmó deployment exitoso; health y Centro de datos responden 200,
   la ruta autenticada falla cerrada sin sesión y el worker permanece apagado
   lógicamente.
+- La corrección DEC-150 está validada localmente con datos reales: rango de
+  scoreboard, América sin acento, Barnet multicompetición y PNG RGBA. El nuevo
+  despliegue Railway queda pendiente del commit de esta revisión.

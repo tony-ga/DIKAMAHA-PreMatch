@@ -31,6 +31,7 @@ from pathlib import Path
 from statistics import quantiles
 from typing import Any
 
+import requests
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
@@ -60,18 +61,20 @@ try:
     from src.universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
     from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
     from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
-    from src.espn_user_explorer import EspnFootballDataExplorer, explorer_dates
+    from src.espn_user_explorer import LEAGUES, EspnFootballDataExplorer, explorer_dates
     from src.espn_fixture_context import default_context_service
     from src.live_prediction_runtime import LivePredictionRuntime, model_inventory
     from src.prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
+    from src.provider_media import ProviderMediaError, fetch_transparent_png
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
     from espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
     from espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
-    from espn_user_explorer import EspnFootballDataExplorer, explorer_dates
+    from espn_user_explorer import LEAGUES, EspnFootballDataExplorer, explorer_dates
     from espn_fixture_context import default_context_service
     from live_prediction_runtime import LivePredictionRuntime, model_inventory
     from prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
+    from provider_media import ProviderMediaError, fetch_transparent_png
 
 LOGGER = logging.getLogger(__name__)
 SERVICE_VERSION = "dikamaha_local_service_v1.6_live_models"
@@ -623,7 +626,7 @@ def _upcoming_catalog(
 def _upcoming_dates(
     now: datetime, selected_date: str | None,
 ) -> tuple[str, ...]:
-    """Valida fecha explícita o crea ventana futura de cuatro días."""
+    """Valida fecha explícita o crea ventana futura de catorce días."""
 
     if selected_date is not None:
         try:
@@ -633,7 +636,29 @@ def _upcoming_dates(
         return (selected_date,)
     return tuple(
         (now.date() + timedelta(days=offset)).strftime("%Y%m%d")
-        for offset in range(4))
+        for offset in range(14))
+
+
+def _global_team_search(
+    explorer: EspnFootballDataExplorer, query: str,
+) -> list[dict[str, Any]]:
+    """Busca equipos en todas las ligas con fallos parciales aislados."""
+
+    if len(query.strip()) < 2:
+        raise ValueError("team_search_requires_two_characters")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(explorer.teams, slug, query) for slug, _ in LEAGUES]
+        rows: list[dict[str, Any]] = []
+        for future in futures:
+            try:
+                rows.extend(future.result())
+            except (EspnConnectorError, OSError) as error:
+                LOGGER.warning("Búsqueda global de equipos parcial: %s", error)
+    unique = {
+        (str(row.get("league_slug")), str(row.get("id"))): row
+        for row in rows
+    }
+    return sorted(unique.values(), key=lambda row: str(row.get("name", "")))
 
 
 def _league_upcoming(
@@ -644,11 +669,11 @@ def _league_upcoming(
     provider = EspnProspectiveConnector(EspnConnectorConfig(league=slug))
     rows: list[dict[str, Any]] = []
     try:
-        for day in dates:
-            fixtures = scoreboard_fixtures(provider.scoreboard(day), slug)
-            rows.extend(
-                asdict(row) for row in fixtures
-                if _future_fixture(row, now))
+        date_range = dates[0] if len(dates) == 1 else f"{dates[0]}-{dates[-1]}"
+        fixtures = scoreboard_fixtures(provider.scoreboard(date_range), slug)
+        rows.extend(
+            asdict(row) for row in fixtures
+            if _future_fixture(row, now))
     except EspnConnectorError as error:
         LOGGER.warning("Catálogo próximo parcial %s: %s", slug, error)
     return rows
@@ -769,7 +794,9 @@ def create_app(
 
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
-        selected = leagues or os.getenv("DIKAMAHA_UPCOMING_LEAGUES", "esp.1,eng.1,mex.1")
+        selected = leagues or os.getenv("DIKAMAHA_UPCOMING_LEAGUES")
+        if not selected:
+            selected = ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 20)
         try:
             fixtures = await _infer_with_timeout(
@@ -779,7 +806,11 @@ def create_app(
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
-        return {"fixtures": fixtures, "count": len(fixtures)}
+        return {
+            "fixtures": fixtures, "count": len(fixtures), "status": "ok",
+            "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
+            "date_count": len(_upcoming_dates(datetime.now(timezone.utc), date)),
+        }
 
     @app.get("/v1/live", tags=["inference"])
     async def live_catalog(
@@ -809,6 +840,21 @@ def create_app(
         """Lista sólo modelos realmente ejecutados y su clasificación."""
 
         return model_inventory(app.state.live_runtime.policy)
+
+    @app.get("/v1/media/image", tags=["explorer"])
+    async def provider_media(url: str) -> Response:
+        """Entrega sólo PNG transparente permitido, sin exponer credenciales."""
+
+        try:
+            payload = await _infer_with_timeout(
+                fetch_transparent_png, url, effective.inference_timeout_seconds)
+        except (ProviderMediaError, requests.RequestException, TimeoutError) as exc:
+            LOGGER.warning("Medio visual rechazado: %s", type(exc).__name__)
+            raise _error("provider_media_unavailable") from exc
+        return Response(payload, media_type="image/png", headers={
+            "Content-Disposition": "inline",
+            "Cache-Control": "public, max-age=86400, immutable",
+        })
 
     @app.get("/v1/explorer/leagues", tags=["explorer"])
     async def explorer_leagues() -> dict[str, Any]:
@@ -871,12 +917,22 @@ def create_app(
 
     @app.get("/v1/explorer/teams", tags=["explorer"])
     async def explorer_teams(
-        league: str, query: str = "",
+        league: str | None = None, query: str = "",
     ) -> dict[str, Any]:
         """Lista o busca equipos por texto."""
 
-        rows = await _explorer_call(
-            app.state.data_explorer.teams, (league, query), effective)
+        if league:
+            rows = await _explorer_call(
+                app.state.data_explorer.teams, (league, query), effective)
+        else:
+            try:
+                rows = await _infer_with_timeout(
+                    lambda values: _global_team_search(*values),
+                    (app.state.data_explorer, query),
+                    effective.inference_timeout_seconds * 4,
+                )
+            except ValueError as exc:
+                raise _error(str(exc)) from exc
         return {"teams": rows[:50], "count": len(rows)}
 
     @app.get("/v1/explorer/team/roster", tags=["explorer"])

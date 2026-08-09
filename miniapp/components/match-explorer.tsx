@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { PageHeader, StatePanel } from "@/components/ui";
+import { EntityImage } from "@/components/entity-image";
 import { api, type ExplorerDate, type HistoricalFixture, type League, queryString } from "@/lib/client-api";
 
 export function MatchExplorer() {
@@ -63,7 +64,7 @@ export function MatchExplorer() {
             >
               <div className="fixture-meta"><span>{fixture.status_detail ?? league}</span><span>Ver datos →</span></div>
               <div className="score-row">
-                <div><strong>{fixture.home_team_name ?? "Local"}</strong><strong>{fixture.away_team_name ?? "Visitante"}</strong></div>
+                <div className="fixture-teams"><div><EntityImage source={fixture.home_team_logo} label={fixture.home_team_name ?? "Local"} size={34} /><strong>{fixture.home_team_name ?? "Local"}</strong></div><div><EntityImage source={fixture.away_team_logo} label={fixture.away_team_name ?? "Visitante"} size={34} /><strong>{fixture.away_team_name ?? "Visitante"}</strong></div></div>
                 <div className="score"><b>{fixture.home_score ?? "–"}</b><b>{fixture.away_score ?? "–"}</b></div>
               </div>
             </Link>

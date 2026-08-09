@@ -251,6 +251,8 @@ class LivePredictionRuntime:
             "away_team_id": int(snapshot["away_team_id"]),
             "home_team_name": str(snapshot.get("home_team_name") or snapshot["home_team_id"]),
             "away_team_name": str(snapshot.get("away_team_name") or snapshot["away_team_id"]),
+            "home_team_logo": snapshot.get("home_team_logo"),
+            "away_team_logo": snapshot.get("away_team_logo"),
             "kickoff_ts": str(snapshot["kickoff_ts"]),
             "provider_status": str(snapshot["provider_status"]),
             "provider_status_detail": str(snapshot.get("provider_status_detail") or ""),

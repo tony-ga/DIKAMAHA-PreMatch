@@ -58,6 +58,8 @@ class ResolvedFixture:
     away_team_name: str
     provider_status: str
     source: str = "espn_scoreboard"
+    home_team_logo: str | None = None
+    away_team_logo: str | None = None
 
 
 def _normal(value: str | None) -> str:
@@ -82,7 +84,7 @@ def _dates(center: date) -> tuple[str, ...]:
     return tuple((center + timedelta(days=offset)).strftime("%Y%m%d") for offset in (-1, 0, 1))
 
 
-def _team(competitor: dict[str, Any]) -> tuple[int, str]:
+def _team(competitor: dict[str, Any]) -> tuple[int, str, str | None]:
     """Extrae ID y nombre de un competidor ESPN."""
 
     team = competitor.get("team") if isinstance(competitor.get("team"), dict) else {}
@@ -90,7 +92,11 @@ def _team(competitor: dict[str, Any]) -> tuple[int, str]:
     if not str(identifier).isdigit():
         raise FixtureResolutionError("scoreboard_team_id_missing")
     name = team.get("displayName") or team.get("name") or team.get("shortDisplayName")
-    return int(identifier), str(name or identifier)
+    logo = team.get("logo")
+    if not isinstance(logo, str):
+        logos = team.get("logos")
+        logo = logos[0].get("href") if isinstance(logos, list) and logos and isinstance(logos[0], dict) else None
+    return int(identifier), str(name or identifier), str(logo) if logo else None
 
 
 def scoreboard_fixtures(payload: dict[str, Any], league_slug: str) -> list[ResolvedFixture]:
@@ -106,7 +112,7 @@ def scoreboard_fixtures(payload: dict[str, Any], league_slug: str) -> list[Resol
         competitors = {row.get("homeAway"): row for row in competition.get("competitors", []) if isinstance(row, dict)}
         if not isinstance(competitors.get("home"), dict) or not isinstance(competitors.get("away"), dict):
             continue
-        home_id, home_name = _team(competitors["home"]); away_id, away_name = _team(competitors["away"])
+        home_id, home_name, home_logo = _team(competitors["home"]); away_id, away_name, away_logo = _team(competitors["away"])
         kickoff = event.get("date") or competition.get("date")
         if not isinstance(kickoff, str):
             continue
@@ -114,7 +120,7 @@ def scoreboard_fixtures(payload: dict[str, Any], league_slug: str) -> list[Resol
         if parsed.tzinfo is None:
             continue
         status = ((competition.get("status") or {}).get("type") or {}).get("state") or "unknown"
-        fixtures.append(ResolvedFixture(league_slug, int(event["id"]), str(competition.get("id") or event["id"]), parsed.astimezone(timezone.utc).isoformat(), home_id, away_id, home_name, away_name, str(status).lower()))
+        fixtures.append(ResolvedFixture(league_slug, int(event["id"]), str(competition.get("id") or event["id"]), parsed.astimezone(timezone.utc).isoformat(), home_id, away_id, home_name, away_name, str(status).lower(), home_team_logo=home_logo, away_team_logo=away_logo))
     return fixtures
 
 

@@ -13,6 +13,7 @@ Created: 2026-07-29
 from __future__ import annotations
 
 import re
+import unicodedata
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import asdict
@@ -173,12 +174,12 @@ class EspnFootballDataExplorer(FootballDataExplorer):
 
         connector = self._connector(league)
         request = connector.resource_request("teams")
-        rows = _teams(connector.fetch_request(request))
+        rows = [{**row, "league_slug": league} for row in _teams(connector.fetch_request(request))]
         needle = _normal(query)
         if needle:
             rows = [
                 row for row in rows
-                if needle in _normal(str(row.get("name", "")))
+                if needle in _normal(" ".join(str(row.get(key, "")) for key in ("name", "short_name", "abbreviation", "location")))
             ]
         return rows
 
@@ -261,7 +262,9 @@ def _valid_date(value: str) -> str:
 def _normal(value: str) -> str:
     """Normaliza texto para búsqueda tolerante a mayúsculas."""
 
-    return " ".join(value.casefold().strip().split())
+    decomposed = unicodedata.normalize("NFKD", value)
+    plain = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return " ".join(plain.casefold().strip().split())
 
 
 def _score_index(payload: dict[str, Any]) -> dict[int, dict[str, Any]]:
@@ -387,6 +390,8 @@ def _team_identity(value: Any) -> dict[str, Any]:
         "id": str(team.get("id") or ""),
         "name": str(team.get("displayName") or team.get("name") or ""),
         "abbreviation": str(team.get("abbreviation") or ""),
+        "short_name": str(team.get("shortDisplayName") or ""),
+        "location": str(team.get("location") or ""),
         "logo": _logo(team),
     }
 
@@ -508,6 +513,7 @@ def _roster_player(row: dict[str, Any]) -> dict[str, Any]:
         "jersey": str(row.get("jersey") or ""),
         "position": str(position.get("displayName") or position.get("name") or ""),
         "age": row.get("age"),
+        "headshot": _headshot(row),
         "statistics": _player_statistics(row.get("statistics")),
     }
 
@@ -548,7 +554,19 @@ def _player_profile(row: dict[str, Any]) -> dict[str, Any]:
         "weight": str(row.get("displayWeight") or ""),
         "position": str(position.get("displayName") or position.get("name") or ""),
         "active": bool(row.get("active", status.get("id") == "1")),
+        "headshot": _headshot(row),
     }
+
+
+def _headshot(row: dict[str, Any]) -> str | None:
+    """Obtiene retrato publicado sin construir URLs del proveedor."""
+
+    value = row.get("headshot")
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("href") or value.get("url") or "") or None
+    return None
 
 
 # Version: 1.0.0

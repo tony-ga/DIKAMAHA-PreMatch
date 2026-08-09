@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from src.espn_user_explorer import (
+    _normal,
     _period_statistics,
     _play,
     _reconciled,
@@ -89,8 +90,15 @@ def test_team_parser_keeps_provider_identity() -> None:
     }]}]}]}
 
     assert _teams(payload) == [{
-        "id": "137", "name": "Cruz Azul", "abbreviation": "", "logo": None,
+        "id": "137", "name": "Cruz Azul", "abbreviation": "",
+        "short_name": "", "location": "", "logo": None,
     }]
+
+
+def test_team_search_normalization_ignores_accents() -> None:
+    """La búsqueda manual encuentra América al escribir america."""
+
+    assert _normal("América") == _normal("america")
 
 
 # Version: 1.0.0
