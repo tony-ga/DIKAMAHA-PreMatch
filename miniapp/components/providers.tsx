@@ -83,7 +83,10 @@ function TelegramAuth({ children }: { children: ReactNode }) {
     async function authenticate() {
       setState((current) => ({ ...current, loading: true, error: null }));
       try {
-        const existing = await fetch("/api/session/me", { cache: "no-store" });
+        const existing = await fetch("/api/session/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
         if (existing.ok) {
           const payload = await existing.json();
           if (active) setState({ user: payload.user, csrfToken: payload.csrfToken, loading: false, error: null });
@@ -96,8 +99,21 @@ function TelegramAuth({ children }: { children: ReactNode }) {
           "/api/session/telegram",
           { method: "POST", body: JSON.stringify({ initData: webApp.initData }) },
         );
+        const confirmed = await fetch("/api/session/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!confirmed.ok) {
+          throw new Error("Telegram no pudo conservar la sesión segura. Cierra y vuelve a abrir la Mini App.");
+        }
+        const confirmedPayload = await confirmed.json() as { user: User; csrfToken: string };
         if (active) {
-          setState({ user: payload.user, csrfToken: payload.csrfToken, loading: false, error: null });
+          setState({
+            user: confirmedPayload.user,
+            csrfToken: confirmedPayload.csrfToken,
+            loading: false,
+            error: null,
+          });
           const target = startPath(payload.startParam);
           if (target) router.replace(target);
         }

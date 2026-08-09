@@ -1931,6 +1931,31 @@ interno `8000`. La corrección propaga la URL administrada, añade reintentos GE
 health dependiente de ligas y error visual recuperable; no duplica catálogos ni
 altera datos/modelos. Gates: 544 Python, 17 Vitest y 9 Playwright aprobados.
 
+DEC-151
+Fecha: 2026-08-08
+Problema: en Telegram Web/Desktop la autenticación BFF respondía 200, pero
+todas las lecturas posteriores de catálogos respondían 401. La cookie de
+sesión `SameSite=Lax` era rechazada al ejecutar la Mini App dentro del contexto
+embebido de Telegram; el frontend aceptaba el login sin comprobar que la cookie
+hubiera quedado disponible.
+Opciones: exponer el token de sesión al JavaScript; retirar autenticación de
+catálogos; o conservar la sesión HttpOnly y adaptar su transporte al contexto
+cross-site embebido.
+Decisión: en producción la cookie será `HttpOnly; Secure; SameSite=None` y
+`Partitioned`; en desarrollo conservará `SameSite=Lax`. Todo fetch BFF incluirá
+credenciales explícitamente y el proveedor verificará `/api/session/me` después
+del intercambio de `initData` antes de renderizar rutas protegidas.
+Motivo: recuperar Telegram Web/Desktop sin exponer tokens, relajar permisos ni
+permitir que el frontend muestre una falsa sesión autenticada.
+Estado: congelada; hotfix validado localmente para despliegue
+Impacto en contratos/fases: transporte de sesión de Fase 115. No cambia API
+DIKAMAHA, ESPN, modelos, probabilidades, router, persistencia ni promoción.
+Evidencia requerida: cookie de producción segura y particionada, secuencia
+401→login 200→sesión 200 antes de catálogos, suites y smoke Railway.
+Evidencia obtenida: Network Logs reales con login 200 seguido de catálogos
+401; regresión E2E de confirmación post-login; 18 Vitest, 10 Playwright,
+typecheck y build Next aprobados. Falta smoke posterior al despliegue.
+
 ```text
 DEC-NNN
 Fecha:

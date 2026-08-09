@@ -75,10 +75,12 @@ export async function requireSession(): Promise<Session> {
 }
 
 export function sessionCookieOptions() {
+  const production = process.env.NODE_ENV === "production";
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
+    secure: production,
+    sameSite: production ? "none" as const : "lax" as const,
+    partitioned: production,
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   };

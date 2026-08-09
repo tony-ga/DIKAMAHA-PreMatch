@@ -5,6 +5,10 @@
 113 mientras Fase 115 presenta Fase 114 mediante una Mini App Telegram
 híbrida, sin ampliar mercados ni afirmar ventaja económica.
 
+La corrección operativa DEC-151 adapta exclusivamente la cookie HttpOnly al
+contexto embebido de Telegram Web/Desktop y exige confirmar la sesión antes de
+cargar catálogos. No modifica datos ni modelos.
+
 Fase 113 reemplaza las cifras de Fases 84A, 88, 94, 95, 96, 103, 104, 105 y
 106 cuando dependían de recorridos intra-kickoff, fronteras fraccionales o
 métricas mixtas. La salida vigente conserva 1X2 y over 2.5 en la cadena

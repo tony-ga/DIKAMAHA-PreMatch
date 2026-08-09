@@ -41,7 +41,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 
 - no hay llamadas ESPN desde navegador, Mini App, bot o worker;
 - `initDataUnsafe` nunca autoriza; la firma, fecha y usuario se validan en BFF;
-- cookies `HttpOnly`, `Secure`, `SameSite=Lax` y CSRF en mutaciones;
+- cookies `HttpOnly`, `Secure`, `SameSite=None`, particionadas en producción y
+  CSRF en mutaciones; desarrollo local conserva `SameSite=Lax`;
 - modo `private|public` y allowlist conservados;
 - máximo 10 favoritos, 20 suscripciones activas y cooldown mínimo de 300 s;
 - deduplicación `subscription_id + event_key`;
@@ -96,3 +97,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   cuando DIKAMAHA no puede servir ligas. La UI ofrece reintento explícito en
   próximos, históricos, equipos y live. Validación previa al despliegue: 544
   Python, 17 Vitest, 9 Playwright, typecheck y build Next.
+- DEC-151 corrige el transporte de sesión dentro de Telegram Web/Desktop:
+  cookie segura particionada, credenciales explícitas y confirmación
+  post-login antes de montar consultas protegidas. Gates locales: 18 Vitest,
+  10 Playwright, typecheck y build Next aprobados.
