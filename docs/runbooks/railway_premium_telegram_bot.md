@@ -27,6 +27,9 @@ TELEGRAM_ACCESS_MODE=private
 TELEGRAM_ALLOWED_USER_IDS=<id1,id2,id3>  # obligatorio sólo en private
 DIKAMAHA_BOT_API_URL=https://dikamaha-prematch-production.up.railway.app
 DIKAMAHA_API_KEY=<misma clave privada de la API>
+DIKAMAHA_MINIAPP_URL=https://<dominio-miniapp>.up.railway.app
+TELEGRAM_BOT_USERNAME=<usuario_bot_sin_arroba>
+TELEGRAM_MINIAPP_SHORT_NAME=dikamaha
 ```
 
 Variables opcionales:

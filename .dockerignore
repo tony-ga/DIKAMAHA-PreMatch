@@ -40,3 +40,9 @@ artifacts/*
 *.sqlite
 *.pem
 *.key
+**/.next
+**/node_modules
+logs/
+output/
+tmp/
+REPORTE_COMPLETO_FIABILIDAD.*

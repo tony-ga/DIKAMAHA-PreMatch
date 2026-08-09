@@ -1,9 +1,36 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-08
-**Fase activa:** Fase 114 Markov Live + Hawkes residual
-**Objetivo:** operar Markov Live y Hawkes residual selectivo desde Telegram,
-sin cambiar salidas oficiales ni la ruta pre-match revalidada.
+**Fase activa:** Fase 115 Telegram Mini App
+**Objetivo:** desplegar el dashboard híbrido y alertas sobre la API DIKAMAHA,
+sin cambiar salidas oficiales, modelos ni la ruta pre-match revalidada.
+
+## Fase 115 — Telegram Mini App híbrida
+
+Implementada y validada localmente; pendiente del smoke Railway/Telegram.
+
+- Next.js 16/TypeScript mobile-first con dashboard, live, próximos,
+  predicciones, modelos, alertas y ajustes;
+- tema claro/oscuro de Telegram, safe areas, navegación persistente y botón
+  nativo de regreso;
+- BFF con firma de `initData`, expiración de cinco minutos, rechazo de grupos,
+  allowlist/modo público, cookie segura, CSRF y rate limit por usuario;
+- API key ausente del bundle; cero llamadas ESPN desde navegador o worker;
+- PostgreSQL versionado con 10 favoritos, 20 alertas activas, cooldown mínimo y
+  límites concurrentes mediante advisory locks;
+- dedupe `subscription_id + event_key` validado sobre PostgreSQL 17 real;
+- worker de una réplica con polling por liga, `sendMessage`, backoff acotado y
+  sin `getUpdates`;
+- bot con botón `web_app`, menú global y enlaces `startapp` a fixture live o
+  pre-match;
+- marcador, reloj, timestamp y próximo evento live corregidos en la vista;
+- Cambridge United–Barnet conserva 1T, 2T y partido completo;
+- 535 pruebas Python aprobadas/8 omitidas, 12 Vitest, 4 Playwright, auditoría
+  npm sin vulnerabilidades, build Next/Docker y smoke HTTP 200 como `node`.
+
+Estado: `locally_validated_ready_for_railway`. La Mini App y alertas quedan
+apagadas por defecto hasta completar PostgreSQL, dominio, smoke real y
+configuración BotFather. Markov, Hawkes y combinado siguen separados y shadow.
 
 ## Fase 114 — Markov Live y Hawkes residual
 

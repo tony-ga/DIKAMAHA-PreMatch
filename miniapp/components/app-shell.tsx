@@ -1,0 +1,59 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect } from "react";
+
+import { useAuth } from "@/components/providers";
+
+const navigation = [
+  { href: "/", icon: "⌂", label: "Inicio" },
+  { href: "/live", icon: "●", label: "En vivo" },
+  { href: "/upcoming", icon: "◫", label: "Próximos" },
+  { href: "/subscriptions", icon: "⌁", label: "Alertas" },
+  { href: "/settings", icon: "⚙", label: "Ajustes" },
+];
+
+export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const back = window.Telegram?.WebApp.BackButton;
+    if (!back) return;
+    const onBack = () => router.back();
+    if (pathname === "/") back.hide();
+    else {
+      back.show();
+      back.onClick(onBack);
+    }
+    return () => back.offClick(onBack);
+  }, [pathname, router]);
+
+  return (
+    <div className="app-frame">
+      <header className="topbar">
+        <Link href="/" className="wordmark" aria-label="Ir al inicio">
+          <span className="wordmark-dot" /> DIKAMAHA
+        </Link>
+        <div className="user-chip">
+          <span className="status-dot" />
+          {user?.firstName ?? "Usuario"}
+        </div>
+      </header>
+      <main className="content">{children}</main>
+      <nav className="bottom-nav" aria-label="Navegación principal">
+        {navigation.map((item) => {
+          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          return (
+            <Link key={item.href} href={item.href} className={active ? "nav-item active" : "nav-item"}>
+              <span aria-hidden="true">{item.icon}</span>
+              <small>{item.label}</small>
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
+  );
+}

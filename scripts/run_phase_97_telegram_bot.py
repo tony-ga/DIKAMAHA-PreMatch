@@ -67,6 +67,9 @@ def main() -> int:
     logging.getLogger(__name__).info(
         "telegram_premium_started access_mode=%s allowed_users=%s",
         config.access_mode, len(config.allowed_user_ids))
+    if config.miniapp_url:
+        transport.set_chat_menu_button(config.miniapp_url)
+        logging.getLogger(__name__).info("telegram_miniapp_menu_configured")
     try:
         LongPollingRunner(
             bot, transport, config.poll_timeout_seconds).run_forever()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -224,8 +225,17 @@ def test_runtime_manifest_is_portable_and_scoped_to_required_files(
     _verify_hash_manifest(tmp_path, hashes, {"runtime.json"})
 
 
-def test_cambridge_barnet_exposes_probabilities_for_every_period() -> None:
+def test_cambridge_barnet_exposes_probabilities_for_every_period(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Congela la regresión observada en el primer fixture de producción."""
+
+    class _BeforeKickoff(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            return cls(2026, 8, 8, 10, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr("src.universal_prematch.datetime", _BeforeKickoff)
 
     request = UpcomingMatchInput(
         league_slug="eng.league_cup",
