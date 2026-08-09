@@ -71,6 +71,14 @@ activa sirve el commit `ede2f39`; la API activa incorpora los merges
 búsqueda Barnet 200, live 200/18 ligas/0 fallos, PNG 200 y predicción 200 con
 los tres periodos. Todos los servicios Railway permanecen `Online`.
 
+Extensión analítica e identidad nominal desplegada mediante PR #13. El commit
+`8aa3aca` conserva los nombres del catálogo en títulos, 1X2 y mercados,
+recupera identidad para enlaces anteriores y añade gráfica 1X2, xG, lambda,
+tabla e indicadores derivados. Railway reportó `SUCCESS` para Mini App, bot y
+worker; el merge `525aab2` dejó `/api/health`, `/predictions` y `/v1/health`
+en HTTP 200. Los workflows de GitHub no iniciaron por bloqueo de facturación,
+no por un fallo de código; la suite local completa permanece aprobada.
+
 ## Fase 114 — Markov Live y Hawkes residual
 
 Implementada y validada históricamente en `shadow`. La ruta nueva
