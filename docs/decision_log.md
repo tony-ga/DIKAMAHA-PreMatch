@@ -1914,6 +1914,11 @@ probabilidades ni clasificación official/shadow.
 Evidencia requerida: búsqueda global tolerante a acentos, catálogo futuro
 multiliga, imágenes sin acceso directo del navegador al proveedor, tests de
 contrato, build y smoke Railway.
+Evidencia obtenida: 542 pruebas Python, 16 Vitest, 7 Playwright, builds Next y
+Docker aprobados. Smoke Railway autenticado confirmó 18 ligas en próximos,
+Barnet global, live sin fallos parciales, PNG transparente y predicción con
+1T, 2T y total. La cuenta de GitHub Actions no inició jobs por facturación;
+no se observó un fallo de código.
 
 ```text
 DEC-NNN

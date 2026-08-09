@@ -59,6 +59,12 @@ para enlaces `startapp`. El worker reconstruido quedó `Online` y confirmó
 `enabled: false`; las alertas permanecen desactivadas. Markov, Hawkes y
 combinado siguen separados y shadow.
 
+Corrección visual DEC-150 desplegada mediante PR #8, #9 y #11. La Mini App
+activa sirve el commit `ede2f39`; la API activa incorpora los merges
+`a8abb8d` y `62eb8e7`. Smoke BFF real: sesión 200, próximos 200/18 ligas,
+búsqueda Barnet 200, live 200/18 ligas/0 fallos, PNG 200 y predicción 200 con
+los tres periodos. Todos los servicios Railway permanecen `Online`.
+
 ## Fase 114 — Markov Live y Hawkes residual
 
 Implementada y validada históricamente en `shadow`. La ruta nueva
