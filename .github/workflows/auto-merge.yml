@@ -1,0 +1,50 @@
+name: Auto-merge PRs
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: write
+  issues: write
+  checks: read
+
+concurrency:
+  group: auto-merge-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Attempt to merge PR using GitHub API
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info('No pull_request payload found; exiting.');
+              return;
+            }
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            try {
+              const res = await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pr.number,
+                merge_method: 'merge'
+              });
+              core.info(`Merged PR #${pr.number}: ${res.data.message || res.status}`);
+            } catch (error) {
+              const msg = (error && error.message) ? error.message : String(error);
+              core.info(`Auto-merge attempt FAILED for PR #${pr.number}: ${msg}`);
+              // Post a comment to the PR with the failure reason (requires issues: write permission)
+              try {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: `Auto-merge attempt failed: ${msg}` });
+                core.info('Posted failure comment on the PR.');
+              } catch (commentErr) {
+                core.info(`Failed to post comment: ${commentErr && commentErr.message ? commentErr.message : commentErr}`);
+              }
+            }
