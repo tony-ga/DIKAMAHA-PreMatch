@@ -79,6 +79,15 @@ worker; el merge `525aab2` dejó `/api/health`, `/predictions` y `/v1/health`
 en HTTP 200. Los workflows de GitHub no iniciaron por bloqueo de facturación,
 no por un fallo de código; la suite local completa permanece aprobada.
 
+Corrección de disponibilidad de catálogos preparada: los logs Railway aislaron
+que el publicador usaba `127.0.0.1:8000` aunque Railway asignaba `PORT=8080`.
+El supervisor propaga ahora la URL administrada al worker; el BFF reintenta GET
+transitorios, registra fallos sin secretos y `/api/health` exige PostgreSQL más
+el catálogo DIKAMAHA. Próximos, históricos, equipos y live muestran un aviso
+con reintento si ligas/fechas no responden, en vez de selectores silenciosamente
+vacíos. Gates locales: 544 Python/8 omitidas, 17 Vitest, 9 Playwright,
+typecheck y build Next aprobados.
+
 ## Fase 114 — Markov Live y Hawkes residual
 
 Implementada y validada históricamente en `shadow`. La ruta nueva

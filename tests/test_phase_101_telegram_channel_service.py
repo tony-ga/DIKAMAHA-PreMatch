@@ -93,8 +93,24 @@ def test_worker_is_stopped_after_normal_exit() -> None:
 
         return process
 
-    assert TelegramChannelService(Path("."), factory).run() == 0
+    assert TelegramChannelService(
+        Path("."), process_factory=factory).run() == 0
     assert process.exit_code == 0
+
+
+def test_worker_receives_the_managed_api_url() -> None:
+    """Railway propaga PORT al publicador en vez del fallback fijo 8000."""
+
+    captured: dict[str, Any] = {}
+
+    def factory(*args: Any, **kwargs: Any) -> _Process:
+        captured.update(kwargs)
+        return _Process()
+
+    assert TelegramChannelService(
+        Path("."), "http://127.0.0.1:8080", factory).run() == 0
+    assert captured["env"]["DIKAMAHA_BOT_API_URL"] == (
+        "http://127.0.0.1:8080")
 
 
 def test_api_environment_is_operational_readonly() -> None:

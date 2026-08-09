@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { FixtureCard, Metric, PageHeader, StatePanel } from "@/components/ui";
+import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel } from "@/components/ui";
 import { api, type Catalog, type League, queryString } from "@/lib/client-api";
 import { useState } from "react";
 
@@ -21,6 +21,7 @@ export default function LivePage() {
       } />
       <div className="notice">Markov es el baseline live. Hawkes sólo ajusta memoria corta en las ligas admitidas y permanece shadow.</div>
       <div style={{ height: 14 }} />
+      {leagues.isError ? <CatalogWarning onRetry={() => void leagues.refetch()} /> : null}
       <div className="form-grid filter-grid">
         <div className="field"><label htmlFor="live-league">Liga</label><select id="live-league" value={league} onChange={(event) => setLeague(event.target.value)}><option value="">Todas las ligas</option>{leagues.data?.leagues.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></div>
       </div>

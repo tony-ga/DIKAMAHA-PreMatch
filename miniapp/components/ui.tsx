@@ -75,6 +75,15 @@ export function StatePanel({ title, children, action }: {
   );
 }
 
+export function CatalogWarning({ onRetry }: { onRetry(): void }) {
+  return (
+    <div className="notice catalog-warning" role="alert">
+      <span>El catálogo no respondió. Los filtros pueden aparecer vacíos temporalmente.</span>
+      <button className="secondary-button" onClick={onRetry}>Reintentar catálogos</button>
+    </div>
+  );
+}
+
 export function ShadowBadge({ official = false }: { official?: boolean }) {
   return <span className={official ? "mode-badge official" : "mode-badge"}>{official ? "OFICIAL" : "SHADOW"}</span>;
 }

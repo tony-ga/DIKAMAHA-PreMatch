@@ -91,3 +91,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - El commit `8aa3aca` fue integrado mediante PR #13 y desplegado por Railway.
   Mini App, bot y worker reportaron `SUCCESS`; `/api/health`, `/predictions` y
   `/v1/health` respondieron HTTP 200 después del merge `525aab2`.
+- El gate de resiliencia de catálogos corrige la propagación de `PORT` hacia el
+  publicador, reintenta lecturas BFF transitorias y hace fail-closed el health
+  cuando DIKAMAHA no puede servir ligas. La UI ofrece reintento explícito en
+  próximos, históricos, equipos y live. Validación previa al despliegue: 544
+  Python, 17 Vitest, 9 Playwright, typecheck y build Next.

@@ -106,20 +106,25 @@ class TelegramChannelService:
 
     def __init__(
         self, root: Path,
+        api_base_url: str | None = None,
         process_factory: ProcessFactory = subprocess.Popen,
     ) -> None:
         """Configura el proceso hijo del publicador."""
 
         self._root = root
+        self._api_base_url = api_base_url.rstrip("/") if api_base_url else None
         self._process_factory = process_factory
         self._process: subprocess.Popen[str] | None = None
 
     def run(self) -> int:
         """Ejecuta el worker hasta señal o terminación inesperada."""
 
+        environment = os.environ.copy()
+        if self._api_base_url:
+            environment["DIKAMAHA_BOT_API_URL"] = self._api_base_url
         self._process = self._process_factory(
             _publisher_command(self._root), cwd=self._root,
-            env=os.environ.copy(), text=True)
+            env=environment, text=True)
         LOGGER.info("telegram_channel_worker_started pid=%s", self._process.pid)
         try:
             return int(self._process.wait())
