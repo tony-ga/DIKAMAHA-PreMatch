@@ -60,6 +60,14 @@ residual Hawkes y combinado. `Modelos en operación` declara oficiales y
 shadow visibles. Si no hay encuentros activos, responde vacío de forma normal
 y permite actualizar.
 
+DEC-152 corrige la frontera de día de ESPN: sin fecha explícita, el runtime
+inspecciona D-1, D y D+1 UTC y deduplica por `match_id`; una fecha explícita
+conserva alcance exacto. El detalle localiza primero el scoreboard correcto y
+después realiza la captura raw-first. La respuesta añade
+`observed_live_statistics`, `recent_actions` y una recomendación de refresco de
+10 segundos. Estos campos son de presentación y se derivan del mismo flujo
+causal ya observado; no son features nuevas ni modifican las tres capas shadow.
+
 El prior reconstruido no se denomina prospectivamente congelado: se declara
 `reconstructed_causal_prematch_prior`, excluye el match objetivo y usa sólo
 historia anterior al kickoff. Esto permite operar con la base existente sin
@@ -73,5 +81,5 @@ esperar partidos nuevos.
 - uso de `probabilities` ESPN como feature;
 - cambios a `match_features v1`.
 
-Version: 1.3.0
-Created: 2026-08-07; updated: 2026-08-08
+Version: 1.4.0
+Created: 2026-08-07; updated: 2026-08-09

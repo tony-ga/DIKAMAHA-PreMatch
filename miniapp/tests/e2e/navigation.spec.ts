@@ -216,15 +216,25 @@ test("recovers Cruzeiro and Mirassol names when prediction payload only has ids"
 
 test("renders the real live score, source timestamp and next event", async ({ page }) => {
   const markets = { probability_home: 0.62, probability_draw: 0.24, probability_away: 0.14, probability_over_2_5: 0.51, probability_btts: 0.44 };
-  await page.route("**/api/predict/live", (route) => route.fulfill({
+  let liveRequests = 0;
+  await page.route("**/api/predict/live", (route) => {
+    liveRequests += 1;
+    return route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       fixture: {
         home_team_name: "Real Madrid", away_team_name: "Barcelona",
+        home_team_logo: "https://example.com/real.png", away_team_logo: "https://example.com/barca.png",
         score_home: 2, score_away: 1, match_clock_seconds: 1920,
         provider_status_detail: "32'", source_fetched_at: "2026-08-08T20:32:00Z",
       },
+      observed_live_statistics: {
+        source: "provider_play_by_play",
+        home: { goals: 2, shots: 8, shots_on_target: 5, shots_off_target: 2, shots_blocked: 1, corners: 4, yellow_cards: 1, red_cards: 0, fouls: 7, offsides: 1, saves: 2, substitutions: 0 },
+        away: { goals: 1, shots: 6, shots_on_target: 3, shots_off_target: 2, shots_blocked: 1, corners: 3, yellow_cards: 2, red_cards: 0, fouls: 9, offsides: 2, saves: 3, substitutions: 0 },
+      },
+      recent_actions: [{ event_id: "a1", event_type: "goal", event_type_raw: "goal", team_side: "home", team_name: "Real Madrid", minute: 31, text: "Gol de Real Madrid" }],
       experimental_markov_live: {
         status: "experimental_shadow_not_promoted", markets,
         next_event: { horizon_minutes: 5, probabilities: { "home:goal": 0.12 }, probability_no_event: 0.82 },
@@ -233,13 +243,22 @@ test("renders the real live score, source timestamp and next event", async ({ pa
       experimental_combined_live: { status: "experimental_shadow_not_promoted", markets },
       hawkes_league_admission: { admitted: true },
     }),
-  }));
+    });
+  });
   await page.goto("/live/900001?league=esp.1");
-  await expect(page.locator(".score b").nth(0)).toHaveText("2");
-  await expect(page.locator(".score b").nth(1)).toHaveText("1");
+  await expect(page.getByAltText("Real Madrid")).toBeVisible();
+  await expect(page.getByAltText("Barcelona")).toBeVisible();
+  await expect(page.locator(".live-score span").nth(0)).toHaveText("2");
+  await expect(page.locator(".live-score span").nth(1)).toHaveText("1");
+  await expect(page.getByRole("heading", { name: "Acciones observadas" })).toBeVisible();
+  await expect(page.getByText("Córners")).toBeVisible();
+  await expect(page.getByText("Gol de Real Madrid")).toBeVisible();
+  await expect(page.getByText("PREDICCIONES EN TIEMPO REAL")).toBeVisible();
   await expect(page.getByText(/PRÓXIMO EVENTO/)).toBeVisible();
-  await expect(page.getByText(/32:00/)).toBeVisible();
-  await expect(page.getByText(/actualizado/)).toBeVisible();
+  await expect(page.getByText("32:00", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Sincronizado/)).toBeVisible();
+  await expect(page.getByText(/Actualización automática cada 10 s/)).toBeVisible();
+  await expect.poll(() => liveRequests, { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
 });
 
 test("navigates the complete historical match flow", async ({ page }) => {

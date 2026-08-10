@@ -12,20 +12,21 @@ export default function LivePage() {
   const query = useQuery({
     queryKey: ["live", league],
     queryFn: () => api<Catalog>(`/api/live${queryString({ limit: 20, leagues: league })}`),
-    refetchInterval: 25_000,
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   });
   return (
     <>
-      <PageHeader eyebrow="IN-PLAY · REFRESCO 25 S" title="Partidos en vivo" action={
+      <PageHeader eyebrow="IN-PLAY · AUTO 20 S" title="Partidos en vivo" action={
         <button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar partidos">↻</button>
       } />
-      <div className="notice">Markov es el baseline live. Hawkes sólo ajusta memoria corta en las ligas admitidas y permanece shadow.</div>
+      <div className="notice live-catalog-notice"><span className="live-pill"><i /> AUTO</span><span>El catálogo se sincroniza cada 20 segundos. Markov es el baseline live; Hawkes sólo ajusta memoria corta y permanece shadow.</span></div>
       <div style={{ height: 14 }} />
       {leagues.isError ? <CatalogWarning onRetry={() => void leagues.refetch()} /> : null}
       <div className="form-grid filter-grid">
         <div className="field"><label htmlFor="live-league">Liga</label><select id="live-league" value={league} onChange={(event) => setLeague(event.target.value)}><option value="">Todas las ligas</option>{leagues.data?.leagues.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></div>
       </div>
-      <div className="metric-grid compact-metrics"><Metric label="Activos" value={query.data?.count ?? "—"} accent /><Metric label="Ligas escaneadas" value={query.data?.league_count ?? (league ? 1 : "—")} /><Metric label="Fallos aislados" value={query.data?.partial_failure_count ?? 0} /></div>
+      <div className="metric-grid compact-metrics"><Metric label="Activos" value={query.data?.count ?? "—"} accent /><Metric label="Ligas escaneadas" value={query.data?.league_count ?? (league ? 1 : "—")} /><Metric label="Ventana de fechas" value={`${query.data?.date_count ?? 3} días`} /></div>
       {query.isError ? (
         <StatePanel title="No pudimos actualizar" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>La API sigue protegida; no se reutilizan datos stale como si fueran live.</StatePanel>
       ) : query.isLoading ? (

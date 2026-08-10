@@ -13,6 +13,33 @@ const ProbabilityChart = dynamic(() => import("@/components/probability-chart"),
 
 type Props = { fixtureId: string; league: string };
 
+const LIVE_REFRESH_MS = 10_000;
+
+const STAT_ROWS = [
+  ["goals", "Goles"],
+  ["shots", "Tiros"],
+  ["shots_on_target", "A puerta"],
+  ["shots_off_target", "Fuera"],
+  ["shots_blocked", "Bloqueados"],
+  ["corners", "Córners"],
+  ["yellow_cards", "Tarjetas amarillas"],
+  ["red_cards", "Tarjetas rojas"],
+  ["fouls", "Faltas"],
+  ["offsides", "Fueras de juego"],
+  ["saves", "Atajadas"],
+  ["substitutions", "Cambios"],
+] as const;
+
+const ACTION_LABELS: Record<string, [string, string]> = {
+  goal: ["⚽", "Gol"], penalty_scored: ["⚽", "Penal anotado"],
+  yellow: ["▰", "Tarjeta amarilla"], red: ["▰", "Tarjeta roja"],
+  corner: ["◩", "Córner"], foul: ["×", "Falta"],
+  shot_on_target: ["◎", "Tiro a puerta"], shot_off_target: ["○", "Tiro fuera"],
+  shot_blocked: ["◈", "Tiro bloqueado"], substitution: ["⇄", "Cambio"],
+  penalty_awarded: ["●", "Penal señalado"], save: ["◆", "Atajada"],
+  offside: ["⚑", "Fuera de juego"], shot_hit_woodwork: ["▥", "Tiro al poste"],
+};
+
 function probabilities(markets: Record<string, unknown>, homeName: string, awayName: string) {
   return [
     { name: homeName, value: Number(markets.probability_home ?? 0) },
@@ -59,6 +86,53 @@ function Layer({ title, value, note, homeName, awayName }: { title: string; valu
   );
 }
 
+function numberValue(row: Record<string, unknown>, key: string) {
+  const value = Number(row[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function ObservedStatistics({ value, homeName, awayName }: { value: unknown; homeName: string; awayName: string }) {
+  const statistics = record(value);
+  const home = record(statistics.home);
+  const away = record(statistics.away);
+  return (
+    <article className="data-panel live-statistics">
+      <div className="panel-heading"><div><p className="eyebrow">DATOS DEL PARTIDO</p><h3>Acciones observadas</h3></div><span className="provider-chip">PLAY-BY-PLAY</span></div>
+      <div className="live-stat-header"><strong>{homeName}</strong><span>Comparativa</span><strong>{awayName}</strong></div>
+      <div className="live-stat-list">
+        {STAT_ROWS.map(([key, label]) => {
+          const homeValue = numberValue(home, key);
+          const awayValue = numberValue(away, key);
+          const total = Math.max(homeValue + awayValue, 1);
+          return (
+            <div className="live-stat-row" key={key}>
+              <strong>{homeValue}</strong>
+              <div><span>{label}</span><div className="live-stat-bars"><i><b style={{ width: `${(homeValue / total) * 100}%` }} /></i><i><b style={{ width: `${(awayValue / total) * 100}%` }} /></i></div></div>
+              <strong>{awayValue}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <p className="live-source-note">Conteos derivados del flujo de jugadas del proveedor. El marcador usa su valor oficial.</p>
+    </article>
+  );
+}
+
+function RecentActions({ value }: { value: unknown }) {
+  const actions = Array.isArray(value) ? value.map(record) : [];
+  return (
+    <article className="data-panel">
+      <div className="panel-heading"><div><p className="eyebrow">CRONOLOGÍA LIVE</p><h3>Acciones recientes</h3></div><span className="live-pill"><i /> EN VIVO</span></div>
+      {actions.length ? <div className="live-action-list">{actions.slice(0, 12).map((action, index) => {
+        const raw = String(action.event_type_raw ?? "");
+        const canonical = String(action.event_type ?? "");
+        const [icon, label] = ACTION_LABELS[canonical] ?? ACTION_LABELS[raw] ?? ["·", raw.replaceAll("_", " ") || "Acción"];
+        return <div className={`live-action ${String(action.team_side ?? "unassigned")}`} key={String(action.event_id ?? index)}><span className="action-minute">{String(action.minute ?? "—")}&apos;</span><span className="action-icon">{icon}</span><div><strong>{label} · {String(action.team_name ?? "")}</strong><p>{String(action.text || "Evento registrado por el proveedor")}</p></div></div>;
+      })}</div> : <p className="muted">Todavía no hay acciones relevantes publicadas por el proveedor.</p>}
+    </article>
+  );
+}
+
 export function LiveDetail({ fixtureId, league }: Props) {
   const { csrfToken } = useAuth();
   const query = useQuery({
@@ -68,7 +142,8 @@ export function LiveDetail({ fixtureId, league }: Props) {
       body: JSON.stringify({ league_slug: league, match_id: Number(fixtureId) }),
     }, csrfToken),
     enabled: Boolean(league && fixtureId),
-    refetchInterval: 25_000,
+    refetchInterval: LIVE_REFRESH_MS,
+    refetchOnWindowFocus: true,
   });
   const payload = query.data ?? {};
   const fixture = record(payload.fixture);
@@ -85,7 +160,7 @@ export function LiveDetail({ fixtureId, league }: Props) {
   if (query.isError) return <StatePanel title="Predicción live no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>El snapshot fue rechazado o el partido ya no está activo.</StatePanel>;
   return (
     <>
-      <PageHeader eyebrow={`${league} · AUTO 25 S`} title={`${homeName} vs ${awayName}`} action={
+      <PageHeader eyebrow={`${league} · AUTO 10 S`} title={`${homeName} vs ${awayName}`} action={
         <div style={{ display: "flex", gap: 8 }}>
           <FavoriteButton entityType="fixture" entityId={fixtureId} label={`${homeName} vs ${awayName}`} metadata={{ league }} />
           <button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar predicción">↻</button>
@@ -93,14 +168,18 @@ export function LiveDetail({ fixtureId, league }: Props) {
       } />
       {query.isLoading ? <StatePanel title="Reconstruyendo snapshot causal">La API prepara el prior pre-match y observa únicamente eventos ya ocurridos.</StatePanel> : (
         <div className="stack">
-          <article className="data-panel">
-            <p className="eyebrow">MARCADOR LIVE</p>
-            <div className="score-row">
-              <div className="fixture-teams"><div><EntityImage source={String(fixture.home_team_logo || "")} label={homeName} size={38} /><strong>{homeName}</strong></div><div><EntityImage source={String(fixture.away_team_logo || "")} label={awayName} size={38} /><strong>{awayName}</strong></div></div>
-              <div className="score"><b>{String(fixture.score_home ?? fixture.home_score ?? 0)}</b><b>{String(fixture.score_away ?? fixture.away_score ?? 0)}</b></div>
+          <article className="data-panel live-scoreboard">
+            <div className="live-auto-status"><span><i /> DATOS EN VIVO</span><span>Actualización automática cada 10 s</span></div>
+            <div className="live-team-stage">
+              <div><EntityImage source={String(fixture.home_team_logo || "")} label={homeName} size={82} /><strong>{homeName}</strong><small>LOCAL</small></div>
+              <div className="live-score"><span>{String(fixture.score_home ?? fixture.home_score ?? 0)}</span><b>–</b><span>{String(fixture.score_away ?? fixture.away_score ?? 0)}</span></div>
+              <div><EntityImage source={String(fixture.away_team_logo || "")} label={awayName} size={82} /><strong>{awayName}</strong><small>VISITANTE</small></div>
             </div>
-            <p className="muted">{clock} · {String(fixture.provider_status_detail ?? fixture.provider_status ?? "live")} · actualizado {updatedAt}</p>
+            <div className="live-clock"><strong>{clock}</strong><span>{String(fixture.provider_status_detail ?? fixture.provider_status ?? "live")}</span><small>Sincronizado {updatedAt}</small></div>
           </article>
+          <ObservedStatistics value={payload.observed_live_statistics} homeName={homeName} awayName={awayName} />
+          <RecentActions value={payload.recent_actions} />
+          <div className="prediction-divider"><span>PREDICCIONES EN TIEMPO REAL</span></div>
           <Layer title="Markov Live" value={payload.experimental_markov_live} note="Baseline universal: régimen, marcador y tiempo restante." homeName={homeName} awayName={awayName} />
           <Layer title="Hawkes residual" value={payload.experimental_hawkes_residual} note="Memoria corta complementaria; nunca sustituye a Markov." homeName={homeName} awayName={awayName} />
           <Layer title="Resultado combinado" value={payload.experimental_combined_live} note="Markov más residual Hawkes acotado en escala logarítmica." homeName={homeName} awayName={awayName} />
