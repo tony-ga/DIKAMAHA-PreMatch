@@ -11,7 +11,10 @@ suscripciones, ajustes y un Centro de datos con paridad completa del bot:
 ligas, fechas, partidos históricos, contexto, play-by-play, estadísticas por
 periodo, equipos, plantillas y perfiles de jugador. Debe ser mobile-first, usar
 el tema Telegram y mostrar Markov Live, Hawkes residual y combinado como capas
-separadas `shadow`. El refresco live es HTTP cada 25 segundos.
+separadas `shadow`. El catálogo live refresca por HTTP cada 20 segundos y el
+detalle cada 10 segundos. DIKAMAHA inspecciona D-1/D/D+1 cuando no existe fecha
+explícita, y la vista coloca equipos/logos, estadísticas y cronología antes de
+las predicciones en tiempo real.
 
 PostgreSQL persiste usuarios, favoritos, suscripciones y entregas. Se permiten
 10 favoritos y 20 suscripciones activas por usuario, cooldown mínimo de 300 s

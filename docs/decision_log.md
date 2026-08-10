@@ -1956,6 +1956,37 @@ Evidencia obtenida: Network Logs reales con login 200 seguido de catálogos
 401; regresión E2E de confirmación post-login; 18 Vitest, 10 Playwright,
 typecheck y build Next aprobados. Falta smoke posterior al despliegue.
 
+DEC-152
+Fecha: 2026-08-09
+Problema: `/v1/live` consultaba sólo la fecha UTC actual. ESPN conserva
+partidos nocturnos activos bajo la fecha local de la competición, por lo que
+el catálogo podía responder vacío después del cambio de día UTC aunque hubiera
+partidos en curso. El detalle tampoco podía reconstruir esos fixtures. La Mini
+App mostraba únicamente marcador y predicciones, sin exponer el play-by-play
+observado que el runtime ya captura causalmente.
+Opciones: fijar la zona horaria de una liga; aceptar fecha manual; usar streaming
+directo ESPN desde el navegador; o ampliar de forma acotada la ventana del
+scoreboard detrás de DIKAMAHA.
+Decisión: cuando no se solicita fecha explícita, catálogo y detalle inspeccionan
+D-1, D y D+1 UTC, deduplican por `match_id` y conservan fecha exacta cuando el
+cliente sí la indica. El detalle añade estadísticas y acciones derivadas sólo
+del `live_event_stream_v1` raw-first; goles usan el marcador autoritativo. La
+Mini App refresca catálogo cada 20 s y detalle cada 10 s mediante BFF.
+Motivo: cubre fronteras de fecha y actualizaciones automáticas sin WebSocket,
+sin acceso ESPN desde navegador y sin añadir señales nuevas a inferencia.
+Estado: congelada
+Impacto en contratos/fases: extensión aditiva de Fases 114 y 115. No altera el
+prior pre-match, Markov, residual Hawkes, combinación, probabilidades, router ni
+clasificación shadow.
+Evidencia requerida: partido real de D-1 descubierto en D UTC, detalle con
+logos PNG, marcador, estadísticas, acciones y tres capas; prueba automática de
+refresco y suites sin regresión.
+Evidencia obtenida: prueba real sobre 18 ligas encontró tres fixtures activos
+de D-1 sin fallos parciales. Jaguares de Córdoba–Once Caldas completó captura,
+prior causal, estadísticas observadas y Markov/Hawkes/combinado. Regresiones
+dirigidas y suite integral: 546 Python, 18 Vitest, 10 Playwright, typecheck y
+build Next aprobados.
+
 ```text
 DEC-NNN
 Fecha:

@@ -11,7 +11,7 @@ import math
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -53,6 +53,29 @@ def _valid_date(value: str | None) -> str:
     except ValueError as error:
         raise ValueError("invalid_live_date") from error
     return candidate
+
+
+def _candidate_live_dates(
+    value: str | None, *, now: datetime | None = None,
+) -> tuple[str, ...]:
+    """Devuelve la ventana ESPN relevante sin romper una fecha explícita.
+
+    ESPN agrupa algunos eventos por la fecha local de la competición. Cerca de
+    medianoche UTC un partido todavía activo puede permanecer en el scoreboard
+    del día anterior, por lo que el catálogo automático inspecciona D-1, D y
+    D+1. Una fecha solicitada por el cliente conserva semántica exacta.
+    """
+
+    if value is not None:
+        return (_valid_date(value),)
+    reference = now or datetime.now(timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    day = reference.astimezone(timezone.utc).date()
+    return tuple(
+        (day + timedelta(days=offset)).strftime("%Y%m%d")
+        for offset in (-1, 0, 1)
+    )
 
 
 def load_hawkes_league_policy(
@@ -179,10 +202,13 @@ class LivePredictionRuntime:
         ))[:30]
         if not slugs:
             raise ValueError("live_league_required")
-        day = _valid_date(selected_date)
+        days = _candidate_live_dates(selected_date)
         bounded = min(max(int(limit), 1), 20)
-        with ThreadPoolExecutor(max_workers=min(8, len(slugs))) as pool:
-            batches = list(pool.map(lambda slug: self._league_active(slug, day), slugs))
+        targets = [(slug, day) for slug in slugs for day in days]
+        with ThreadPoolExecutor(max_workers=min(12, len(targets))) as pool:
+            batches = list(pool.map(
+                lambda target: self._league_active(*target), targets,
+            ))
         rows = [row for batch, _ in batches for row in batch]
         errors = sum(error for _, error in batches)
         unique = {int(row["match_id"]): row for row in rows}
@@ -194,7 +220,9 @@ class LivePredictionRuntime:
         return {
             "fixtures": fixtures,
             "count": len(fixtures),
-            "date": day,
+            "date": days[len(days) // 2],
+            "dates": list(days),
+            "date_count": len(days),
             "league_count": len(slugs),
             "partial_failure_count": errors,
             "status": "live_shadow_catalog",
@@ -225,9 +253,14 @@ class LivePredictionRuntime:
         if int(match_id) <= 0:
             raise ValueError("invalid_live_match_id")
         connector = self._connector_factory(league)
+        days = _candidate_live_dates(selected_date)
+        fixture_day = self._find_active_fixture_day(
+            connector, league, int(match_id), days,
+        )
+        if fixture_day is None:
+            raise ValueError("live_fixture_not_active")
         store = InMemoryLiveRawStore()
-        snapshots = EspnLiveMatchFollower(connector, store).poll_once(
-            _valid_date(selected_date))
+        snapshots = EspnLiveMatchFollower(connector, store).poll_once(fixture_day)
         snapshot = next((
             row for row in snapshots
             if str(row.get("provider_event_id")) == str(match_id)
@@ -267,7 +300,152 @@ class LivePredictionRuntime:
             "receipt_count": len(store.rows),
             "source_hash": str(snapshot["source_hash"]),
         }
+        result.update(_observed_live_presentation(snapshot))
         return result
+
+    @staticmethod
+    def _find_active_fixture_day(
+        connector: EspnProspectiveConnector,
+        league: str,
+        match_id: int,
+        days: tuple[str, ...],
+    ) -> str | None:
+        """Localiza el scoreboard del fixture antes de capturar sus recursos."""
+
+        for day in days:
+            try:
+                fixtures = scoreboard_fixtures(connector.scoreboard(day), league)
+            except (
+                EspnConnectorError, EspnResourceUnavailable, ValueError, OSError,
+            ):
+                continue
+            if any(
+                fixture.match_id == match_id
+                and fixture.provider_status in LIVE_STATES
+                for fixture in fixtures
+            ):
+                return day
+        return None
+
+
+_PRESENTATION_EVENTS = frozenset({
+    "goal", "yellow", "red", "substitution", "shot_on_target",
+    "shot_off_target", "shot_blocked", "corner", "foul",
+    "penalty_awarded", "penalty_scored",
+})
+_PRESENTATION_AUXILIARY = frozenset({
+    "save", "offside", "penalty_missed", "penalty___missed",
+    "penalty_saved", "penalty___saved", "shot_hit_woodwork",
+    "var_red_card_upgrade", "var___red_card_upgrade",
+    "var_referee_decision_cancelled", "var___referee_decision_cancelled",
+    "var_referee_decision_confirmed", "var___referee_decision_confirmed",
+})
+
+
+def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Agrega el play-by-play sólo para presentación, sin tocar inferencia."""
+
+    home_id = int(snapshot["home_team_id"])
+    away_id = int(snapshot["away_team_id"])
+    home_name = str(snapshot.get("home_team_name") or home_id)
+    away_name = str(snapshot.get("away_team_name") or away_id)
+    stats = {
+        "home": _empty_observed_stats(int(snapshot["score_home"])),
+        "away": _empty_observed_stats(int(snapshot["score_away"])),
+        "unassigned": _empty_observed_stats(0),
+    }
+    actions: list[dict[str, Any]] = []
+    for event in snapshot.get("events", []):
+        if not isinstance(event, dict) or bool(event.get("annulled")):
+            continue
+        team_id = _optional_int(event.get("team_id"))
+        side = "home" if team_id == home_id else "away" if team_id == away_id else "unassigned"
+        canonical = str(event.get("event_type") or "unclassified")
+        raw_type = str(event.get("event_type_raw") or "").lower().replace("-", "_")
+        _count_observed_event(stats[side], canonical, raw_type)
+        if canonical not in _PRESENTATION_EVENTS and raw_type not in _PRESENTATION_AUXILIARY:
+            continue
+        clock_seconds = float(event.get("match_clock_seconds") or 0.0)
+        actions.append({
+            "event_id": str(event.get("event_id") or ""),
+            "event_type": canonical,
+            "event_type_raw": raw_type,
+            "team_id": team_id,
+            "team_side": side,
+            "team_name": home_name if side == "home" else away_name if side == "away" else "Sin asignar",
+            "period": int(event.get("period") or 1),
+            "match_clock_seconds": clock_seconds,
+            "minute": max(1, int(clock_seconds // 60) + 1),
+            "text": str(event.get("text") or "")[:500],
+        })
+    for row in stats.values():
+        row["shots"] = (
+            row["shots_on_target"] + row["shots_off_target"]
+            + row["shots_blocked"]
+        )
+    actions.sort(
+        key=lambda row: (float(row["match_clock_seconds"]), str(row["event_id"])),
+        reverse=True,
+    )
+    return {
+        "observed_live_statistics": {
+            "source": "provider_play_by_play",
+            "as_of": str(snapshot["source_fetched_at"]),
+            "home": stats["home"],
+            "away": stats["away"],
+            "unassigned": stats["unassigned"],
+        },
+        "recent_actions": actions[:24],
+        "automatic_refresh_recommended_seconds": 10,
+    }
+
+
+def _empty_observed_stats(goals: int) -> dict[str, int]:
+    return {
+        "goals": goals,
+        "shots": 0,
+        "shots_on_target": 0,
+        "shots_off_target": 0,
+        "shots_blocked": 0,
+        "corners": 0,
+        "yellow_cards": 0,
+        "red_cards": 0,
+        "fouls": 0,
+        "offsides": 0,
+        "saves": 0,
+        "substitutions": 0,
+        "penalties": 0,
+    }
+
+
+def _count_observed_event(
+    row: dict[str, int], canonical: str, raw_type: str,
+) -> None:
+    mapping = {
+        "shot_on_target": "shots_on_target",
+        "shot_off_target": "shots_off_target",
+        "shot_blocked": "shots_blocked",
+        "corner": "corners",
+        "yellow": "yellow_cards",
+        "red": "red_cards",
+        "foul": "fouls",
+        "substitution": "substitutions",
+        "penalty_awarded": "penalties",
+    }
+    field = mapping.get(canonical)
+    if field is not None:
+        row[field] += 1
+    if raw_type == "offside":
+        row["offsides"] += 1
+    elif raw_type == "save":
+        row["saves"] += 1
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def model_inventory(policy: dict[str, Any]) -> dict[str, Any]:
@@ -359,5 +537,6 @@ def _score(value: Any) -> int | None:
 
 __all__ = [
     "LivePredictionRuntime", "load_hawkes_league_policy", "model_inventory",
-    "predict_shadow_snapshot",
+    "predict_shadow_snapshot", "_candidate_live_dates",
+    "_observed_live_presentation",
 ]

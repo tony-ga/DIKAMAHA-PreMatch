@@ -15,7 +15,10 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   entregas idempotentes;
 - worker de alertas sin `getUpdates`, con polling de DIKAMAHA cada 30 segundos;
 - bot premium con botón `web_app` y `setChatMenuButton`;
-- refresco visual HTTP cada 25 segundos, sin WebSocket ni SSE en v1.
+- refresco visual HTTP cada 20 segundos en catálogo y 10 segundos en detalle,
+  sin WebSocket ni SSE en v1;
+- ventana automática ESPN D-1/D/D+1 detrás de DIKAMAHA para cubrir partidos
+  nocturnos publicados bajo la fecha local de competición.
 
 ## Alcance visible
 
@@ -34,6 +37,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - logos y retratos sólo cuando el proveedor publica PNG transparente,
   transportados por API/BFF y nunca usados como features;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
+- detalle live con ambos escudos PNG, marcador/reloj, comparación de acciones
+  observadas, cronología y predicciones, en ese orden;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
 - tema Telegram claro/oscuro, safe areas y navegación inferior persistente.
 

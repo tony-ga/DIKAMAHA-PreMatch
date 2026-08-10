@@ -177,3 +177,27 @@ A continuación, un resumen estructurado de **todos los tipos de datos exactos**
 ### 5. Contenido Editorial y Noticias
 *   **Artículos:** Noticias recientes relevantes a una liga, un equipo o un jugador específico.
 *   **Resúmenes:** Enlaces a reportes de partidos y metadatos de videos de resúmenes (highlights) si están disponibles regionalmente.
+
+---
+
+## Contrato live DIKAMAHA para la Mini App
+
+La interfaz nunca consume estos recursos de ESPN directamente. `/v1/live`
+consulta scoreboards D-1, D y D+1 cuando no se indica `date`, conserva una fecha
+explícita sin ampliarla y deduplica fixtures por `match_id`. Esto evita vacíos
+durante partidos que cruzan medianoche UTC.
+
+`POST /v1/predict/live/fixture` localiza el día ESPN del encuentro, captura
+scoreboard/event/plays/situation raw-first y devuelve de forma aditiva:
+
+- `fixture`: equipos, logos PNG, marcador, periodo, reloj y timestamp;
+- `observed_live_statistics`: goles autoritativos y conteos de tiros, córners,
+  tarjetas, faltas, offsides, acciones detenidas y sustituciones;
+- `recent_actions`: cronología relevante con equipo, minuto y texto proveedor;
+- `experimental_markov_live`, `experimental_hawkes_residual` y
+  `experimental_combined_live`, siempre separados y `shadow`;
+- `automatic_refresh_recommended_seconds: 10`.
+
+Las estadísticas son presentación derivada del play-by-play observado. No se
+inyectan como features adicionales, no llaman probabilidades ESPN y no alteran
+la salida oficial pre-match.

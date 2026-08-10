@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
+import src.live_prediction_runtime as live_runtime
 from src.dikamaha_inference import DikamahaInferenceEngine
 from src.live_prediction_runtime import (
     LivePredictionRuntime,
+    _candidate_live_dates,
+    _observed_live_presentation,
     predict_shadow_snapshot,
 )
 from src.universal_prematch import UniversalPrematchEngine, UpcomingMatchInput
@@ -135,3 +138,72 @@ def test_live_catalog_uses_espn_state_score_and_orientation(tmp_path) -> None:
     assert fixture["away_team_name"] == "Equipo B"
     assert fixture["home_score"] == 1 and fixture["away_score"] == 0
     assert fixture["display_clock"] == "32'"
+
+
+class _BoundaryConnector:
+    def scoreboard(self, date: str) -> dict[str, object]:
+        if date != "20260809":
+            return {"events": []}
+        return _ScoreboardConnector().scoreboard("20260808")
+
+
+def test_automatic_live_window_includes_previous_espn_day(
+    tmp_path, monkeypatch,
+) -> None:
+    """Evita catálogo vacío cerca de medianoche UTC."""
+
+    assert _candidate_live_dates(
+        None, now=datetime(2026, 8, 10, 1, tzinfo=timezone.utc),
+    ) == ("20260809", "20260810", "20260811")
+    assert _candidate_live_dates("20260808") == ("20260808",)
+    windows = tmp_path / "event_windows.json"
+    windows.write_text(json.dumps(_historical_rows()), encoding="utf-8")
+    runtime = LivePredictionRuntime(
+        UniversalPrematchEngine(
+            windows, team_markets_enabled=False,
+            official_goal_chain_enabled=False,
+        ),
+        DikamahaInferenceEngine(),
+        connector_factory=lambda _: _BoundaryConnector(),
+    )
+    monkeypatch.setattr(
+        live_runtime, "_candidate_live_dates",
+        lambda value: ("20260809", "20260810", "20260811"),
+    )
+
+    catalog = runtime.list_active("esp.1", 12)
+
+    assert catalog["count"] == 1
+    assert catalog["date_count"] == 3
+    assert catalog["dates"] == ["20260809", "20260810", "20260811"]
+    assert catalog["fixtures"][0]["match_id"] == 900001
+
+
+def test_observed_live_presentation_aggregates_teams_and_ignores_annulled() -> None:
+    """Separa estadísticas visuales por orientación sin alterar el snapshot."""
+
+    snapshot = {
+        **_snapshot(),
+        "home_team_name": "Local real", "away_team_name": "Visitante real",
+        "score_home": 2, "score_away": 1,
+        "events": [
+            {"event_id": "1", "event_type": "corner", "event_type_raw": "corner", "team_id": 1, "period": 1, "match_clock_seconds": 60, "text": "Corner", "annulled": False},
+            {"event_id": "2", "event_type": "shot_on_target", "event_type_raw": "shot_on_target", "team_id": 1, "period": 1, "match_clock_seconds": 120, "text": "Shot", "annulled": False},
+            {"event_id": "3", "event_type": "auxiliary", "event_type_raw": "save", "team_id": 2, "period": 1, "match_clock_seconds": 121, "text": "Save", "annulled": False},
+            {"event_id": "4", "event_type": "yellow", "event_type_raw": "yellow_card", "team_id": 2, "period": 1, "match_clock_seconds": 180, "text": "Card", "annulled": False},
+            {"event_id": "5", "event_type": "corner", "event_type_raw": "corner", "team_id": 2, "period": 1, "match_clock_seconds": 200, "text": "Deleted", "annulled": True},
+        ],
+    }
+
+    result = _observed_live_presentation(snapshot)
+    statistics = result["observed_live_statistics"]
+
+    assert statistics["home"]["goals"] == 2
+    assert statistics["away"]["goals"] == 1
+    assert statistics["home"]["corners"] == 1
+    assert statistics["home"]["shots"] == 1
+    assert statistics["away"]["yellow_cards"] == 1
+    assert statistics["away"]["saves"] == 1
+    assert len(result["recent_actions"]) == 4
+    assert result["recent_actions"][0]["event_id"] == "4"
+    assert result["automatic_refresh_recommended_seconds"] == 10
