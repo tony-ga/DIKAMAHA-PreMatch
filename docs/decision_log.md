@@ -2025,6 +2025,10 @@ expuestas. Fixtures sintéticos cubrieron predictor 0–100, historial live,
 tripletes inválidos y ausencia. La curva firmada verificó pesos, orientación,
 anulación, marcadores de gol y media móvil. Gates locales: 555 Python
 aprobadas/8 omitidas, 18 Vitest, 10 Playwright, typecheck y build Next.
+PR #19 integrada en `main`; Railway confirmó `SUCCESS` para los cuatro
+servicios. El smoke BFF autenticado devolvió sesión, benchmark y live HTTP 200,
+contratos `provider_match_context_v1`/`match_pressure_v1`, 90 puntos de presión
+y las tres capas DIKAMAHA presentes.
 
 ```text
 DEC-NNN
