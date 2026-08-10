@@ -20,6 +20,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/upcoming**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyCatalog) }));
   await page.route("**/api/models", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", models: [] }) }));
   await page.route("**/api/provider/predictor**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "not_published", probabilities: null, history: [], market_context: { status: "not_published" } }) }));
+  await page.route("**/api/provider/markets**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ source_name: "External", status: "not_published", count: 0, fixtures: [] }) }));
   await page.route("**/api/favorites**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ favorites: [] }) }));
   await page.route("**/api/readiness", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ready: true, contract_version: "phase_6_1", service_version: "1.6.0" }) }));
   await page.route("**/api/explorer/**", (route) => {
@@ -133,7 +134,7 @@ test("renders first half, second half and full-match pre-match markets", async (
   await page.route("**/api/provider/predictor**", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ status: "available", probabilities: { home: .46, draw: .29, away: .25 }, history: [], market_context: { status: "financial_isolated_available" } }),
+    body: JSON.stringify({ status: "available", probabilities: { home: .46, draw: .29, away: .25 }, history: [], market_context: { status: "financial_isolated_available", providers: [{ provider_id: "100", provider_name: "Provider", details: "CAM +130", markets: { moneyline: { home: { open: { odds: "+130" }, close: { odds: "+125" } }, draw: { close: { odds: "+210" } }, away: { live: { odds: "+240" } } } } }] } }),
   }));
   await page.route("**/api/predict/upcoming", (route) => route.fulfill({
     status: 200,
@@ -166,7 +167,26 @@ test("renders first half, second half and full-match pre-match markets", async (
   await expect(page.getByText("Goles esperados por equipo")).toBeVisible();
   await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Predictor del proveedor" })).toBeVisible();
-  await expect(page.getByText(/contexto de mercado permanece aislado/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Movimiento del mercado" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "+130" })).toBeVisible();
+});
+
+test("shows the global open close and live market tape", async ({ page }) => {
+  await page.unroute("**/api/provider/markets**");
+  await page.route("**/api/provider/markets**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      source_name: "External", status: "available", count: 1,
+      fixtures: [{ event_id: "401", home_team: { name: "América" }, away_team: { name: "Nacional" }, market_context: { providers: [{ provider_id: "100", provider_name: "Provider", details: "AME +140", markets: { moneyline: { home: { open: { odds: "+130" }, close: { odds: "+140" }, live: { odds: "-210" } }, draw: { open: { odds: "+200" }, close: { odds: "+205" }, live: { odds: "+240" } }, away: { open: { odds: "+195" }, close: { odds: "+200" }, live: { odds: "+850" } } } } }] } }],
+    }),
+  }));
+
+  await page.goto("/markets");
+  await expect(page.getByRole("heading", { name: "Pronósticos globales" })).toBeVisible();
+  await expect(page.getByRole("rowheader", { name: "América" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "-210" })).toBeVisible();
+  await expect(page.getByText(/No es SPI/)).toBeVisible();
 });
 
 test("recovers Cruzeiro and Mirassol names when prediction payload only has ids", async ({ page }) => {

@@ -79,7 +79,7 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from provider_match_context import ProviderMatchContextService
 
 LOGGER = logging.getLogger(__name__)
-SERVICE_VERSION = "dikamaha_local_service_v1.7_provider_context"
+SERVICE_VERSION = "dikamaha_local_service_v1.8_provider_markets"
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -619,7 +619,7 @@ def _upcoming_catalog(
     dates = _upcoming_dates(now, selected_date)
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(slugs)))) as pool:
         batches = list(pool.map(
-            lambda slug: _league_upcoming(slug, dates, now), slugs[:30]))
+            lambda slug: _league_upcoming(slug, dates, now), slugs[:64]))
     rows = [row for batch in batches for row in batch]
     unique = {int(row["match_id"]): row for row in rows}
     return sorted(unique.values(), key=lambda row: row["kickoff_ts"])[:limit]
@@ -803,7 +803,7 @@ def create_app(
         try:
             fixtures = await _infer_with_timeout(
                 _upcoming_catalog, (selected, bounded, date),
-                effective.inference_timeout_seconds * 3
+                effective.inference_timeout_seconds * 5
             )
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
@@ -831,7 +831,7 @@ def create_app(
             return await _infer_with_timeout(
                 lambda values: app.state.live_runtime.list_active(*values),
                 (selected, min(max(int(limit), 1), 20), date),
-                effective.inference_timeout_seconds * 4,
+                effective.inference_timeout_seconds * 6,
             )
         except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo live: %s", exc)
@@ -910,6 +910,21 @@ def create_app(
             )
         except (EspnConnectorError, ValueError, OSError) as exc:
             LOGGER.warning("Predictor externo no disponible: %s", type(exc).__name__)
+            raise _error(str(exc)) from exc
+
+    @app.get("/v1/provider/markets", tags=["explorer"])
+    async def provider_markets(league: str, date: str) -> dict[str, Any]:
+        """Expone apertura/cierre/live como presentación financiera aislada."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        try:
+            return await _infer_with_timeout(
+                lambda values: app.state.provider_context.markets(*values),
+                (league, date), effective.inference_timeout_seconds * 2,
+            )
+        except (EspnConnectorError, ValueError, OSError) as exc:
+            LOGGER.warning("Cinta de mercado no disponible: %s", type(exc).__name__)
             raise _error(str(exc)) from exc
 
     @app.get("/v1/explorer/match/plays", tags=["explorer"])
@@ -1129,9 +1144,11 @@ async def _call_with_timeout(request: Request, call_next: Any, config: ServiceCo
     """Ejecuta una request con timeout operativo."""
 
     try:
-        multiplier = 4.0 if request.url.path in {
-            "/v1/live", "/v1/predict/live/fixture", "/v1/upcoming",
-            "/v1/explorer/teams", "/v1/provider/predictor",
+        multiplier = 7.0 if request.url.path in {
+            "/v1/live", "/v1/upcoming", "/v1/explorer/teams",
+        } else 4.0 if request.url.path in {
+            "/v1/predict/live/fixture", "/v1/provider/predictor",
+            "/v1/provider/markets",
         } else 1.0
         return await asyncio.wait_for(
             call_next(request),

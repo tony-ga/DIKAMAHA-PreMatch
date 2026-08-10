@@ -10,7 +10,10 @@ from src.espn_prospective_connector import (
     EspnFetchResult,
     EspnProspectiveConnector,
 )
-from src.provider_match_context import normalize_provider_match_context
+from src.provider_match_context import (
+    normalize_provider_market_catalog,
+    normalize_provider_match_context,
+)
 
 
 def normalize(summary: dict[str, object], scope: str = "live") -> dict[str, object]:
@@ -63,24 +66,60 @@ def test_accepts_explicit_nested_team_projection_without_deriving_tie() -> None:
     assert result["probabilities"] == {"home": .51, "draw": .28, "away": .21}
 
 
-def test_pickcenter_never_becomes_a_predictor() -> None:
+def test_pickcenter_never_becomes_a_predictor_but_exposes_isolated_tape() -> None:
     result = normalize({
         "pickcenter": [{
             "provider": {"name": "Sportsbook"},
-            "homeTeamOdds": {"moneyLine": -120},
-            "awayTeamOdds": {"moneyLine": 220},
+            "moneyline": {
+                "home": {"open": {"odds": "+130"}, "live": {"odds": "-210", "link": {"href": "https://example.test"}}},
+                "draw": {"close": {"odds": "+205"}},
+                "away": {"open": {"odds": "+195"}, "live": {"odds": "+850"}},
+            },
         }],
     })
 
     assert result["status"] == "not_published"
     assert result["probabilities"] is None
-    assert result["market_context"] == {
-        "status": "financial_isolated_available",
-        "provider_count": 1,
-        "consumed_by_models": False,
-        "odds_exposed": False,
+    market = result["market_context"]
+    assert market["status"] == "financial_isolated_available"
+    assert market["provider_count"] == 1
+    assert market["consumed_by_models"] is False
+    assert market["odds_exposed"] is True
+    assert market["derived_probabilities"] is False
+    assert market["providers"][0]["markets"]["moneyline"]["home"] == {
+        "open": {"odds": "+130"}, "live": {"odds": "-210"},
     }
-    assert "moneyLine" not in str(result)
+    assert "example.test" not in str(result)
+
+
+def test_active_odds_catalog_keeps_open_close_live_and_team_identity() -> None:
+    result = normalize_provider_market_catalog({"events": [{
+        "id": "401000002", "date": "2026-08-10T20:00Z",
+        "competitions": [{
+            "competitors": [
+                {"homeAway": "home", "team": {"id": "1", "displayName": "Casa", "logos": [{"href": "https://a.espncdn.com/home.png"}]}},
+                {"homeAway": "away", "team": {"id": "2", "displayName": "Fuera", "logos": [{"href": "https://a.espncdn.com/away.png"}]}},
+            ],
+            "status": {"type": {"state": "pre", "detail": "8:00 PM"}},
+            "odds": [{
+                "provider": {"id": "100", "name": "Provider"},
+                "moneyline": {
+                    "home": {"open": {"odds": "-110"}, "close": {"odds": "-105"}},
+                    "draw": {"open": {"odds": "+200"}, "close": {"odds": "+210"}},
+                    "away": {"open": {"odds": "+300"}, "close": {"odds": "+280"}},
+                },
+                "total": {"over": {"open": {"line": "o2.5", "odds": "+120"}}},
+            }],
+        }],
+    }]}, league="col.1", date="20260810", source_fetched_at="2026-08-10T00:00:00Z")
+
+    assert result["contract_version"] == "provider_market_tape_v1"
+    assert result["count"] == 1
+    assert result["fixtures"][0]["home_team"]["name"] == "Casa"
+    provider = result["fixtures"][0]["market_context"]["providers"][0]
+    assert provider["markets"]["moneyline"]["away"]["close"]["odds"] == "+280"
+    assert provider["markets"]["total"]["over"]["open"]["line"] == "o2.5"
+    assert result["not_model_feature"] is True
 
 
 def test_rejects_incomplete_or_invalid_probability_triplets() -> None:
@@ -120,5 +159,27 @@ def test_fresh_predictor_summary_requests_ocp_and_preserves_raw(
     )
 
     assert captured["params"] == {"event": "401000001", "ocp": 1}
+    assert captured["use_cache"] is False
+    assert len(list(tmp_path.glob("*.json"))) == 1
+
+
+def test_market_scoreboard_requests_active_odds_and_preserves_raw(
+    tmp_path, monkeypatch,
+) -> None:
+    connector = EspnProspectiveConnector(EspnConnectorConfig(
+        league="col.1", cache_dir=tmp_path,
+    ))
+    captured: dict[str, Any] = {}
+
+    def fetch(url: str, params: dict[str, Any], *, use_cache: bool) -> EspnFetchResult:
+        captured.update({"url": url, "params": params, "use_cache": use_cache})
+        return EspnFetchResult({}, 200, datetime.now(timezone.utc), False, url)
+
+    monkeypatch.setattr(connector, "_get_result", fetch)
+    connector.scoreboard_fetch_result(
+        "20260810", use_cache=False, active_odds=True, preserve_raw=True,
+    )
+
+    assert captured["params"] == {"dates": "20260810", "activeodds": "true"}
     assert captured["use_cache"] is False
     assert len(list(tmp_path.glob("*.json"))) == 1

@@ -197,16 +197,26 @@ class EspnProspectiveConnector:
             raise EspnConnectorError("invalid_scoreboard_date")
         return self._get(f"{SITE_BASE}/{self.config.league}/scoreboard", {"dates": date})
 
-    def scoreboard_fetch_result(self, date: str, *, use_cache: bool = True) -> EspnFetchResult:
+    def scoreboard_fetch_result(
+        self, date: str, *, use_cache: bool = True,
+        active_odds: bool = False, preserve_raw: bool = False,
+    ) -> EspnFetchResult:
         """Consulta scoreboard conservando metadata y permitiendo captura fresca live."""
 
         if len(date) != 8 or not date.isdigit():
             raise EspnConnectorError("invalid_scoreboard_date")
-        return self._get_result(
-            f"{SITE_BASE}/{self.config.league}/scoreboard",
-            {"dates": date},
+        url = f"{SITE_BASE}/{self.config.league}/scoreboard"
+        params = {
+            "dates": date,
+            **({"activeodds": "true"} if active_odds else {}),
+        }
+        result = self._get_result(
+            url, params,
             use_cache=use_cache,
         )
+        if preserve_raw and not use_cache:
+            self._store_cache(url, params, result)
+        return result
 
     def calendar(self) -> dict[str, Any]:
         """Consulta el calendario Core documentado de la competición."""

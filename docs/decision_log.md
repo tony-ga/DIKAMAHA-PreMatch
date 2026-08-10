@@ -2030,6 +2030,43 @@ servicios. El smoke BFF autenticado devolvió sesión, benchmark y live HTTP 200
 contratos `provider_match_context_v1`/`match_pressure_v1`, 90 puntos de presión
 y las tres capas DIKAMAHA presentes.
 
+DEC-154
+Fecha: 2026-08-09
+Problema: la interfaz oculta el contenido de `pickcenter` y del scoreboard con
+`activeodds=true`, por lo que el usuario no puede distinguir apertura, cierre y
+valor live. Además, la ausencia real del predictor analítico se percibe como un
+fallo y el catálogo visual sólo ofrece 18 de los 49 slugs ya auditados.
+Opciones: convertir cuotas en un supuesto SPI; sustituir Markov/Hawkes; exponer
+el payload financiero sin control; o publicar una cinta de mercado normalizada,
+separada del predictor y de cualquier inferencia.
+Decisión: ampliar `provider_match_context_v1` con `provider_market_tape_v1`.
+Se muestran únicamente líneas y cuotas americanas de apertura, cierre y live
+publicadas por el proveedor, sin enlaces de apuesta, probabilidad implícita,
+agregación, recomendación, ROI, Kelly ni stakes. Este contexto permanece
+`financial_isolated`, `display_only` y jamás entra a features, calibración,
+fallback o promoción. El predictor analítico conserva estado explícito
+`not_published` cuando ESPN no lo entrega; no se imputa desde mercado. Los 49
+slugs validados en Fase 36 se habilitan en catálogos y filtros, con fallos
+parciales aislados y límites de concurrencia.
+Motivo: hacer visible la información solicitada sin confundir precio con
+probabilidad analítica, sin degradar cobertura live y reutilizando el catálogo
+multiliga ya auditado.
+Estado: congelada; implementada y validada localmente para despliegue
+Impacto en contratos/fases: extensión aditiva de Fases 36, 100 y 115. No
+modifica snapshots, Dixon-Coles/Kalman, Markov, Hawkes, probabilidades oficiales,
+router ni estados de promoción. Autoriza sólo presentación financiera aislada y
+reemplaza `odds_exposed=false` de DEC-153.
+Evidencia requerida: normalización determinista de moneyline/spread/total;
+apertura/cierre/live cuando existan; ausencia analítica explícita; endpoint BFF
+autenticado; 49 ligas navegables; pruebas de contrato, navegación, build y smoke
+real sobre un fixture con `pickcenter`.
+Evidencia obtenida: `col.1/401877857` confirmó predictor analítico
+`not_published` y un proveedor con moneyline open/close/live completo; el
+scoreboard `activeodds=true` devolvió tres fixtures normalizados. El catálogo
+visual coincide exactamente con los 49 slugs de Fase 36; el barrido live real
+encontró un activo, 49 ligas y cero fallos parciales. Gates: 559 Python
+aprobadas/8 omitidas, 18 Vitest, 11 Playwright, typecheck y build Next.
+
 ```text
 DEC-NNN
 Fecha:

@@ -22,6 +22,13 @@ permanece financiero y aislado. Live añade una curva de presión firmada con
 media móvil de cinco minutos y goles marcados. Estas vistas no sustituyen ni
 alimentan Markov Live, Hawkes residual o el combinado.
 
+DEC-154 amplía la presentación con `provider_market_tape_v1`: `pickcenter` y
+el scoreboard `activeodds=true` pueden mostrar proveedor, línea y cuota
+americana de apertura, cierre y live. Predictor analítico y mercado nunca se
+confunden. No se derivan probabilidades implícitas, agregados, señales ni
+features; tampoco se transportan links de ejecución. Los filtros visuales
+incluyen los 49 slugs auditados en Fase 36.
+
 PostgreSQL persiste usuarios, favoritos, suscripciones y entregas. Se permiten
 10 favoritos y 20 suscripciones activas por usuario, cooldown mínimo de 300 s
 y dedupe por `subscription_id + event_key`. Un worker separado consulta sólo
@@ -31,7 +38,8 @@ El bot existente añade un botón `web_app`, configura el menú global y conserv
 todos sus comandos como fallback. Las capacidades de consulta se reflejan en
 la Mini App mediante una allowlist cerrada de rutas BFF `/v1/explorer/*`. No se
 añaden llamadas ESPN desde navegador, BFF o worker; el adaptador nuevo vive
-exclusivamente en la API DIKAMAHA. No se añaden cuotas, ROI, Kelly, stakes ni
-recomendaciones. El gate exige pruebas TypeScript/Python, navegación E2E,
+exclusivamente en la API DIKAMAHA. Las cuotas visibles son read-only y
+financieramente aisladas; no se añaden ROI, Kelly, stakes, probabilidades
+implícitas ni recomendaciones. El gate exige pruebas TypeScript/Python, navegación E2E,
 conexión BFF/API, migraciones, builds Docker, revisión de secretos y smoke
 Railway.

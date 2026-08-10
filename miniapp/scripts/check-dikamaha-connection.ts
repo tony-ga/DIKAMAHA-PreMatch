@@ -2,12 +2,15 @@ type Check = { name: string; path: string; validate(payload: Record<string, unkn
 
 export {};
 
+const providerDate = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+
 const checks: Check[] = [
   { name: "readiness", path: "/v1/readiness", validate: (payload) => payload.ready === true },
   { name: "models", path: "/v1/models", validate: (payload) => Array.isArray(payload.models) },
   { name: "leagues", path: "/v1/explorer/leagues", validate: (payload) => Array.isArray(payload.leagues) },
   { name: "dates", path: "/v1/explorer/dates?mode=past&days=1", validate: (payload) => Array.isArray(payload.dates) },
   { name: "upcoming", path: "/v1/upcoming?limit=1", validate: (payload) => Array.isArray(payload.fixtures) },
+  { name: "markets", path: `/v1/provider/markets?league=col.1&date=${providerDate}`, validate: (payload) => Array.isArray(payload.fixtures) },
 ];
 
 const baseUrl = process.env.DIKAMAHA_BOT_API_URL?.replace(/\/$/, "");

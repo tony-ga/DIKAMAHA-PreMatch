@@ -488,5 +488,29 @@ def test_provider_predictor_endpoint_remains_authenticated() -> None:
     }).status_code == 401
 
 
+def test_provider_market_endpoint_is_financially_isolated() -> None:
+    class ProviderContext:
+        @staticmethod
+        def markets(league: str, date: str) -> dict[str, object]:
+            return {
+                "contract_version": "provider_market_tape_v1",
+                "league_slug": league, "date": date, "count": 1,
+                "role": "financial_isolated_display_only",
+                "not_model_feature": True,
+            }
+
+    app = create_app(
+        ServiceConfig(mode="operational_readonly", external_calls_enabled=True),
+        provider_context=ProviderContext(),
+    )
+    response = TestClient(app).get("/v1/provider/markets", params={
+        "league": "col.1", "date": "20260810",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["contract_version"] == "provider_market_tape_v1"
+    assert response.json()["not_model_feature"] is True
+
+
 # Version: 1.0.0
 # Created: 2026-07-15

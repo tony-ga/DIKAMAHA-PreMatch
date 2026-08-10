@@ -199,7 +199,7 @@ class LivePredictionRuntime:
 
         slugs = list(dict.fromkeys(
             _valid_league(value) for value in leagues.split(",") if value.strip()
-        ))[:30]
+        ))[:64]
         if not slugs:
             raise ValueError("live_league_required")
         days = _candidate_live_dates(selected_date)
