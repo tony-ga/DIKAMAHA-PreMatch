@@ -58,6 +58,12 @@ Usar play-by-play, situation, probabilidades live y estadísticas finales sólo
 para interfaz live futura, auditoría, labels y settlement. Conservar la
 reconciliación `1T + 2T = total` y `goles PBP = marcador oficial`.
 
+La extensión DEC-153 implementa esa presentación mediante un benchmark
+tolerante a ausencia y `match_pressure_v1`. Sólo normaliza probabilidades
+analíticas explícitas; en muestras reales donde no se publican conserva
+`not_published`. La presión ponderada y el historial del proveedor nunca se
+inyectan en Markov/Hawkes.
+
 **Éxito:** paginación completa, hash raw-first, rechazo explícito de
 discrepancias y ninguna lectura live como feature de un partido pre-match.
 
@@ -66,6 +72,10 @@ discrepancias y ninguna lectura live como feature de un partido pre-match.
 Mostrar noticias y highlights como contexto editorial, con timestamp, fuente y
 etiqueta no-modelo. Archivar odds con bookmaker, línea, timestamp y mercado
 solamente para la futura Fase 83; no exponer staking ni ventaja económica.
+
+`pickcenter` se reduce a disponibilidad/provenance en el contrato visible:
+cuotas, líneas y probabilidades implícitas no se exponen ni se confunden con
+SPI.
 
 **Éxito:** noticias no convertidas en feature sin pipeline NLP causal; odds
 separadas del router, de la calibración oficial y de la interfaz de apuesta.

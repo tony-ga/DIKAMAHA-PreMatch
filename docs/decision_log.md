@@ -1989,6 +1989,43 @@ build Next aprobados. PR #17 integrada; Railway `SUCCESS`; smoke autenticado de
 producción devolvió catálogo y predicción 200 con 3 activos, 18 ligas, 0 fallos,
 logos, estadísticas, 24 acciones y tres capas.
 
+DEC-153
+Fecha: 2026-08-09
+Problema: se solicita integrar las probabilidades pre-match/live atribuidas al
+predictor/SPI de ESPN, el historial minuto a minuto y `pickcenter`, además de
+valorar si deben sustituir Markov Live y Hawkes. La inspección real encontró
+`pickcenter` en summaries, pero no encontró `predictor`, `winprobability` ni un
+recurso Core de probabilidades utilizable en las muestras auditadas.
+Opciones: reemplazar las capas DIKAMAHA por el feed externo; derivar una falsa
+probabilidad desde cuotas; ignorar la fuente; o añadir un benchmark tolerante
+a ausencia y una dinámica heurística separada.
+Decisión: crear `provider_match_context_v1`. Las probabilidades del proveedor
+se normalizan sólo cuando existen campos explícitos de predictor o historial de
+win probability y se muestran como benchmark `display_only/live_only`, nunca
+como feature, calibrador o fallback predictivo. Markov Live conserva el rol de
+baseline universal y Hawkes el residual selectivo: no se sustituyen sin una
+comparación OOS versionada. `pickcenter` sólo publica metadatos de disponibilidad
+y permanece `financial_isolated`; no se exponen cuotas ni se derivan como SPI.
+El play-by-play produce una curva de presión heurística firmada con pesos
+congelados y media móvil de cinco minutos, separada de toda inferencia.
+Motivo: evita confundir precios de mercado con un modelo analítico, conserva
+cobertura cuando ESPN no publica predictor y añade contexto visual reproducible
+sin romper causalidad ni promoción.
+Estado: congelada; implementada y validada para despliegue
+Impacto en contratos/fases: extensión aditiva de 100E, 100F, 114 y 115. No
+modifica `match_features v1`, priors, modelos, probabilidades oficiales,
+política Hawkes ni router.
+Evidencia requerida: fixtures con y sin predictor, normalización 1X2 válida,
+ausencia explícita, aislamiento de pickcenter, curva de presión reproducible,
+API/BFF sin URLs ESPN en navegador, regresiones y smoke Railway.
+Evidencia obtenida: dos summaries reales (`col.1/401877868` y
+`arg.1/401841485`) respondieron correctamente pero no publicaron predictor ni
+historial; ambos sí declararon contexto financiero aislado y cero cuotas
+expuestas. Fixtures sintéticos cubrieron predictor 0–100, historial live,
+tripletes inválidos y ausencia. La curva firmada verificó pesos, orientación,
+anulación, marcadores de gol y media móvil. Gates locales: 555 Python
+aprobadas/8 omitidas, 18 Vitest, 10 Playwright, typecheck y build Next.
+
 ```text
 DEC-NNN
 Fecha:

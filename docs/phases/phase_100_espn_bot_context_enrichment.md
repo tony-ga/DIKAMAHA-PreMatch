@@ -29,8 +29,8 @@ snapshots raw-first y contratos de presentación sin alterar inferencia.
 | 100B | Standings, forma, calendario y líderes | historial sólo anterior al kickoff |
 | 100C | Lesiones, roster y perfil ampliado | `validated_as_display_only` |
 | 100D | Dataset de candidatos causales | `blocked_by_outcome_coverage` |
-| 100E | Live/settlement robusto | `implemented_guarded_not_activated` |
-| 100F | Noticias y archivo de odds aislado | `validated_isolated` |
+| 100E | Live/settlement robusto y benchmark opcional | `implemented_display_only` |
+| 100F | Noticias y archivo de odds aislado | `validated_isolated_no_odds_exposure` |
 
 ## Evidencia 100A
 
@@ -68,11 +68,19 @@ outcome sellado. No se ejecutó ablation ni se promovió una feature. Ver
 clasificados y aislados; la muestra actual no contiene fixtures elegibles live
 ni outcomes. Ver `phase_100e_report.md`.
 
+DEC-153 añade un contrato tolerante a ausencia para predictor 1X2 externo y
+una curva de presión derivada del PBP. Dos summaries reales no publicaron el
+predictor, por lo que el estado normal fue `not_published`; no se fabricó un
+fallback desde mercado. Ambos recursos son presentación y no features.
+
 ## Evidencia 100F
 
 `validated_isolated` el 2026-07-29. Noticias son contexto editorial sin feature
 de modelo y 83 snapshots de odds están archivados sin consumidores en la ruta
 predictiva. Ver `phase_100f_report.md`.
+
+`pickcenter` sólo expone disponibilidad financiera aislada. El contrato
+visible omite bookmaker, líneas, moneyline y probabilidad implícita.
 
 ## Clasificación inicial
 

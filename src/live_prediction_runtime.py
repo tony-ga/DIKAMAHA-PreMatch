@@ -340,6 +340,85 @@ _PRESENTATION_AUXILIARY = frozenset({
     "var_referee_decision_cancelled", "var___referee_decision_cancelled",
     "var_referee_decision_confirmed", "var___referee_decision_confirmed",
 })
+_PRESSURE_WEIGHTS = {
+    "goal": 25.0,
+    "penalty_scored": 25.0,
+    "shot_on_target": 8.0,
+    "shot_off_target": 4.0,
+    "corner": 3.0,
+    "foul": 1.0,
+}
+_PRESSURE_WINDOW_MINUTES = 5
+_REGULATION_MINUTES = 90
+
+
+def _match_dynamics(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Construye una curva causal de presión sólo para presentación."""
+
+    home_id = int(snapshot["home_team_id"])
+    away_id = int(snapshot["away_team_id"])
+    home_name = str(snapshot.get("home_team_name") or home_id)
+    away_name = str(snapshot.get("away_team_name") or away_id)
+    raw = [0.0] * _REGULATION_MINUTES
+    goals: list[dict[str, Any]] = []
+    for event in snapshot.get("events", []):
+        if not isinstance(event, dict) or bool(event.get("annulled")):
+            continue
+        team_id = _optional_int(event.get("team_id"))
+        side = "home" if team_id == home_id else "away" if team_id == away_id else None
+        canonical = str(event.get("event_type") or "").lower().replace("-", "_")
+        weight = _PRESSURE_WEIGHTS.get(canonical)
+        if side is None or weight is None:
+            continue
+        clock_seconds = max(0.0, float(event.get("match_clock_seconds") or 0.0))
+        minute = min(_REGULATION_MINUTES, max(1, int(clock_seconds // 60) + 1))
+        raw[minute - 1] += weight if side == "home" else -weight
+        if canonical in {"goal", "penalty_scored"}:
+            goals.append({
+                "minute": minute,
+                "team_side": side,
+                "team_name": home_name if side == "home" else away_name,
+            })
+    radius = _PRESSURE_WINDOW_MINUTES // 2
+    smoothed = [
+        sum(raw[max(0, index - radius):min(_REGULATION_MINUTES, index + radius + 1)])
+        / _PRESSURE_WINDOW_MINUTES
+        for index in range(_REGULATION_MINUTES)
+    ]
+    current_seconds = max(0.0, float(snapshot.get("match_clock_seconds") or 0.0))
+    current_minute = min(
+        _REGULATION_MINUTES, max(1, int(current_seconds // 60) + 1),
+    )
+    return {
+        "contract_version": "match_pressure_v1",
+        "status": "display_only_heuristic",
+        "weights": {
+            "goal": 25,
+            "shot_on_target": 8,
+            "shot_off_target": 4,
+            "corner": 3,
+            "foul": 1,
+        },
+        "smoothing": {
+            "method": "centered_moving_average",
+            "window_minutes": _PRESSURE_WINDOW_MINUTES,
+        },
+        "neutral_axis": 0,
+        "regulation_minutes": _REGULATION_MINUTES,
+        "current_minute": current_minute,
+        "points": [
+            {
+                "minute": index + 1,
+                "raw_score": round(raw[index], 6),
+                "smoothed_score": round(value, 6),
+                "home_pressure": round(max(value, 0.0), 6),
+                "away_pressure": round(min(value, 0.0), 6),
+            }
+            for index, value in enumerate(smoothed)
+        ],
+        "goal_markers": goals,
+        "not_model_feature": True,
+    }
 
 
 def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -396,6 +475,7 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
             "unassigned": stats["unassigned"],
         },
         "recent_actions": actions[:24],
+        "match_dynamics": _match_dynamics(snapshot),
         "automatic_refresh_recommended_seconds": 10,
     }
 
@@ -538,5 +618,5 @@ def _score(value: Any) -> int | None:
 __all__ = [
     "LivePredictionRuntime", "load_hawkes_league_policy", "model_inventory",
     "predict_shadow_snapshot", "_candidate_live_dates",
-    "_observed_live_presentation",
+    "_match_dynamics", "_observed_live_presentation",
 ]

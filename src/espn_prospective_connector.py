@@ -268,16 +268,23 @@ class EspnProspectiveConnector:
             raise EspnConnectorError("invalid_summary_event_id")
         return self._get(f"{SITE_BASE}/{self.config.league}/summary", {"event": str(event_id)})
 
-    def summary_fetch_result(self, event_id: str, *, use_cache: bool = True) -> EspnFetchResult:
+    def summary_fetch_result(
+        self, event_id: str, *, use_cache: bool = True,
+        include_predictor: bool = False, preserve_raw: bool = False,
+    ) -> EspnFetchResult:
         """Consulta summary conservando metadata de transporte."""
 
         if not str(event_id).isdigit():
             raise EspnConnectorError("invalid_summary_event_id")
-        return self._get_result(
-            f"{SITE_BASE}/{self.config.league}/summary",
-            {"event": str(event_id)},
-            use_cache=use_cache,
-        )
+        url = f"{SITE_BASE}/{self.config.league}/summary"
+        params = {
+            "event": str(event_id),
+            **({"ocp": 1} if include_predictor else {}),
+        }
+        result = self._get_result(url, params, use_cache=use_cache)
+        if preserve_raw and not use_cache:
+            self._store_cache(url, params, result)
+        return result
 
     def resource_request(self, resource: str, **identifiers: str) -> EspnRequest:
         """Construye una solicitud documentada para recursos pre-match."""

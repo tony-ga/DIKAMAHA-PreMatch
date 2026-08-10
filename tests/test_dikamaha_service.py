@@ -445,5 +445,48 @@ def test_live_catalog_prediction_and_model_inventory_are_exposed() -> None:
     assert counters["pre_match_responses"] == 0
 
 
+def test_provider_predictor_endpoint_is_external_benchmark_only() -> None:
+    """Expone el contrato inyectado sin modificar las predicciones propias."""
+
+    class ProviderContext:
+        @staticmethod
+        def fetch(league: str, event_id: str, scope: str) -> dict[str, object]:
+            return {
+                "contract_version": "provider_match_context_v1",
+                "league_slug": league, "event_id": event_id, "scope": scope,
+                "status": "available",
+                "probabilities": {"home": .5, "draw": .3, "away": .2},
+                "role": "external_benchmark_display_only",
+                "not_model_feature": True,
+                "replaces_dikamaha_models": False,
+            }
+
+    app = create_app(
+        ServiceConfig(mode="operational_readonly", external_calls_enabled=True),
+        provider_context=ProviderContext(),
+    )
+    response = TestClient(app).get("/v1/provider/predictor", params={
+        "league": "esp.1", "event_id": "401000001", "scope": "live",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["probabilities"] == {"home": .5, "draw": .3, "away": .2}
+    assert response.json()["replaces_dikamaha_models"] is False
+
+
+def test_provider_predictor_endpoint_remains_authenticated() -> None:
+    """No abre el benchmark fuera del perímetro de la API central."""
+
+    config = ServiceConfig(
+        mode="operational_readonly", external_calls_enabled=True,
+        authentication_enabled=True, api_key="test-provider-key",
+    )
+    client = TestClient(create_app(config, provider_context=object()))
+
+    assert client.get("/v1/provider/predictor", params={
+        "league": "esp.1", "event_id": "401000001",
+    }).status_code == 401
+
+
 # Version: 1.0.0
 # Created: 2026-07-15

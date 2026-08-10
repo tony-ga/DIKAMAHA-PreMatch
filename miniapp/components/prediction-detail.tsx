@@ -10,6 +10,7 @@ import { useAuth } from "@/components/providers";
 import { api, percentage, queryString, record, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
 import { PredictionAnalytics } from "@/components/prediction-analytics";
+import { ProviderPredictor } from "@/components/provider-predictor";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
 
@@ -107,6 +108,7 @@ export function PredictionDetail(props: Props) {
             <div className="probability"><span>Modelo</span><strong style={{ fontSize: ".72rem" }}>{String(payload.model ?? "—")}</strong></div>
           </div>
         </article>
+        <ProviderPredictor eventId={props.fixtureId} league={props.league} scope="pre_match" homeName={homeName} awayName={awayName} />
         <article className="data-panel analytics-panel">
           <PredictionAnalytics
             homeName={homeName} awayName={awayName}
