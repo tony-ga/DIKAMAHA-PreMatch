@@ -128,4 +128,6 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   combinado aún separados.
 - DEC-154 amplía el contrato sin cambiar modelos: predictor analítico y mercado
   permanecen separados, `activeodds=true` conserva apertura/cierre/live y la
-  navegación usa las 49 competiciones de Fase 36.
+  navegación usa las 49 competiciones de Fase 36. PR #21 y los cuatro
+  despliegues Railway terminaron en `SUCCESS`; health/readiness y `/markets`
+  respondieron HTTP 200.

@@ -73,13 +73,15 @@ build Next aprobaron el contrato, la API/BFF y las gráficas. Railway reportó
 benchmark 200 sin cuotas expuestas y predicción live 200 con
 `match_pressure_v1` de 90 puntos más Markov/Hawkes/combinado.
 
-Extensión DEC-154 validada localmente: el predictor analítico sigue
+Extensión DEC-154 desplegada mediante PR #21: el predictor analítico sigue
 `not_published` para `col.1/401877857`, mientras `pickcenter` entrega un
 moneyline completo de apertura/cierre/live que ahora se muestra sin derivar
 SPI. `activeodds=true` devolvió tres fixtures con mercado y el barrido real
 encontró un partido activo al consultar los 49 slugs, con cero fallos
 parciales. Gates: 559 Python/8 omitidas, 18 Vitest, 11 Playwright, typecheck y
-build Next aprobados. Pendiente smoke Railway posterior al despliegue.
+build Next aprobados. Railway reportó `SUCCESS` en los cuatro servicios; API
+`v1.8_provider_markets`, readiness, Mini App/DB/upstream y `/markets`
+respondieron HTTP 200 en producción.
 
 Corrección live DEC-152 desplegada mediante PR #17. La ventana automática D-1/D/D+1
 encontró tres partidos reales sobre 18 ligas con cero fallos parciales; el
