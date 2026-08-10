@@ -68,6 +68,14 @@ después realiza la captura raw-first. La respuesta añade
 10 segundos. Estos campos son de presentación y se derivan del mismo flujo
 causal ya observado; no son features nuevas ni modifican las tres capas shadow.
 
+DEC-153 añade `match_dynamics`: 90 minutos firmados local/visitante con pesos
+`goal=25`, `shot_on_target=8`, `shot_off_target=4`, `corner=3`, `foul=1`,
+media móvil centrada de cinco minutos y marcadores de gol. También incorpora
+un benchmark 1X2 externo separado mediante `/v1/provider/predictor`; si el
+summary no publica campos analíticos explícitos responde `not_published`. Ni
+la curva ni ese benchmark son features. Markov continúa como baseline
+universal y Hawkes como residual selectivo; no existe sustitución.
+
 El prior reconstruido no se denomina prospectivamente congelado: se declara
 `reconstructed_causal_prematch_prior`, excluye el match objetivo y usa sólo
 historia anterior al kickoff. Esto permite operar con la base existente sin
@@ -81,5 +89,5 @@ esperar partidos nuevos.
 - uso de `probabilities` ESPN como feature;
 - cambios a `match_features v1`.
 
-Version: 1.4.0
+Version: 1.5.0
 Created: 2026-08-07; updated: 2026-08-09

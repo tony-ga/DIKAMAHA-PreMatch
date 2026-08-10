@@ -171,6 +171,20 @@ button { color: inherit; }
 .live-clock strong { color:var(--mint); }
 .live-clock span,.live-clock small { color:var(--muted); font-size:.68rem; }
 .provider-chip { padding:5px 8px; border:1px solid var(--line); border-radius:99px; color:var(--muted); font-size:.56rem; letter-spacing:.09em; }
+.provider-benchmark { overflow:hidden; background:radial-gradient(circle at 100% 0,color-mix(in srgb,var(--signal) 18%,transparent),transparent 42%),linear-gradient(145deg,var(--panel-high),var(--panel)); }
+.provider-benchmark.unavailable { border-style:dashed; }
+.mode-badge.benchmark { border-color:var(--signal); color:var(--mint); background:color-mix(in srgb,var(--signal) 14%,transparent); }
+.financial-isolation { margin-top:14px!important; padding:10px 12px; border:1px solid var(--line); border-radius:11px; background:color-mix(in srgb,var(--void) 42%,transparent); font-size:.66rem!important; }
+.provider-history { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+.provider-history-chart { height:230px; }
+.pressure-panel { overflow:hidden; background:linear-gradient(180deg,color-mix(in srgb,var(--mint) 5%,var(--panel-high)),var(--panel)); }
+.pressure-legend { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; color:var(--muted); font-size:.63rem; }
+.pressure-legend span { display:flex; align-items:center; gap:6px; }
+.pressure-legend i { width:9px; height:9px; border-radius:3px; }
+.pressure-legend i.home { background:var(--mint); box-shadow:0 0 8px color-mix(in srgb,var(--mint) 45%,transparent); }
+.pressure-legend i.away { background:var(--signal); box-shadow:0 0 8px color-mix(in srgb,var(--signal) 50%,transparent); }
+.pressure-legend small { margin-left:auto; }
+.pressure-chart { height:280px; margin-top:8px; }
 .live-stat-header,.live-stat-row { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; align-items:center; gap:9px; }
 .live-stat-header { padding:10px 0; border-bottom:1px solid var(--line); color:var(--muted); font-size:.61rem; text-align:center; }
 .live-stat-header strong { overflow:hidden; color:var(--text); text-overflow:ellipsis; white-space:nowrap; }

@@ -38,7 +38,12 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   transportados por API/BFF y nunca usados como features;
 - Markov Live, Hawkes residual y combinado separados y rotulados `shadow`;
 - detalle live con ambos escudos PNG, marcador/reloj, comparación de acciones
-  observadas, cronología y predicciones, en ese orden;
+  observadas, cronología, curva de presión suavizada y predicciones, en ese
+  orden;
+- benchmark 1X2 externo en pre-match y live, con curva de expectativa cuando
+  el proveedor publica historial y estado de ausencia explícito cuando no;
+- Markov, Hawkes y combinado permanecen visibles después del benchmark y
+  conservan sus roles complementarios `shadow`;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
 - tema Telegram claro/oscuro, safe areas y navegación inferior persistente.
 
@@ -68,6 +73,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
    shadow.
 9. La matriz bot/Mini App tiene paridad completa y toda consulta explorer pasa
    por una allowlist BFF autenticada.
+10. `pickcenter` nunca se convierte en predictor ni llega al navegador como
+    cuota; sólo se declara la disponibilidad de contexto financiero aislado.
 
 ## Estado operativo
 

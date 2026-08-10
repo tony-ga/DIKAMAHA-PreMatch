@@ -8,8 +8,10 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { api, layerMarkets, percentage, record } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
 import { EntityImage } from "@/components/entity-image";
+import { ProviderPredictor } from "@/components/provider-predictor";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
+const PressureChart = dynamic(() => import("@/components/pressure-chart"), { ssr: false });
 
 type Props = { fixtureId: string; league: string };
 
@@ -53,6 +55,7 @@ function Layer({ title, value, note, homeName, awayName }: { title: string; valu
   const markets = layerMarkets(layer);
   const values = probabilities(markets, homeName, awayName);
   const nextEvent = record(layer.next_event);
+  const rho = record(layer.rho_by_target);
   const nextProbabilities = Object.entries(record(nextEvent.probabilities))
     .map(([name, probability]) => ({ name: name.replace(":", " · "), value: Number(probability) }))
     .filter((row) => Number.isFinite(row.value))
@@ -81,7 +84,7 @@ function Layer({ title, value, note, homeName, awayName }: { title: string; valu
             </div>
           ) : null}
         </>
-      ) : <p className="notice" style={{ marginTop: 14 }}>Esta capa describe el residual y no publica probabilidades independientes.</p>}
+      ) : <div className="notice" style={{ marginTop: 14 }}>Esta capa describe el ajuste de memoria corta y no publica un 1X2 independiente.{Object.keys(rho).length ? <><br />Intensidad aplicada: gol ρ={Number(rho.goal ?? 0).toFixed(2)} · próximo evento ρ={Number(rho.next_event ?? 0).toFixed(2)}.</> : null}</div>}
     </article>
   );
 }
@@ -179,7 +182,9 @@ export function LiveDetail({ fixtureId, league }: Props) {
           </article>
           <ObservedStatistics value={payload.observed_live_statistics} homeName={homeName} awayName={awayName} />
           <RecentActions value={payload.recent_actions} />
+          <PressureChart value={payload.match_dynamics} homeName={homeName} awayName={awayName} />
           <div className="prediction-divider"><span>PREDICCIONES EN TIEMPO REAL</span></div>
+          <ProviderPredictor eventId={fixtureId} league={league} scope="live" homeName={homeName} awayName={awayName} />
           <Layer title="Markov Live" value={payload.experimental_markov_live} note="Baseline universal: régimen, marcador y tiempo restante." homeName={homeName} awayName={awayName} />
           <Layer title="Hawkes residual" value={payload.experimental_hawkes_residual} note="Memoria corta complementaria; nunca sustituye a Markov." homeName={homeName} awayName={awayName} />
           <Layer title="Resultado combinado" value={payload.experimental_combined_live} note="Markov más residual Hawkes acotado en escala logarítmica." homeName={homeName} awayName={awayName} />

@@ -19,6 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/live**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyCatalog) }));
   await page.route("**/api/upcoming**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyCatalog) }));
   await page.route("**/api/models", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ok", models: [] }) }));
+  await page.route("**/api/provider/predictor**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "not_published", probabilities: null, history: [], market_context: { status: "not_published" } }) }));
   await page.route("**/api/favorites**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ favorites: [] }) }));
   await page.route("**/api/readiness", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ready: true, contract_version: "phase_6_1", service_version: "1.6.0" }) }));
   await page.route("**/api/explorer/**", (route) => {
@@ -128,6 +129,12 @@ test("applies Telegram light theme and renders the empty live state", async ({ p
 });
 
 test("renders first half, second half and full-match pre-match markets", async ({ page }) => {
+  await page.unroute("**/api/provider/predictor**");
+  await page.route("**/api/provider/predictor**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ status: "available", probabilities: { home: .46, draw: .29, away: .25 }, history: [], market_context: { status: "financial_isolated_available" } }),
+  }));
   await page.route("**/api/predict/upcoming", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -158,6 +165,8 @@ test("renders first half, second half and full-match pre-match markets", async (
   await expect(page.getByText("Partido completo")).toBeVisible();
   await expect(page.getByText("Goles esperados por equipo")).toBeVisible();
   await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Predictor del proveedor" })).toBeVisible();
+  await expect(page.getByText(/contexto de mercado permanece aislado/i)).toBeVisible();
 });
 
 test("recovers Cruzeiro and Mirassol names when prediction payload only has ids", async ({ page }) => {
@@ -217,6 +226,20 @@ test("recovers Cruzeiro and Mirassol names when prediction payload only has ids"
 test("renders the real live score, source timestamp and next event", async ({ page }) => {
   const markets = { probability_home: 0.62, probability_draw: 0.24, probability_away: 0.14, probability_over_2_5: 0.51, probability_btts: 0.44 };
   let liveRequests = 0;
+  await page.unroute("**/api/provider/predictor**");
+  await page.route("**/api/provider/predictor**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      probabilities: { home: .68, draw: .2, away: .12 },
+      history: [
+        { minute: 1, home: .45, draw: .3, away: .25 },
+        { minute: 31, home: .68, draw: .2, away: .12 },
+      ],
+      market_context: { status: "financial_isolated_available" },
+    }),
+  }));
   await page.route("**/api/predict/live", (route) => {
     liveRequests += 1;
     return route.fulfill({
@@ -235,6 +258,17 @@ test("renders the real live score, source timestamp and next event", async ({ pa
         away: { goals: 1, shots: 6, shots_on_target: 3, shots_off_target: 2, shots_blocked: 1, corners: 3, yellow_cards: 2, red_cards: 0, fouls: 9, offsides: 2, saves: 3, substitutions: 0 },
       },
       recent_actions: [{ event_id: "a1", event_type: "goal", event_type_raw: "goal", team_side: "home", team_name: "Real Madrid", minute: 31, text: "Gol de Real Madrid" }],
+      match_dynamics: {
+        current_minute: 33,
+        points: Array.from({ length: 33 }, (_, index) => ({
+          minute: index + 1,
+          raw_score: index === 30 ? 25 : 0,
+          smoothed_score: index >= 28 && index <= 32 ? 5 : 0,
+          home_pressure: index >= 28 && index <= 32 ? 5 : 0,
+          away_pressure: 0,
+        })),
+        goal_markers: [{ minute: 31, team_side: "home", team_name: "Real Madrid" }],
+      },
       experimental_markov_live: {
         status: "experimental_shadow_not_promoted", markets,
         next_event: { horizon_minutes: 5, probabilities: { "home:goal": 0.12 }, probability_no_event: 0.82 },
@@ -253,7 +287,11 @@ test("renders the real live score, source timestamp and next event", async ({ pa
   await expect(page.getByRole("heading", { name: "Acciones observadas" })).toBeVisible();
   await expect(page.getByText("Córners")).toBeVisible();
   await expect(page.getByText("Gol de Real Madrid")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Presión por acciones" })).toBeVisible();
+  await expect(page.getByLabel("Curva de presión de Real Madrid y Barcelona")).toBeVisible();
   await expect(page.getByText("PREDICCIONES EN TIEMPO REAL")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Predictor del proveedor" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Expectativa de resultado" })).toBeVisible();
   await expect(page.getByText(/PRÓXIMO EVENTO/)).toBeVisible();
   await expect(page.getByText("32:00", { exact: true })).toBeVisible();
   await expect(page.getByText(/Sincronizado/)).toBeVisible();

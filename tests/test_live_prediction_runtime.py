@@ -10,6 +10,7 @@ from src.dikamaha_inference import DikamahaInferenceEngine
 from src.live_prediction_runtime import (
     LivePredictionRuntime,
     _candidate_live_dates,
+    _match_dynamics,
     _observed_live_presentation,
     predict_shadow_snapshot,
 )
@@ -207,3 +208,33 @@ def test_observed_live_presentation_aggregates_teams_and_ignores_annulled() -> N
     assert len(result["recent_actions"]) == 4
     assert result["recent_actions"][0]["event_id"] == "4"
     assert result["automatic_refresh_recommended_seconds"] == 10
+
+
+def test_match_dynamics_applies_signed_weights_and_centered_smoothing() -> None:
+    """Orienta local/visitante y suaviza cinco minutos sin usar el futuro."""
+
+    snapshot = {
+        **_snapshot(),
+        "home_team_name": "Equipo A", "away_team_name": "Equipo B",
+        "match_clock_seconds": 900,
+        "events": [
+            {"event_type": "shot_on_target", "team_id": 1, "match_clock_seconds": 600},
+            {"event_type": "corner", "team_id": 2, "match_clock_seconds": 660},
+            {"event_type": "goal", "team_id": 1, "match_clock_seconds": 720},
+            {"event_type": "goal", "team_id": 2, "match_clock_seconds": 780, "annulled": True},
+        ],
+    }
+
+    result = _match_dynamics(snapshot)
+    points = result["points"]
+
+    assert len(points) == 90
+    assert points[10]["raw_score"] == 8
+    assert points[11]["raw_score"] == -3
+    assert points[12]["raw_score"] == 25
+    assert points[10]["smoothed_score"] == 6
+    assert result["goal_markers"] == [{
+        "minute": 13, "team_side": "home", "team_name": "Equipo A",
+    }]
+    assert result["not_model_feature"] is True
+    assert result["smoothing"]["window_minutes"] == 5

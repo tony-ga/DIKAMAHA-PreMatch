@@ -44,10 +44,26 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - el área predictiva incorpora gráfica 1X2, indicadores de concentración y
   separación, comparación de goles esperados e intensidades, tabla matemática
   y barras por equipo con pistas y colores distinguibles;
+- DEC-153 añade `GET /v1/provider/predictor` como benchmark externo
+  `display_only`: sólo acepta tripletes 1X2 publicados explícitamente, muestra
+  ausencia normal cuando el proveedor no los ofrece y mantiene `pickcenter`
+  como metadato financiero aislado sin exponer cuotas;
+- el detalle live incorpora una curva firmada de presión por minuto con media
+  móvil de cinco minutos y marcadores de gol; la serie es heurística visual y
+  no alimenta Markov, Hawkes, combinado ni el prior pre-match;
+- Markov Live y Hawkes no fueron sustituidos: el primero conserva el baseline
+  universal históricamente validado y el segundo el residual selectivo con
+  fallback Markov exacto;
 - 543 pruebas Python aprobadas/8 omitidas, 16 Vitest y 8 Playwright; build Next
   aprobado y conexión real validada para readiness, modelos, ligas, fechas y
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.
+
+Extensión DEC-153 validada localmente y pendiente de despliegue: dos summaries
+reales confirmaron el estado `not_published` del predictor con contexto de
+mercado aislado; 555 pruebas Python aprobadas/8 omitidas, 18 Vitest, 10
+Playwright, typecheck y build Next aprobaron el contrato, la API/BFF y las
+gráficas.
 
 Corrección live DEC-152 desplegada mediante PR #17. La ventana automática D-1/D/D+1
 encontró tres partidos reales sobre 18 ligas con cero fallos parciales; el

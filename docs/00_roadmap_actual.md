@@ -1,6 +1,6 @@
 # Roadmap vigente de DIKAMAHA
 
-**Actualizado:** 2026-08-08
+**Actualizado:** 2026-08-09
 **Objetivo operativo:** preservar la integridad matemática y causal de Fase
 113 mientras Fase 115 presenta Fase 114 mediante una Mini App Telegram
 híbrida, sin ampliar mercados ni afirmar ventaja económica.
@@ -232,7 +232,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 109 | `premium_telegram_railway` | validada v1.6 | acceso private/public, pre-match y live shadow visibles, worker independiente y contrato móvil medible |
 | 113 | `model_integrity_v1` | validada con salidas selectivas; hotfix portable listo | fórmula, causalidad, PMF, métricas, hashes runtime portables, fallbacks, replays y 522 pruebas aprobadas |
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
-| 115 | `telegram_mini_app` | paridad visual y analítica desplegada; live D-1/D/D+1 preparado | Catálogo 18 ligas/14 días, detalle live automático con logos, acciones y Markov/Hawkes/combinado, identidad nominal, reintentos/health y PNG vía BFF |
+| 115 | `telegram_mini_app` | paridad visual y analítica desplegada; extensión DEC-153 validada | Catálogo 18 ligas/14 días, detalle live automático, benchmark externo tolerante a ausencia, curva de presión, logos, acciones y Markov/Hawkes/combinado separados |
 
 ## Componentes heredados
 

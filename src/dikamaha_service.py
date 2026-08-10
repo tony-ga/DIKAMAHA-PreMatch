@@ -66,6 +66,7 @@ try:
     from src.live_prediction_runtime import LivePredictionRuntime, model_inventory
     from src.prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
     from src.provider_media import ProviderMediaError, fetch_transparent_png
+    from src.provider_match_context import ProviderMatchContextService
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
     from espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
@@ -75,9 +76,10 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from live_prediction_runtime import LivePredictionRuntime, model_inventory
     from prematch_snapshot_registry import SnapshotRegistryError, resolve_active_snapshot
     from provider_media import ProviderMediaError, fetch_transparent_png
+    from provider_match_context import ProviderMatchContextService
 
 LOGGER = logging.getLogger(__name__)
-SERVICE_VERSION = "dikamaha_local_service_v1.6_live_models"
+SERVICE_VERSION = "dikamaha_local_service_v1.7_provider_context"
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -700,6 +702,7 @@ def create_app(
     config: ServiceConfig | None = None,
     fixture_resolver: Any | None = None,
     live_runtime: Any | None = None,
+    provider_context: Any | None = None,
 ) -> FastAPI:
     """Crea la aplicación local con dependencias inyectadas.
 
@@ -729,6 +732,7 @@ def create_app(
     app.state.fixture_resolver = fixture_resolver
     app.state.data_explorer = EspnFootballDataExplorer()
     app.state.fixture_context = default_context_service()
+    app.state.provider_context = provider_context or ProviderMatchContextService()
     app.state.live_runtime = live_engine
     app.state.shadow_catalog = shadow_catalog
     app.state.metrics = MetricsStore()
@@ -889,6 +893,24 @@ def create_app(
         return await _infer_with_timeout(
             lambda values: app.state.fixture_context.context(*values), (league, event_id),
             effective.inference_timeout_seconds)
+
+    @app.get("/v1/provider/predictor", tags=["inference"])
+    async def provider_predictor(
+        league: str, event_id: str, scope: str = "pre_match",
+    ) -> dict[str, Any]:
+        """Expone el predictor externo como benchmark de presentación aislado."""
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        try:
+            return await _infer_with_timeout(
+                lambda values: app.state.provider_context.fetch(*values),
+                (league, event_id, scope),
+                effective.inference_timeout_seconds * 2,
+            )
+        except (EspnConnectorError, ValueError, OSError) as exc:
+            LOGGER.warning("Predictor externo no disponible: %s", type(exc).__name__)
+            raise _error(str(exc)) from exc
 
     @app.get("/v1/explorer/match/plays", tags=["explorer"])
     async def explorer_match_plays(
@@ -1109,7 +1131,7 @@ async def _call_with_timeout(request: Request, call_next: Any, config: ServiceCo
     try:
         multiplier = 4.0 if request.url.path in {
             "/v1/live", "/v1/predict/live/fixture", "/v1/upcoming",
-            "/v1/explorer/teams",
+            "/v1/explorer/teams", "/v1/provider/predictor",
         } else 1.0
         return await asyncio.wait_for(
             call_next(request),

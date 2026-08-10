@@ -110,10 +110,28 @@ Para acceder a una liga específica, debes reemplazar `{league}` en las URLs con
 * `/events/{event}/competitions/{competition}`: Los datos del partido competitivo específico dentro del evento.
 * `/events/{event}/competitions/{competition}/plays`: **Play-by-play** del partido (goles, tarjetas, sustituciones). *¡Usa limit=300!*
 * `/events/{event}/competitions/{competition}/situation`: Situación del partido en tiempo real (quién tiene la posesión, contexto del partido).
-* `/events/{event}/competitions/{competition}/probabilities`: Probabilidades de victoria en vivo.
+* `/events/{event}/competitions/{competition}/probabilities`: Recurso opcional
+  de probabilidades; su referencia no existe para muchas competiciones de
+  fútbol y puede responder 400 aun con un evento válido.
 * `/events/{event}/competitions/{competition}/odds`: Cuotas y apuestas (Odds).
 * `/events/{event}/competitions/{competition}/officials`: Árbitros del encuentro.
 * `/events/{event}/competitions/{competition}/broadcasts`: Información sobre la transmisión televisiva.
+
+### Cobertura real de predictor, `probabilities` y `pickcenter`
+
+La inspección DIKAMAHA de 2026-08-09 probó summaries de Colombia, Argentina,
+Chile, Premier League, LaLiga, Champions League y Mundial, con y sin `ocp=1`.
+En esa muestra no aparecieron `predictor`, `winprobability` ni SPI, y Core no
+publicó una referencia utilizable a `probabilities`. Sí apareció `pickcenter`
+en distintos eventos. Por tanto:
+
+- las probabilidades analíticas son opcionales y deben tratarse como cobertura
+  por fixture, no como garantía del endpoint;
+- `ocp=1` no autoriza a asumir que el nodo existe;
+- `pickcenter` contiene contexto de mercado y no equivale a SPI;
+- DIKAMAHA sólo normaliza un 1X2 cuando local, empate y visitante vienen
+  publicados explícitamente; en otro caso devuelve `not_published`;
+- nunca se derivan probabilidades del predictor desde cuotas.
 
 ### 🥇 Tablas y Rankings
 * `/standings`: Tabla de clasificación detallada.
@@ -150,7 +168,9 @@ A continuación, un resumen estructurado de **todos los tipos de datos exactos**
 *   **Play-by-play (Jugada a Jugada):** Goles, tarjetas amarillas, tarjetas rojas, sustituciones, tiros de esquina, penales, fueras de juego, faltas.
 *   **Alineaciones:** Titulares, suplentes, y formaciones tácticas (ej. 4-4-2, 4-3-3).
 *   **Situación de Juego:** Quién tiene la posesión actual, en qué sector de la cancha están jugando.
-*   **Probabilidades:** Porcentaje de probabilidad de victoria del equipo local, visitante o de empate, actualizado en tiempo real.
+*   **Probabilidades (cobertura opcional):** Porcentaje de victoria local,
+    empate o visitante sólo cuando el fixture publica un nodo analítico
+    explícito; no está disponible de forma universal.
 *   **Cuotas (Odds):** Cuotas de apuestas de proveedores pre-partido y en vivo.
 *   **Detalles del Evento:** Árbitros asignados, estadio/sede (nombre, capacidad, ciudad), información de la transmisión televisiva por país/región.
 
@@ -194,6 +214,8 @@ scoreboard/event/plays/situation raw-first y devuelve de forma aditiva:
 - `observed_live_statistics`: goles autoritativos y conteos de tiros, córners,
   tarjetas, faltas, offsides, acciones detenidas y sustituciones;
 - `recent_actions`: cronología relevante con equipo, minuto y texto proveedor;
+- `match_dynamics`: matriz de 90 minutos, presión local positiva/visitante
+  negativa, media móvil de cinco minutos y marcadores de gol;
 - `experimental_markov_live`, `experimental_hawkes_residual` y
   `experimental_combined_live`, siempre separados y `shadow`;
 - `automatic_refresh_recommended_seconds: 10`.
@@ -201,3 +223,10 @@ scoreboard/event/plays/situation raw-first y devuelve de forma aditiva:
 Las estadísticas son presentación derivada del play-by-play observado. No se
 inyectan como features adicionales, no llaman probabilidades ESPN y no alteran
 la salida oficial pre-match.
+
+`GET /v1/provider/predictor?league={league}&event_id={id}&scope=pre_match|live`
+consulta el summary detrás de la API DIKAMAHA y devuelve
+`provider_match_context_v1`. El navegador sólo ve el BFF autenticado. Cuando
+existe un triplete analítico explícito se muestra como benchmark adicional;
+cuando no, responde `not_published`. `market_context` sólo informa si se
+detectó `pickcenter`, con `consumed_by_models=false` y `odds_exposed=false`.
