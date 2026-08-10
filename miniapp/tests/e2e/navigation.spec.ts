@@ -171,6 +171,51 @@ test("renders first half, second half and full-match pre-match markets", async (
   await expect(page.getByRole("cell", { name: "+130" })).toBeVisible();
 });
 
+test("renders an adaptive market grid with distinct lines per period", async ({ page }) => {
+  const ladder = (line: number, over: number, base: number) => ({
+    line, over_probability: over, under_probability: 1 - over,
+    baseline_over_probability: base, baseline_under_probability: 1 - base,
+  });
+  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      fixture: { home_team_name: "Cambridge United", away_team_name: "Barnet" },
+      probability_home: 0.4, probability_draw: 0.3, probability_away: 0.3,
+      probability_over_2_5: 0.55, probability_btts: 0.52,
+      expected_home_goals: 1.42, expected_away_goals: 1.08,
+      lambda_home: 1.42, lambda_away: 1.08,
+      experimental_team_markets: {
+        user_market_view: [
+          { period: "full_match", team_side: "home", metric: "corners", line: 4.5, probability: 0.63 },
+        ],
+        bounded_market_grid_view: [
+          {
+            key: "home_corners_first_half", metric: "corners", team_side: "home",
+            period: "first_half", expected_count: 2.6, most_likely_count: 2,
+            lines: [ladder(1.5, 0.71, 0.66), ladder(2.5, 0.48, 0.44), ladder(3.5, 0.27, 0.25)],
+            status: "experimental_shadow_not_promoted",
+          },
+          {
+            key: "home_corners_second_half", metric: "corners", team_side: "home",
+            period: "second_half", expected_count: 3.4, most_likely_count: 3,
+            lines: [ladder(2.5, 0.69, 0.62), ladder(3.5, 0.46, 0.41), ladder(4.5, 0.25, 0.23)],
+            status: "experimental_shadow_not_promoted",
+          },
+        ],
+      },
+    }),
+  }));
+  await page.goto("/predictions/401880614?league=eng.league_cup&home=351&away=280&kickoff=2030-01-10T20%3A00%3A00Z");
+  const grid = page.locator("article.model-card").filter({ hasText: "Rejilla adaptativa por periodo" });
+  await expect(grid).toBeVisible();
+  await expect(grid.getByText("μ 2.6")).toBeVisible();
+  await expect(grid.getByText("μ 3.4")).toBeVisible();
+  await expect(grid.getByText("Más de 1.5", { exact: false })).toBeVisible();
+  await expect(grid.getByText("Más de 4.5", { exact: false })).toBeVisible();
+  await expect(grid.getByText("vs baseline +7.0 pp", { exact: false })).toBeVisible();
+});
+
 test("shows the global open close and live market tape", async ({ page }) => {
   await page.unroute("**/api/provider/markets**");
   await page.route("**/api/provider/markets**", (route) => route.fulfill({

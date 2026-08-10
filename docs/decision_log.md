@@ -2106,6 +2106,48 @@ CTMC conservativa, hazards finitos, Hawkes subcrítico, replay, Monte Carlo
 determinista no bloqueante, fallback exacto, p95 analítico menor a 250 ms,
 compatibilidad API/bot/Mini App y suites integrales.
 
+DEC-156
+Fecha: 2026-08-10
+Problema: la Mini App renderiza únicamente `user_market_view`, es decir las
+nueve líneas congeladas por DEC-103/107/108/110 y expuestas por DEC-112. Sus
+umbrales son constantes de `MARKET_METADATA` y, dentro de Fase 88,
+`market_name` deriva la línea de `MARKET_LINES[metric]`, que es por métrica y
+no por periodo. En consecuencia todo partido muestra el mismo conjunto de
+mercados y primer tiempo comparte umbral con segundo tiempo para una misma
+métrica. La escalera adaptativa de Fase 102 ya se calcula y el canal Telegram
+la publica desde Fase 101 v1.5, pero la Mini App no la consume.
+Opciones: reparametrizar `MARKET_LINES` por periodo; exponer la escalera
+completa `distributional_market_view`; o renderizar en la Mini App la rejilla
+acotada `bounded_market_grid_view` que ya produce el runtime.
+Decisión: renderizar `bounded_market_grid_view` en el detalle pre-match de la
+Mini App como bloque adicional por periodo, conservando intacto el bloque de
+`user_market_view`. La rejilla mantiene etiqueta experimental, muestra over y
+under complementarios con su baseline y cae al comportamiento actual cuando la
+vista viene vacía.
+Motivo: `MARKET_LINES` por periodo invalidaría la evaluación congelada de Fase
+88 y los locks versionados de DEC-110, y exigiría re-correr el gate
+walk-forward completo. La rejilla acotada ya está calculada, es causal, varía
+por partido y periodo mediante `_centered_lines` centrada en P(over)≈50% y ya
+fue publicada por el canal sin incidencias.
+Estado: congelada e implementada
+Impacto en contratos/fases: cambio de presentación exclusivo de la Mini App.
+No modifica el router, la salida oficial, `user_market_view`, `match_features
+v1`, `MARKET_LINES`, los artefactos sellados de Fase 84A/88 ni la clasificación
+shadow de Fase 102. No promueve ninguna línea a oficial.
+Evidencia requerida: equivalencia exacta del bloque `user_market_view`
+existente, fallback visible cuando la rejilla falta, complementariedad
+over/under, separación por periodo, etiqueta experimental presente, y gates
+Vitest, Playwright, typecheck y build Next aprobados.
+Evidencia obtenida (2026-08-10): `bounded_market_grid_view` se renderiza en un
+bloque propio de `prediction-detail.tsx` sin tocar el bloque `user_market_view`,
+que conserva sus nueve líneas congeladas. La rejilla no se monta cuando la
+vista llega vacía, de modo que un payload sin Fase 102 reproduce exactamente la
+pantalla anterior. Prueba Playwright nueva `renders an adaptive market grid
+with distinct lines per period` verifica líneas 1.5/2.5/3.5 en primer tiempo
+frente a 2.5/3.5/4.5 en segundo tiempo sobre la misma métrica y equipo, más el
+delta contra baseline. Gates: 18 Vitest, 12 Playwright, typecheck y build Next
+aprobados. La suite Python no se ejecutó porque el cambio no toca `src/`.
+
 ```text
 DEC-NNN
 Fecha:

@@ -40,6 +40,18 @@ function probabilityWidth(value: unknown): string {
   return `${Math.max(0, Math.min(100, Number.isFinite(numeric) ? numeric * 100 : 0))}%`;
 }
 
+function edgeLabel(model: unknown, baseline: unknown): string {
+  const delta = Number(model) - Number(baseline);
+  if (!Number.isFinite(delta)) return "—";
+  const points = delta * 100;
+  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)} pp`;
+}
+
+function countLabel(value: unknown): string {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(1) : "—";
+}
+
 export function PredictionDetail(props: Props) {
   const { csrfToken } = useAuth();
   const identityRequired = !props.homeName || !props.awayName;
@@ -76,6 +88,9 @@ export function PredictionDetail(props: Props) {
   const probabilities = record(teamMarkets.probabilities);
   const marketRows = Array.isArray(teamMarkets.user_market_view)
     ? teamMarkets.user_market_view.map(record)
+    : [];
+  const gridRows = Array.isArray(teamMarkets.bounded_market_grid_view)
+    ? teamMarkets.bounded_market_grid_view.map(record)
     : [];
   const periods = [
     { key: "first_half", label: "Primer tiempo" },
@@ -140,6 +155,48 @@ export function PredictionDetail(props: Props) {
             ))}
           </div>
         </article>
+        {gridRows.length ? (
+          <article className="model-card">
+            <div className="model-card-header"><h3>Rejilla adaptativa por periodo</h3><ShadowBadge /></div>
+            <p className="ladder-caption">Líneas centradas en el 50% según la distribución causal de cada equipo. Varían por partido y periodo.</p>
+            <div className="stack" style={{ marginTop: 14 }}>
+              {periods.map((period) => {
+                const rows = gridRows.filter((row) => row.period === period.key);
+                if (!rows.length) return null;
+                return (
+                  <section className="period-market" key={`grid-${period.key}`}>
+                    <p className="eyebrow">{period.label}</p>
+                    {rows.map((row, index) => {
+                      const lines = Array.isArray(row.lines) ? row.lines.map(record) : [];
+                      if (!lines.length) return null;
+                      const side = row.team_side === "home" ? "home" : "away";
+                      const teamName = row.team_side === "home" ? homeName : awayName;
+                      const metric = metricLabels[String(row.metric)] ?? String(row.metric).replaceAll("_", " ");
+                      return (
+                        <div className="ladder-group" key={`${period.key}-${String(row.key)}-${index}`}>
+                          <div className="ladder-head">
+                            <span>{teamName} · {metric}</span>
+                            <strong>μ {countLabel(row.expected_count)}</strong>
+                          </div>
+                          {lines.map((line, lineIndex) => (
+                            <div className="market-probability" key={`${String(row.key)}-${String(line.line)}-${lineIndex}`}>
+                              <div>
+                                <span>Más de {String(line.line)} · Menos {percentage(line.under_probability)}</span>
+                                <strong>{percentage(line.over_probability)}</strong>
+                              </div>
+                              <i><b className={side} style={{ width: probabilityWidth(line.over_probability) }} /></i>
+                              <small className="ladder-edge">vs baseline {edgeLabel(line.over_probability, line.baseline_over_probability)}</small>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+            </div>
+          </article>
+        ) : null}
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
       </div>
     </>
