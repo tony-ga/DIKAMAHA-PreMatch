@@ -106,3 +106,6 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   cookie segura particionada, credenciales explícitas y confirmación
   post-login antes de montar consultas protegidas. Gates locales: 18 Vitest,
   10 Playwright, typecheck y build Next aprobados.
+- DEC-152 está desplegada mediante PR #17. El smoke autenticado de producción
+  encontró 3 partidos activos en 18 ligas, sin fallos parciales, y completó el
+  detalle con logos, estadísticas, acciones y las tres capas shadow.

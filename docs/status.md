@@ -49,12 +49,15 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.
 
-Corrección live DEC-152 lista para despliegue. La ventana automática D-1/D/D+1
+Corrección live DEC-152 desplegada mediante PR #17. La ventana automática D-1/D/D+1
 encontró tres partidos reales sobre 18 ligas con cero fallos parciales; el
 detalle Jaguares de Córdoba–Once Caldas devolvió logos PNG, marcador, 12 grupos
 de estadísticas, cronología y Markov/Hawkes/combinado. Gates: 546 Python, 18
 Vitest, 10 Playwright, typecheck y build Next aprobados. El frontend comprobó
 un segundo fetch automático a los 10 segundos sin intervención del usuario.
+Railway reportó `SUCCESS` y el smoke BFF de producción confirmó sesión, catálogo
+y predicción HTTP 200, 3 activos, 18 ligas, 0 fallos, 24 acciones y ambas
+imágenes disponibles.
 
 Despliegue Railway de producción:
 
