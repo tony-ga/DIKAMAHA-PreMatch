@@ -2051,7 +2051,7 @@ parciales aislados y límites de concurrencia.
 Motivo: hacer visible la información solicitada sin confundir precio con
 probabilidad analítica, sin degradar cobertura live y reutilizando el catálogo
 multiliga ya auditado.
-Estado: congelada; implementada y validada localmente para despliegue
+Estado: congelada; implementada y desplegada en Railway
 Impacto en contratos/fases: extensión aditiva de Fases 36, 100 y 115. No
 modifica snapshots, Dixon-Coles/Kalman, Markov, Hawkes, probabilidades oficiales,
 router ni estados de promoción. Autoriza sólo presentación financiera aislada y
@@ -2066,6 +2066,11 @@ scoreboard `activeodds=true` devolvió tres fixtures normalizados. El catálogo
 visual coincide exactamente con los 49 slugs de Fase 36; el barrido live real
 encontró un activo, 49 ligas y cero fallos parciales. Gates: 559 Python
 aprobadas/8 omitidas, 18 Vitest, 11 Playwright, typecheck y build Next.
+PR #21 integrada en `main`; Railway reportó `SUCCESS` para API, Mini App, bot
+y worker. El smoke público confirmó servicio
+`dikamaha_local_service_v1.8_provider_markets`, readiness `true`, Mini App
+`ready` con PostgreSQL/upstream y `/markets` HTTP 200. Los endpoints protegidos
+continúan cerrados sin la credencial server-side.
 
 ```text
 DEC-NNN
