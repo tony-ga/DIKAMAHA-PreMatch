@@ -205,8 +205,8 @@ def test_shadow_requires_both_flags() -> None:
     assert response.status_code == 422
 
 
-def test_http_exposes_complementary_live_blocks_only_in_shadow() -> None:
-    """La API conserva v1 y añade las tres capas live experimentales."""
+def test_http_exposes_official_live_engine_and_compatibility_aliases() -> None:
+    """La API promueve el motor v1 sin romper los alias de Fase 114."""
 
     client = TestClient(create_app())
     payload = live_payload(
@@ -222,7 +222,9 @@ def test_http_exposes_complementary_live_blocks_only_in_shadow() -> None:
     response = client.post("/v1/predict/live", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["official_source"] == "markov_v1"
+    assert data["official_source"] == "live_probability_engine_v1"
+    assert data["official_live_prediction"]["status"] == "official"
+    assert data["live_probability_engine"]["audit"]["passed"] is True
     assert data["experimental_hawkes"] is None
     assert data["experimental_markov_live"]["status"] == "experimental_shadow_not_promoted"
     assert data["experimental_hawkes_residual"]["status"] == "experimental_shadow_not_promoted"
@@ -230,6 +232,35 @@ def test_http_exposes_complementary_live_blocks_only_in_shadow() -> None:
     counters = client.get("/v1/metrics").json()["counters"]
     assert counters["markov_live_enabled"] == 1
     assert counters["combined_live_shadow_enabled"] == 1
+    assert counters["live_probability_engine_official"] == 1
+
+
+def test_live_engine_official_flag_rolls_back_without_touching_aliases() -> None:
+    """El interruptor oficial restaura la fuente previa reversiblemente."""
+
+    from src.dikamaha_service import ServiceConfig
+
+    client = TestClient(create_app(ServiceConfig(
+        live_probability_engine_official=False,
+        live_monte_carlo_diagnostic=False,
+    )))
+    response = client.post("/v1/predict/live", json=live_payload(
+        period=1,
+        match_clock_seconds=600.0,
+        score_home=0,
+        score_away=0,
+        markov_live_enabled=True,
+        markov_live_shadow_mode=True,
+        hawkes_enabled=True,
+        hawkes_shadow_mode=True,
+    ))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["official_source"] == "markov_v1"
+    assert data["status"] == "candidate_not_official"
+    assert data["official_live_prediction"]["status"] == "candidate"
+    assert data["experimental_markov_live"] is not None
 
 
 def test_service_config_rejects_external_or_persistent_mode() -> None:

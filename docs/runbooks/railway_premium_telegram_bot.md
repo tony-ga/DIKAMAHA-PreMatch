@@ -102,3 +102,29 @@ llamadas de predicción.
   `getUpdates`.
 - Rotar token o API key desde Railway ante cualquier exposición.
 - Revisar reinicios, errores de Telegram y disponibilidad de la API en logs.
+
+## Motor live oficial (Fase 116)
+
+Configurar en el servicio API DIKAMAHA, no en el navegador:
+
+```text
+LIVE_PROBABILITY_ENGINE_ENABLED=true
+LIVE_PROBABILITY_ENGINE_OFFICIAL=true
+LIVE_MONTE_CARLO_DIAGNOSTIC=true
+LIVE_MONTE_CARLO_SIMULATIONS=20000
+LIVE_ENGINE_REFRESH_SECONDS=15
+LIVE_ENGINE_FALLBACK_ENABLED=true
+```
+
+La Mini App, el bot y el worker consumen `official_live_prediction` desde la
+API. No cargan modelos ni llaman ESPN directamente. El diagnóstico Monte Carlo
+se ejecuta fuera de la respuesta analítica y se deduplica por hash de snapshot.
+
+Rollback inmediato:
+
+```text
+LIVE_PROBABILITY_ENGINE_OFFICIAL=false
+```
+
+Esto restaura la fuente oficial anterior y conserva motor candidato, alias de
+Fase 114, pre-match, ESPN y PostgreSQL sin modificaciones.

@@ -1,45 +1,54 @@
-# Fase 115 — plan verificable de implementación
+# Fase 116 — plan verificable del motor matemático in-live
 
-Implementar una Telegram Mini App híbrida sin modificar modelos ni salidas
-oficiales. La aplicación Next.js debe consumir exclusivamente la API DIKAMAHA
-mediante un BFF server-side que valide `Telegram.WebApp.initData`, conserve la
-API key fuera del navegador y aplique sesiones seguras, CSRF, autorización y
-rate limit por usuario.
+Implementar `live_probability_engine_v1` como salida live oficial inmediata,
+con rollback por configuración y fallback automático a Markov Live. La ruta
+pre-match Dixon-Coles/Kalman, sus snapshots y sus probabilidades permanecen
+intactos.
 
-La UI incluye dashboard, próximos, live, detalle de predicción, modelos,
-suscripciones, ajustes y un Centro de datos con paridad completa del bot:
-ligas, fechas, partidos históricos, contexto, play-by-play, estadísticas por
-periodo, equipos, plantillas y perfiles de jugador. Debe ser mobile-first, usar
-el tema Telegram y mostrar Markov Live, Hawkes residual y combinado como capas
-separadas `shadow`. El catálogo live refresca por HTTP cada 20 segundos y el
-detalle cada 10 segundos. DIKAMAHA inspecciona D-1/D/D+1 cuando no existe fecha
-explícita, y la vista coloca equipos/logos, estadísticas y cronología antes de
-las predicciones en tiempo real.
+El contrato `live_probability_engine_contract_v1` recibe un snapshot causal e
+inmutable con identidad, kickoff, timestamp, periodo, reloj, marcador,
+expulsiones, prior pre-match y eventos normalizados/deduplicados. Debe rechazar
+eventos futuros, relojes inválidos, scores irreconciliables y priors posteriores
+al kickoff, y publicar hashes de snapshot, parámetros, configuración y salida.
 
-DEC-153 extiende ambos detalles con un benchmark 1X2 externo consultado por un
-endpoint BFF autenticado. El estado `not_published` es normal; `pickcenter`
-permanece financiero y aislado. Live añade una curva de presión firmada con
-media móvil de cinco minutos y goles marcados. Estas vistas no sustituyen ni
-alimentan Markov Live, Hawkes residual o el combinado.
+La composición oficial integra intensidades, no promedia probabilidades:
 
-DEC-154 amplía la presentación con `provider_market_tape_v1`: `pickcenter` y
-el scoreboard `activeodds=true` pueden mostrar proveedor, línea y cuota
-americana de apertura, cierre y live. Predictor analítico y mercado nunca se
-confunden. No se derivan probabilidades implícitas, agregados, señales ni
-features; tampoco se transportan links de ejecución. Los filtros visuales
-incluyen los 49 slugs auditados en Fase 36.
+1. Poisson dinámico por intervalos para goles restantes y mercados 1X2,
+   periodos, O/U 0.5–3.5, BTTS, marcador exacto y distribución de goles.
+2. CTMC de regímenes con matriz generadora válida, marcador, reloj, presión y
+   tarjetas rojas, conservando masa en cada propagación.
+3. Hazard/Cox acotado con eventos observados y decaimiento en 5/10/20 minutos.
+4. Elo live como prior latente con shrinkage, sin usar el resultado objetivo.
+5. `hawkes_live_v2` únicamente como residual logarítmico subcrítico; `rho=0`
+   debe reproducir exactamente el baseline analítico.
 
-PostgreSQL persiste usuarios, favoritos, suscripciones y entregas. Se permiten
-10 favoritos y 20 suscripciones activas por usuario, cooldown mínimo de 300 s
-y dedupe por `subscription_id + event_key`. Un worker separado consulta sólo
-DIKAMAHA, envía alertas con `sendMessage` y nunca usa `getUpdates`.
+Monte Carlo es diagnóstico, asincrónico y determinista por
+`event_id + snapshot_hash`; ejecuta 20,000 simulaciones, publica incertidumbre y
+comparación analítica, pero nunca bloquea ni decide la salida oficial.
 
-El bot existente añade un botón `web_app`, configura el menú global y conserva
-todos sus comandos como fallback. Las capacidades de consulta se reflejan en
-la Mini App mediante una allowlist cerrada de rutas BFF `/v1/explorer/*`. No se
-añaden llamadas ESPN desde navegador, BFF o worker; el adaptador nuevo vive
-exclusivamente en la API DIKAMAHA. Las cuotas visibles son read-only y
-financieramente aisladas; no se añaden ROI, Kelly, stakes, probabilidades
-implícitas ni recomendaciones. El gate exige pruebas TypeScript/Python, navegación E2E,
-conexión BFF/API, migraciones, builds Docker, revisión de secretos y smoke
-Railway.
+Las rutas `/v1/predict/live` y `/v1/predict/live/fixture` conservan sus nombres.
+Publican `official_live_prediction` y `live_probability_engine`; los campos de
+Fase 114 se mantienen como alias temporales. ESPN Predictor y Pickcenter son
+benchmark visual externo y sus probabilidades/cuotas nunca son features.
+
+Mini App, bot y worker consumen primero el contrato oficial. La vista live se
+refresca cada 15 segundos, muestra ambos equipos, datos observados, mercados,
+periodos, próximos eventos, componentes, timestamp, calidad y fallback. El
+navegador y el worker nunca llaman ESPN ni reciben la API key DIKAMAHA.
+
+El replay histórico usa exclusivamente PostgreSQL existente en modo read-only,
+reconstruye snapshots pseudo-live, separa desarrollo/validación/confirmación por
+partido completo y kickoff, y aplica bootstrap agrupado por partido. La
+evaluación no bloquea la activación inmediata ni permite afirmar superioridad
+económica. No se añaden ROI, Kelly, stakes ni recomendaciones financieras.
+
+Gates: probabilidades normalizadas, intensidades finitas/no negativas, CTMC
+válido, Hawkes subcrítico, determinismo, causalidad, p95 analítico menor a
+250 ms, Monte Carlo no bloqueante, fallback operativo, API key ausente del
+frontend, suites Python/Vitest/Playwright/typecheck y builds Docker aprobados.
+
+Rollback:
+
+```text
+LIVE_PROBABILITY_ENGINE_OFFICIAL=false
+```

@@ -65,3 +65,12 @@ artifacts/phase_114_live_markov_hawkes_v1/*
 !artifacts/phase_115_telegram_mini_app/
 artifacts/phase_115_telegram_mini_app/*
 !artifacts/phase_115_telegram_mini_app/final_report.md
+!artifacts/phase_116_live_probability_engine_v1/
+artifacts/phase_116_live_probability_engine_v1/*
+!artifacts/phase_116_live_probability_engine_v1/audit.json
+!artifacts/phase_116_live_probability_engine_v1/config.json
+!artifacts/phase_116_live_probability_engine_v1/coverage.json
+!artifacts/phase_116_live_probability_engine_v1/final_report.md
+!artifacts/phase_116_live_probability_engine_v1/hashes.json
+!artifacts/phase_116_live_probability_engine_v1/input_manifest.json
+!artifacts/phase_116_live_probability_engine_v1/metrics.json

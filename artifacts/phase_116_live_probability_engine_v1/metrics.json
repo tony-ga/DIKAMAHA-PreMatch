@@ -1,0 +1,3341 @@
+{
+  "confirmation": {
+    "aggregate": {
+      "league_count": 32,
+      "match_count": 1397,
+      "models": {
+        "engine": {
+          "btts_brier": 0.1741897734424893,
+          "btts_log_loss": 0.4988419638135438,
+          "goal_market_brier": 0.19084995992189127,
+          "goal_market_log_loss": 0.5916670489033098,
+          "next_event_brier": 0.4533866635500951,
+          "next_event_log_loss": 2.370421253590898,
+          "objective": 1.036355600075207,
+          "one_x_two_brier": 0.23325482239166023,
+          "one_x_two_log_loss": 0.7934006444052695,
+          "over_2_5_brier": 0.16510528393152432,
+          "over_2_5_log_loss": 0.4827585384911162
+        },
+        "markov": {
+          "btts_brier": 0.17515747006830878,
+          "btts_log_loss": 0.5013140734846135,
+          "goal_market_brier": 0.1923157651665913,
+          "goal_market_log_loss": 0.5958932560520442,
+          "next_event_brier": 0.45115171033020546,
+          "next_event_log_loss": 2.3535553729837964,
+          "objective": 1.0353087852849823,
+          "one_x_two_brier": 0.23479818794711796,
+          "one_x_two_log_loss": 0.7990180594342841,
+          "over_2_5_brier": 0.16699163748434703,
+          "over_2_5_log_loss": 0.4873476352372354
+        }
+      }
+    },
+    "bootstrap_engine_minus_markov": {
+      "goal_market_log_loss": {
+        "ci_95": [
+          -0.005954594732273934,
+          -0.002507069972699178
+        ],
+        "mean_delta": -0.0042262071487344935,
+        "probability_improvement": 1.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "next_event_log_loss": {
+        "ci_95": [
+          0.014670487322865605,
+          0.018934557900314886
+        ],
+        "mean_delta": 0.016865880607101626,
+        "probability_improvement": 0.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "objective": {
+        "ci_95": [
+          -0.0005521709691655968,
+          0.0025055744025868167
+        ],
+        "mean_delta": 0.0010468147902245358,
+        "probability_improvement": 0.0985,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "one_x_two_log_loss": {
+        "ci_95": [
+          -0.008780245948861782,
+          -0.0024469932434694826
+        ],
+        "mean_delta": -0.005617415029014543,
+        "probability_improvement": 0.9995,
+        "replicates": 2000,
+        "unit": "complete_match"
+      }
+    },
+    "by_league": [
+      {
+        "league_count": 1,
+        "league_slug": "arg.1",
+        "match_count": 15,
+        "models": {
+          "engine": {
+            "btts_brier": 0.12998608754114788,
+            "btts_log_loss": 0.4144156400131196,
+            "goal_market_brier": 0.16139691572815215,
+            "goal_market_log_loss": 0.5375543342388339,
+            "next_event_brier": 0.45304159456471615,
+            "next_event_log_loss": 2.3776496774366493,
+            "objective": 0.9975781700382877,
+            "one_x_two_brier": 0.23825139226960917,
+            "one_x_two_log_loss": 0.8300164235141768,
+            "over_2_5_brier": 0.11595326737369936,
+            "over_2_5_log_loss": 0.36823093918920535
+          },
+          "markov": {
+            "btts_brier": 0.1272240430088596,
+            "btts_log_loss": 0.407433149805988,
+            "goal_market_brier": 0.16134704236891909,
+            "goal_market_log_loss": 0.5387987324551696,
+            "next_event_brier": 0.4495829762851977,
+            "next_event_log_loss": 2.353393457389165,
+            "objective": 0.9924474136886684,
+            "one_x_two_brier": 0.2415543037242654,
+            "one_x_two_log_loss": 0.8435311631276028,
+            "over_2_5_brier": 0.1152627803736322,
+            "over_2_5_log_loss": 0.3654318844319181
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "bra.1",
+        "match_count": 53,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18853259315361748,
+            "btts_log_loss": 0.5352737074215224,
+            "goal_market_brier": 0.20081146980135545,
+            "goal_market_log_loss": 0.6109911728445115,
+            "next_event_brier": 0.4541665699767334,
+            "next_event_log_loss": 2.3916441379369013,
+            "objective": 1.056154414117609,
+            "one_x_two_brier": 0.2270457126771943,
+            "one_x_two_log_loss": 0.7530386451057542,
+            "over_2_5_brier": 0.18685610357325447,
+            "over_2_5_log_loss": 0.5446611660062582
+          },
+          "markov": {
+            "btts_brier": 0.19022603479717046,
+            "btts_log_loss": 0.5406108757367315,
+            "goal_market_brier": 0.20506178132894914,
+            "goal_market_log_loss": 0.6235703920687247,
+            "next_event_brier": 0.45247294941693794,
+            "next_event_log_loss": 2.379904102687643,
+            "objective": 1.062653819723454,
+            "one_x_two_brier": 0.23046512960357624,
+            "one_x_two_log_loss": 0.7650306102996842,
+            "over_2_5_brier": 0.1944941795861008,
+            "over_2_5_log_loss": 0.5650696901697585
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "chi.1",
+        "match_count": 32,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16878850813272475,
+            "btts_log_loss": 0.4842406242767463,
+            "goal_market_brier": 0.18729110162422374,
+            "goal_market_log_loss": 0.5797976761844331,
+            "next_event_brier": 0.4601304768593975,
+            "next_event_log_loss": 2.4392359996469137,
+            "objective": 1.0446572570500532,
+            "one_x_two_brier": 0.2356706017168391,
+            "one_x_two_log_loss": 0.7911423635607685,
+            "over_2_5_brier": 0.1574141950231074,
+            "over_2_5_log_loss": 0.46401004071578444
+          },
+          "markov": {
+            "btts_brier": 0.16952370127962635,
+            "btts_log_loss": 0.48642895692174676,
+            "goal_market_brier": 0.18928156488917974,
+            "goal_market_log_loss": 0.5858586616665294,
+            "next_event_brier": 0.45846879110441946,
+            "next_event_log_loss": 2.4312173248499986,
+            "objective": 1.0471983274623968,
+            "one_x_two_brier": 0.2396518672158704,
+            "one_x_two_log_loss": 0.8023802319859673,
+            "over_2_5_brier": 0.15866912617204249,
+            "over_2_5_log_loss": 0.4687667960918744
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "col.1",
+        "match_count": 34,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17720051637534376,
+            "btts_log_loss": 0.5081766670542532,
+            "goal_market_brier": 0.19977896385112762,
+            "goal_market_log_loss": 0.612423450114346,
+            "next_event_brier": 0.44732215727661867,
+            "next_event_log_loss": 2.3194836979209716,
+            "objective": 1.0391885120660025,
+            "one_x_two_brier": 0.2200936377429231,
+            "one_x_two_log_loss": 0.7496421863754604,
+            "over_2_5_brier": 0.20204273743511597,
+            "over_2_5_log_loss": 0.5794514969133242
+          },
+          "markov": {
+            "btts_brier": 0.18046146507038827,
+            "btts_log_loss": 0.5162853680674959,
+            "goal_market_brier": 0.20205264227832073,
+            "goal_market_log_loss": 0.6184323259065533,
+            "next_event_brier": 0.445471127479325,
+            "next_event_log_loss": 2.303414511805846,
+            "objective": 1.0396778723813767,
+            "one_x_two_brier": 0.21987502292904157,
+            "one_x_two_log_loss": 0.7496030790387491,
+            "over_2_5_brier": 0.2058214388355324,
+            "over_2_5_log_loss": 0.5894085306134149
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "concacaf.champions",
+        "match_count": 10,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16417355460586042,
+            "btts_log_loss": 0.4760830951417826,
+            "goal_market_brier": 0.1684923883745688,
+            "goal_market_log_loss": 0.5411039076416767,
+            "next_event_brier": 0.4547469436629988,
+            "next_event_log_loss": 2.3692313178393642,
+            "objective": 0.9981357601910986,
+            "one_x_two_brier": 0.20069417345276935,
+            "one_x_two_log_loss": 0.7254656659759432,
+            "over_2_5_brier": 0.14060943706507664,
+            "over_2_5_log_loss": 0.4217629618073044
+          },
+          "markov": {
+            "btts_brier": 0.16312022897634387,
+            "btts_log_loss": 0.47306999777993725,
+            "goal_market_brier": 0.1666661789294181,
+            "goal_market_log_loss": 0.5371159692199197,
+            "next_event_brier": 0.45224510661975137,
+            "next_event_log_loss": 2.3459034968655863,
+            "objective": 0.9893128511313364,
+            "one_x_two_brier": 0.1981225220458122,
+            "one_x_two_log_loss": 0.7211524627779007,
+            "over_2_5_brier": 0.13875578576609823,
+            "over_2_5_log_loss": 0.41712544710192107
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.libertadores",
+        "match_count": 4,
+        "models": {
+          "engine": {
+            "btts_brier": 0.10678777643481863,
+            "btts_log_loss": 0.37169807533636695,
+            "goal_market_brier": 0.14733109673351913,
+            "goal_market_log_loss": 0.5198770455535916,
+            "next_event_brier": 0.45780242510430785,
+            "next_event_log_loss": 2.403552018515992,
+            "objective": 0.9907957887941917,
+            "one_x_two_brier": 0.25998563071753156,
+            "one_x_two_log_loss": 0.9103892820821696,
+            "over_2_5_brier": 0.0752198830482072,
+            "over_2_5_log_loss": 0.2775437792422384
+          },
+          "markov": {
+            "btts_brier": 0.09701758783126514,
+            "btts_log_loss": 0.34815055594561956,
+            "goal_market_brier": 0.13991817208666393,
+            "goal_market_log_loss": 0.4919784796289015,
+            "next_event_brier": 0.45637508954422423,
+            "next_event_log_loss": 2.3905284949713668,
+            "objective": 0.9666159834645178,
+            "one_x_two_brier": 0.25491650635533225,
+            "one_x_two_log_loss": 0.8717706873850508,
+            "over_2_5_brier": 0.06782042207339442,
+            "over_2_5_log_loss": 0.25601419555603416
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.sudamericana",
+        "match_count": 5,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18206232055316565,
+            "btts_log_loss": 0.5380280683950203,
+            "goal_market_brier": 0.23461509401150388,
+            "goal_market_log_loss": 0.7482602902410279,
+            "next_event_brier": 0.44567591794403716,
+            "next_event_log_loss": 2.2494736717369688,
+            "objective": 1.1235636356150132,
+            "one_x_two_brier": 0.31811696211573914,
+            "one_x_two_log_loss": 1.0610312948789962,
+            "over_2_5_brier": 0.20366599936560684,
+            "over_2_5_log_loss": 0.645721507449067
+          },
+          "markov": {
+            "btts_brier": 0.18568439879971235,
+            "btts_log_loss": 0.5530603506139015,
+            "goal_market_brier": 0.2393391308479953,
+            "goal_market_log_loss": 0.7683652023524981,
+            "next_event_brier": 0.4445969619781843,
+            "next_event_log_loss": 2.245776773156233,
+            "objective": 1.1377180950534318,
+            "one_x_two_brier": 0.32311236757805684,
+            "one_x_two_log_loss": 1.080644452056846,
+            "over_2_5_brier": 0.20922062616621667,
+            "over_2_5_log_loss": 0.6713908043867469
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.1",
+        "match_count": 86,
+        "models": {
+          "engine": {
+            "btts_brier": 0.200930248991614,
+            "btts_log_loss": 0.5604581378500776,
+            "goal_market_brier": 0.2054482109202433,
+            "goal_market_log_loss": 0.6286338755045484,
+            "next_event_brier": 0.45110644081132595,
+            "next_event_log_loss": 2.3403154735054077,
+            "objective": 1.0565542750047632,
+            "one_x_two_brier": 0.2534175607000488,
+            "one_x_two_log_loss": 0.8469317594555533,
+            "over_2_5_brier": 0.1619968230690671,
+            "over_2_5_log_loss": 0.4785117292080143
+          },
+          "markov": {
+            "btts_brier": 0.20045577069207746,
+            "btts_log_loss": 0.5604604146611463,
+            "goal_market_brier": 0.20527367938460736,
+            "goal_market_log_loss": 0.6290827175144449,
+            "next_event_brier": 0.44869906276364824,
+            "next_event_log_loss": 2.3235802887065033,
+            "objective": 1.0527071103124594,
+            "one_x_two_brier": 0.25183648433270867,
+            "one_x_two_log_loss": 0.8431096663137397,
+            "over_2_5_brier": 0.1635287831290359,
+            "over_2_5_log_loss": 0.4836780715684487
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.2",
+        "match_count": 114,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18741568850536028,
+            "btts_log_loss": 0.5301632289188803,
+            "goal_market_brier": 0.1976232527414158,
+            "goal_market_log_loss": 0.6086949331201543,
+            "next_event_brier": 0.4506281872165788,
+            "next_event_log_loss": 2.3425334812276817,
+            "objective": 1.0421545701470363,
+            "one_x_two_brier": 0.24979542620330872,
+            "one_x_two_log_loss": 0.839839407834193,
+            "over_2_5_brier": 0.1556586435155784,
+            "over_2_5_log_loss": 0.45608216260739
+          },
+          "markov": {
+            "btts_brier": 0.1916959581732973,
+            "btts_log_loss": 0.540044638449141,
+            "goal_market_brier": 0.20063753492924183,
+            "goal_market_log_loss": 0.6162079915938369,
+            "next_event_brier": 0.4492335856418842,
+            "next_event_log_loss": 2.33017591883376,
+            "objective": 1.0446999734038176,
+            "one_x_two_brier": 0.2515294892907914,
+            "one_x_two_log_loss": 0.845436837973913,
+            "over_2_5_brier": 0.15868715732363672,
+            "over_2_5_log_loss": 0.46314249835845667
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.3",
+        "match_count": 95,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16429475794539053,
+            "btts_log_loss": 0.47646749307638325,
+            "goal_market_brier": 0.18756760150949187,
+            "goal_market_log_loss": 0.5841268188951041,
+            "next_event_brier": 0.45964973177965407,
+            "next_event_log_loss": 2.445920079338017,
+            "objective": 1.0495751340058324,
+            "one_x_two_brier": 0.2419483554891584,
+            "one_x_two_log_loss": 0.8149351388402634,
+            "over_2_5_brier": 0.15645969109392674,
+            "over_2_5_log_loss": 0.4609778247686657
+          },
+          "markov": {
+            "btts_brier": 0.1644381498708995,
+            "btts_log_loss": 0.4767737818210711,
+            "goal_market_brier": 0.189589101350356,
+            "goal_market_log_loss": 0.5898312954856865,
+            "next_event_brier": 0.45715291002740993,
+            "next_event_log_loss": 2.428643030807163,
+            "objective": 1.0495342293160557,
+            "one_x_two_brier": 0.24558626149972754,
+            "one_x_two_log_loss": 0.8261999024714657,
+            "over_2_5_brier": 0.1587428926804409,
+            "over_2_5_log_loss": 0.4665202021645225
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.4",
+        "match_count": 93,
+        "models": {
+          "engine": {
+            "btts_brier": 0.15931441533225082,
+            "btts_log_loss": 0.4627427992940387,
+            "goal_market_brier": 0.19661662870693944,
+            "goal_market_log_loss": 0.6145834785889372,
+            "next_event_brier": 0.45827597903519274,
+            "next_event_log_loss": 2.4278594760537135,
+            "objective": 1.0679024779551314,
+            "one_x_two_brier": 0.27342300175852435,
+            "one_x_two_log_loss": 0.9154074160327322,
+            "over_2_5_brier": 0.15711246903004317,
+            "over_2_5_log_loss": 0.4656002204400406
+          },
+          "markov": {
+            "btts_brier": 0.16054313748298088,
+            "btts_log_loss": 0.46555092717071345,
+            "goal_market_brier": 0.19702371641038122,
+            "goal_market_log_loss": 0.6154202694022562,
+            "next_event_brier": 0.45535633302876616,
+            "next_event_log_loss": 2.4075855259352474,
+            "objective": 1.0634615835355041,
+            "one_x_two_brier": 0.2740091217109447,
+            "one_x_two_log_loss": 0.9170369923996813,
+            "over_2_5_brier": 0.15651889003721808,
+            "over_2_5_log_loss": 0.46367288863637396
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.5",
+        "match_count": 75,
+        "models": {
+          "engine": {
+            "btts_brier": 0.198492164540597,
+            "btts_log_loss": 0.5482975589517234,
+            "goal_market_brier": 0.20717344245393235,
+            "goal_market_log_loss": 0.6252778233404477,
+            "next_event_brier": 0.4605152672110643,
+            "next_event_log_loss": 2.452917068551955,
+            "objective": 1.0821876346433243,
+            "one_x_two_brier": 0.20413363653955835,
+            "one_x_two_log_loss": 0.7165681941595871,
+            "over_2_5_brier": 0.2188945262816417,
+            "over_2_5_log_loss": 0.6109677169100326
+          },
+          "markov": {
+            "btts_brier": 0.199223975413961,
+            "btts_log_loss": 0.5499981435785909,
+            "goal_market_brier": 0.20867069519458264,
+            "goal_market_log_loss": 0.6293986414661696,
+            "next_event_brier": 0.45788373565768137,
+            "next_event_log_loss": 2.4336677469734873,
+            "objective": 1.080465917842999,
+            "one_x_two_brier": 0.20457993175907263,
+            "one_x_two_log_loss": 0.7178960602411376,
+            "over_2_5_brier": 0.22220817841071433,
+            "over_2_5_log_loss": 0.6203017205787803
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.fa",
+        "match_count": 19,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1741872332028749,
+            "btts_log_loss": 0.5117983741127125,
+            "goal_market_brier": 0.183224130898776,
+            "goal_market_log_loss": 0.5651934735914506,
+            "next_event_brier": 0.4562513152307539,
+            "next_event_log_loss": 2.4022437759818525,
+            "objective": 1.024456049189051,
+            "one_x_two_brier": 0.17642880276504144,
+            "one_x_two_log_loss": 0.6263164746548826,
+            "over_2_5_brier": 0.19905635672841165,
+            "over_2_5_log_loss": 0.5574655720067568
+          },
+          "markov": {
+            "btts_brier": 0.17318896108951612,
+            "btts_log_loss": 0.5092586998225412,
+            "goal_market_brier": 0.1867388452437815,
+            "goal_market_log_loss": 0.5783857270358425,
+            "next_event_brier": 0.4545808574990763,
+            "next_event_log_loss": 2.3966609186878816,
+            "objective": 1.032954524948852,
+            "one_x_two_brier": 0.18170377937442048,
+            "one_x_two_log_loss": 0.6555435906303144,
+            "over_2_5_brier": 0.20532379526740793,
+            "over_2_5_log_loss": 0.5703548906546715
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.league_cup",
+        "match_count": 8,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1492406184324618,
+            "btts_log_loss": 0.4429939716239185,
+            "goal_market_brier": 0.16220345576797401,
+            "goal_market_log_loss": 0.5160517685444319,
+            "next_event_brier": 0.45034223819606783,
+            "next_event_log_loss": 2.343990773696186,
+            "objective": 0.9730365198323704,
+            "one_x_two_brier": 0.18943982918811056,
+            "one_x_two_log_loss": 0.6582820082764113,
+            "over_2_5_brier": 0.14792991968334962,
+            "over_2_5_log_loss": 0.44687932573296596
+          },
+          "markov": {
+            "btts_brier": 0.14709389908971093,
+            "btts_log_loss": 0.43856682620661747,
+            "goal_market_brier": 0.16280503077813616,
+            "goal_market_log_loss": 0.5180377979344931,
+            "next_event_brier": 0.4492381014858958,
+            "next_event_log_loss": 2.3392530597273478,
+            "objective": 0.9733416133827066,
+            "one_x_two_brier": 0.19207683432684608,
+            "one_x_two_log_loss": 0.6650137905869496,
+            "over_2_5_brier": 0.14924435891785143,
+            "over_2_5_log_loss": 0.4505327770099121
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.w.1",
+        "match_count": 23,
+        "models": {
+          "engine": {
+            "btts_brier": 0.19770253110096717,
+            "btts_log_loss": 0.5613186493835426,
+            "goal_market_brier": 0.19952495685853755,
+            "goal_market_log_loss": 0.6148627523861458,
+            "next_event_brier": 0.44402386933265886,
+            "next_event_log_loss": 2.25806955609008,
+            "objective": 1.0256644533121295,
+            "one_x_two_brier": 0.20921239944863246,
+            "one_x_two_log_loss": 0.7216834351498932,
+            "over_2_5_brier": 0.19165994002601297,
+            "over_2_5_log_loss": 0.5615861726250015
+          },
+          "markov": {
+            "btts_brier": 0.1925577025418302,
+            "btts_log_loss": 0.5498047312200787,
+            "goal_market_brier": 0.19699208503554258,
+            "goal_market_log_loss": 0.6102537381386347,
+            "next_event_brier": 0.4403290064304067,
+            "next_event_log_loss": 2.2286366394594066,
+            "objective": 1.0148494634688277,
+            "one_x_two_brier": 0.2041860342023924,
+            "one_x_two_log_loss": 0.7083094833118843,
+            "over_2_5_brier": 0.19423251836240515,
+            "over_2_5_log_loss": 0.572646999883941
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.1",
+        "match_count": 61,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18518367360375684,
+            "btts_log_loss": 0.5258658508771925,
+            "goal_market_brier": 0.19860725982576047,
+            "goal_market_log_loss": 0.6138731912606068,
+            "next_event_brier": 0.4480678581312878,
+            "next_event_log_loss": 2.309785746216863,
+            "objective": 1.0378513299996708,
+            "one_x_two_brier": 0.22972753229191886,
+            "one_x_two_log_loss": 0.7858855707069375,
+            "over_2_5_brier": 0.18091057358160564,
+            "over_2_5_log_loss": 0.5298681521976905
+          },
+          "markov": {
+            "btts_brier": 0.1869842299339521,
+            "btts_log_loss": 0.5302742806047862,
+            "goal_market_brier": 0.19815600625377655,
+            "goal_market_log_loss": 0.6136293670456276,
+            "next_event_brier": 0.44636150216174647,
+            "next_event_log_loss": 2.295437523565721,
+            "objective": 1.034081406175651,
+            "one_x_two_brier": 0.2283192484150388,
+            "one_x_two_log_loss": 0.7826338472609607,
+            "over_2_5_brier": 0.17916454041233876,
+            "over_2_5_log_loss": 0.5279799732711361
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.2",
+        "match_count": 66,
+        "models": {
+          "engine": {
+            "btts_brier": 0.19417573183966244,
+            "btts_log_loss": 0.5455553032556436,
+            "goal_market_brier": 0.2198137134640332,
+            "goal_market_log_loss": 0.6766612808896844,
+            "next_event_brier": 0.46091689985095485,
+            "next_event_log_loss": 2.4609301996454054,
+            "objective": 1.1227285105786147,
+            "one_x_two_brier": 0.3019730259966815,
+            "one_x_two_log_loss": 1.0040168464099484,
+            "over_2_5_brier": 0.16329238255575565,
+            "over_2_5_log_loss": 0.4804116930034613
+          },
+          "markov": {
+            "btts_brier": 0.1971582974621114,
+            "btts_log_loss": 0.5531037248556161,
+            "goal_market_brier": 0.22229533814940824,
+            "goal_market_log_loss": 0.6825002575129188,
+            "next_event_brier": 0.4593637500545364,
+            "next_event_log_loss": 2.450529427681008,
+            "objective": 1.124507550054941,
+            "one_x_two_brier": 0.3037740564513003,
+            "one_x_two_log_loss": 1.0075911260744796,
+            "over_2_5_brier": 0.16595366053481309,
+            "over_2_5_log_loss": 0.4868059216086609
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.copa_del_rey",
+        "match_count": 22,
+        "models": {
+          "engine": {
+            "btts_brier": 0.19711923898596256,
+            "btts_log_loss": 0.5621365480963186,
+            "goal_market_brier": 0.2166219058769463,
+            "goal_market_log_loss": 0.679938583774036,
+            "next_event_brier": 0.4621341781681718,
+            "next_event_log_loss": 2.4584071062771646,
+            "objective": 1.1245557143998182,
+            "one_x_two_brier": 0.24281567958938888,
+            "one_x_two_log_loss": 0.8713422400227945,
+            "over_2_5_brier": 0.2099307990554875,
+            "over_2_5_log_loss": 0.6063369632029949
+          },
+          "markov": {
+            "btts_brier": 0.19496708804514282,
+            "btts_log_loss": 0.5582994863598361,
+            "goal_market_brier": 0.21648932502370044,
+            "goal_market_log_loss": 0.6824482495062405,
+            "next_event_brier": 0.4589701705411485,
+            "next_event_log_loss": 2.4361398496039453,
+            "objective": 1.1208711495306667,
+            "one_x_two_brier": 0.24478590310228035,
+            "one_x_two_log_loss": 0.8808246069695408,
+            "over_2_5_brier": 0.20971498392367807,
+            "over_2_5_log_loss": 0.6082206551893448
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.w.1",
+        "match_count": 34,
+        "models": {
+          "engine": {
+            "btts_brier": 0.12597116621048743,
+            "btts_log_loss": 0.38804109450299307,
+            "goal_market_brier": 0.15404218992750685,
+            "goal_market_log_loss": 0.4913126699572943,
+            "next_event_brier": 0.45679654177295703,
+            "next_event_log_loss": 2.415064456483901,
+            "objective": 0.9722506165889461,
+            "one_x_two_brier": 0.21431067622057623,
+            "one_x_two_log_loss": 0.7104579027964253,
+            "over_2_5_brier": 0.12184472735145689,
+            "over_2_5_log_loss": 0.3754390125724644
+          },
+          "markov": {
+            "btts_brier": 0.12361096547453734,
+            "btts_log_loss": 0.38269125161749773,
+            "goal_market_brier": 0.1534399856795566,
+            "goal_market_log_loss": 0.48968348144935636,
+            "next_event_brier": 0.45351815686952135,
+            "next_event_log_loss": 2.3884442313428487,
+            "objective": 0.9643736689227296,
+            "one_x_two_brier": 0.21701292337692274,
+            "one_x_two_log_loss": 0.7175913640631549,
+            "over_2_5_brier": 0.11969606818720975,
+            "over_2_5_log_loss": 0.36876782866741625
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly",
+        "match_count": 7,
+        "models": {
+          "engine": {
+            "btts_brier": 0.11305140037416143,
+            "btts_log_loss": 0.36207011158243957,
+            "goal_market_brier": 0.1532614485505584,
+            "goal_market_log_loss": 0.5042352261189293,
+            "next_event_brier": 0.4374431920391634,
+            "next_event_log_loss": 2.195670123902782,
+            "objective": 0.9270939505648925,
+            "one_x_two_brier": 0.23957314615772882,
+            "one_x_two_log_loss": 0.809062217358701,
+            "over_2_5_brier": 0.10715979911978492,
+            "over_2_5_log_loss": 0.3415733494156473
+          },
+          "markov": {
+            "btts_brier": 0.11259773307666299,
+            "btts_log_loss": 0.35822105570865087,
+            "goal_market_brier": 0.1566424353100417,
+            "goal_market_log_loss": 0.511269016700328,
+            "next_event_brier": 0.43729836658220417,
+            "next_event_log_loss": 2.186565539664012,
+            "objective": 0.9300931474412489,
+            "one_x_two_brier": 0.24418685418782207,
+            "one_x_two_log_loss": 0.8202652879438096,
+            "over_2_5_brier": 0.11314271866564005,
+            "over_2_5_log_loss": 0.3553207064485234
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly.w",
+        "match_count": 19,
+        "models": {
+          "engine": {
+            "btts_brier": 0.13873467138358886,
+            "btts_log_loss": 0.4228834925750801,
+            "goal_market_brier": 0.1434761017476499,
+            "goal_market_log_loss": 0.4500228658832384,
+            "next_event_brier": 0.46139691274783196,
+            "next_event_log_loss": 2.464488103598626,
+            "objective": 0.9536391753120852,
+            "one_x_two_brier": 0.12316204132424421,
+            "one_x_two_log_loss": 0.45140778008400256,
+            "over_2_5_brier": 0.16853159253511665,
+            "over_2_5_log_loss": 0.4757773249906324
+          },
+          "markov": {
+            "btts_brier": 0.13739950632818856,
+            "btts_log_loss": 0.4191144099242309,
+            "goal_market_brier": 0.14162971118734374,
+            "goal_market_log_loss": 0.4449710724368843,
+            "next_event_brier": 0.4594675669562191,
+            "next_event_log_loss": 2.449139377989323,
+            "objective": 0.946013148824994,
+            "one_x_two_brier": 0.1215896421125751,
+            "one_x_two_log_loss": 0.44674898919371947,
+            "over_2_5_brier": 0.16589998512126755,
+            "over_2_5_log_loss": 0.46904981819270253
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.worldq.uefa",
+        "match_count": 7,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16182075477716043,
+            "btts_log_loss": 0.4809392572457676,
+            "goal_market_brier": 0.17203431608807263,
+            "goal_market_log_loss": 0.5502562627512652,
+            "next_event_brier": 0.4502115877620821,
+            "next_event_log_loss": 2.3210807024864373,
+            "objective": 0.9929623726850582,
+            "one_x_two_brier": 0.19534263414158157,
+            "one_x_two_log_loss": 0.7074260788628647,
+            "over_2_5_brier": 0.15893955934547588,
+            "over_2_5_log_loss": 0.46240345214516315
+          },
+          "markov": {
+            "btts_brier": 0.15540442163836074,
+            "btts_log_loss": 0.46756855582839474,
+            "goal_market_brier": 0.17028674907517358,
+            "goal_market_log_loss": 0.5479844593251516,
+            "next_event_brier": 0.4479571566724147,
+            "next_event_log_loss": 2.302268446791089,
+            "objective": 0.9865554561916359,
+            "one_x_two_brier": 0.19449416296625638,
+            "one_x_two_log_loss": 0.7093047416728043,
+            "over_2_5_brier": 0.16096166262090358,
+            "over_2_5_log_loss": 0.46708008047425587
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fra.1",
+        "match_count": 46,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16103878674034125,
+            "btts_log_loss": 0.4678640387924309,
+            "goal_market_brier": 0.18137570221359364,
+            "goal_market_log_loss": 0.567946427836044,
+            "next_event_brier": 0.4462364439769606,
+            "next_event_log_loss": 2.2870606064517927,
+            "objective": 0.997724972489981,
+            "one_x_two_brier": 0.2081814127182135,
+            "one_x_two_log_loss": 0.7302919786427928,
+            "over_2_5_brier": 0.1749069071822262,
+            "over_2_5_log_loss": 0.505683266072908
+          },
+          "markov": {
+            "btts_brier": 0.16289358595887643,
+            "btts_log_loss": 0.47180896166290903,
+            "goal_market_brier": 0.18443252014293185,
+            "goal_market_log_loss": 0.5754312539415241,
+            "next_event_brier": 0.44424153291310586,
+            "next_event_log_loss": 2.2731772818735583,
+            "objective": 0.9998677609245326,
+            "one_x_two_brier": 0.21381695374722276,
+            "one_x_two_log_loss": 0.745423286265915,
+            "over_2_5_brier": 0.17658702072269644,
+            "over_2_5_log_loss": 0.5090615138957482
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ger.1",
+        "match_count": 55,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17784446369666904,
+            "btts_log_loss": 0.5020768003408201,
+            "goal_market_brier": 0.1907176101993405,
+            "goal_market_log_loss": 0.5874390218156049,
+            "next_event_brier": 0.45318824656182216,
+            "next_event_log_loss": 2.363350356998776,
+            "objective": 1.0314168556113976,
+            "one_x_two_brier": 0.24182064953208168,
+            "one_x_two_log_loss": 0.813650828260503,
+            "over_2_5_brier": 0.1524877173692707,
+            "over_2_5_log_loss": 0.44658943684549174
+          },
+          "markov": {
+            "btts_brier": 0.18087221676575405,
+            "btts_log_loss": 0.5090462156209054,
+            "goal_market_brier": 0.1926397258347167,
+            "goal_market_log_loss": 0.5910899931942776,
+            "next_event_brier": 0.4507950110155952,
+            "next_event_log_loss": 2.347677314760933,
+            "objective": 1.0302368235859414,
+            "one_x_two_brier": 0.24206065503459465,
+            "one_x_two_log_loss": 0.8130793850310098,
+            "over_2_5_brier": 0.15498630570380142,
+            "over_2_5_log_loss": 0.45114437893091763
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ita.1",
+        "match_count": 66,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1539140250726973,
+            "btts_log_loss": 0.45353474328420784,
+            "goal_market_brier": 0.17815578160113246,
+            "goal_market_log_loss": 0.5581931431208395,
+            "next_event_brier": 0.4486892998859129,
+            "next_event_log_loss": 2.3073168423758537,
+            "objective": 0.9954740679345928,
+            "one_x_two_brier": 0.21904531681724135,
+            "one_x_two_log_loss": 0.7517551364829609,
+            "over_2_5_brier": 0.16150800291345874,
+            "over_2_5_log_loss": 0.4692895495953497
+          },
+          "markov": {
+            "btts_brier": 0.15259125601666737,
+            "btts_log_loss": 0.4508074600844941,
+            "goal_market_brier": 0.17911670260094378,
+            "goal_market_log_loss": 0.5605418834199704,
+            "next_event_brier": 0.44679414001018536,
+            "next_event_log_loss": 2.2945637261558494,
+            "objective": 0.9940473441039399,
+            "one_x_two_brier": 0.22111364150929452,
+            "one_x_two_log_loss": 0.7571125609753661,
+            "over_2_5_brier": 0.1636452102768695,
+            "over_2_5_log_loss": 0.4737056292000507
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "mex.1",
+        "match_count": 186,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18327971832041526,
+            "btts_log_loss": 0.517353513785283,
+            "goal_market_brier": 0.19790483822463575,
+            "goal_market_log_loss": 0.6068239060872588,
+            "next_event_brier": 0.45114215037622646,
+            "next_event_log_loss": 2.3399477164493305,
+            "objective": 1.0401048586777768,
+            "one_x_two_brier": 0.23713890585914624,
+            "one_x_two_log_loss": 0.8033736935355392,
+            "over_2_5_brier": 0.1732958904943458,
+            "over_2_5_log_loss": 0.499744510940954
+          },
+          "markov": {
+            "btts_brier": 0.18553328207582184,
+            "btts_log_loss": 0.5228357566014556,
+            "goal_market_brier": 0.2002228888472653,
+            "goal_market_log_loss": 0.6140687228040358,
+            "next_event_brier": 0.4484317566886389,
+            "next_event_log_loss": 2.316485898014201,
+            "objective": 1.039673016606577,
+            "one_x_two_brier": 0.24024655441568316,
+            "one_x_two_log_loss": 0.8170164995755288,
+            "over_2_5_brier": 0.1748888300502909,
+            "over_2_5_log_loss": 0.5023539122351227
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.champions",
+        "match_count": 45,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1231529292662013,
+            "btts_log_loss": 0.37017383922960206,
+            "goal_market_brier": 0.16387680868710602,
+            "goal_market_log_loss": 0.5251186388296327,
+            "next_event_brier": 0.44956143009690985,
+            "next_event_log_loss": 2.336983014358909,
+            "objective": 0.9780847327119518,
+            "one_x_two_brier": 0.2440319526340726,
+            "one_x_two_log_loss": 0.8299399870288882,
+            "over_2_5_brier": 0.12444554416104421,
+            "over_2_5_log_loss": 0.3752420902304078
+          },
+          "markov": {
+            "btts_brier": 0.12147875396378544,
+            "btts_log_loss": 0.36672841244951604,
+            "goal_market_brier": 0.1648311477350453,
+            "goal_market_log_loss": 0.5282846814742619,
+            "next_event_brier": 0.4479157606792482,
+            "next_event_log_loss": 2.3229907645460552,
+            "objective": 0.9769612022422103,
+            "one_x_two_brier": 0.24530445560864605,
+            "one_x_two_log_loss": 0.8359909912492662,
+            "over_2_5_brier": 0.12771023363270442,
+            "over_2_5_log_loss": 0.38213464072400355
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa",
+        "match_count": 42,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18477540516192253,
+            "btts_log_loss": 0.5181845281968663,
+            "goal_market_brier": 0.15989090436995773,
+            "goal_market_log_loss": 0.5037185313183615,
+            "next_event_brier": 0.456933549175982,
+            "next_event_log_loss": 2.4020220826256957,
+            "objective": 0.9782944191451951,
+            "one_x_two_brier": 0.16919634300631944,
+            "one_x_two_log_loss": 0.6083879466916734,
+            "over_2_5_brier": 0.12570096494163124,
+            "over_2_5_log_loss": 0.38458311906654463
+          },
+          "markov": {
+            "btts_brier": 0.18703106785521864,
+            "btts_log_loss": 0.523849929082716,
+            "goal_market_brier": 0.16084252912619393,
+            "goal_market_log_loss": 0.5064202920589798,
+            "next_event_brier": 0.4537141784822312,
+            "next_event_log_loss": 2.3755092612850794,
+            "objective": 0.9736925343655045,
+            "one_x_two_brier": 0.16666013729378348,
+            "one_x_two_log_loss": 0.6038968653521424,
+            "over_2_5_brier": 0.12883638222957966,
+            "over_2_5_log_loss": 0.3915140817420807
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa.conf",
+        "match_count": 35,
+        "models": {
+          "engine": {
+            "btts_brier": 0.13682355786451264,
+            "btts_log_loss": 0.41912708524234227,
+            "goal_market_brier": 0.18374369236243498,
+            "goal_market_log_loss": 0.5827845245692155,
+            "next_event_brier": 0.44997287039011846,
+            "next_event_log_loss": 2.33547105756786,
+            "objective": 1.0209561578188764,
+            "one_x_two_brier": 0.2492834663519225,
+            "one_x_two_log_loss": 0.8477198674137782,
+            "over_2_5_brier": 0.16512405287086987,
+            "over_2_5_log_loss": 0.4815066210515258
+          },
+          "markov": {
+            "btts_brier": 0.14037969338142942,
+            "btts_log_loss": 0.4257200304425032,
+            "goal_market_brier": 0.18769383922250682,
+            "goal_market_log_loss": 0.5926642181879153,
+            "next_event_brier": 0.4496063562707358,
+            "next_event_log_loss": 2.336497272314904,
+            "objective": 1.0286224817196623,
+            "one_x_two_brier": 0.25523809965130456,
+            "one_x_two_log_loss": 0.8665300653101284,
+            "over_2_5_brier": 0.16746372463478648,
+            "over_2_5_log_loss": 0.4857425588111141
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.wchampions",
+        "match_count": 22,
+        "models": {
+          "engine": {
+            "btts_brier": 0.2098722982885459,
+            "btts_log_loss": 0.5803744130802752,
+            "goal_market_brier": 0.1834220191904592,
+            "goal_market_log_loss": 0.553634883945291,
+            "next_event_brier": 0.449899600571602,
+            "next_event_log_loss": 2.3399125971343495,
+            "objective": 1.0002043122425557,
+            "one_x_two_brier": 0.16565258749485398,
+            "one_x_two_log_loss": 0.5791568444448619,
+            "over_2_5_brier": 0.17474117178797777,
+            "over_2_5_log_loss": 0.5013733943107359
+          },
+          "markov": {
+            "btts_brier": 0.20608815650474863,
+            "btts_log_loss": 0.5718063691075356,
+            "goal_market_brier": 0.1815263300159088,
+            "goal_market_log_loss": 0.5495419332179273,
+            "next_event_brier": 0.4469253455642359,
+            "next_event_log_loss": 2.313984780330962,
+            "objective": 0.990652644996186,
+            "one_x_two_brier": 0.1660081707456643,
+            "one_x_two_log_loss": 0.5796051141000398,
+            "over_2_5_brier": 0.17248266279731347,
+            "over_2_5_log_loss": 0.4972143164462063
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uru.1",
+        "match_count": 1,
+        "models": {
+          "engine": {
+            "btts_brier": 0.04313858474220159,
+            "btts_log_loss": 0.21790032703302536,
+            "goal_market_brier": 0.02779859706876948,
+            "goal_market_log_loss": 0.16743528873981006,
+            "next_event_brier": 0.4138577715966232,
+            "next_event_log_loss": 1.9175736621614168,
+            "objective": 0.6049698820952117,
+            "one_x_two_brier": 0.016853032332157812,
+            "one_x_two_log_loss": 0.1418393419828085,
+            "over_2_5_brier": 0.023404174131949042,
+            "over_2_5_log_loss": 0.14256619720359626
+          },
+          "markov": {
+            "btts_brier": 0.03830086594290598,
+            "btts_log_loss": 0.20409727706643746,
+            "goal_market_brier": 0.02493384632569285,
+            "goal_market_log_loss": 0.15710358072809322,
+            "next_event_brier": 0.4082083775953664,
+            "next_event_log_loss": 1.8781612616550294,
+            "objective": 0.5873680009598272,
+            "one_x_two_brier": 0.015306799888612629,
+            "one_x_two_log_loss": 0.13466848910439383,
+            "over_2_5_brier": 0.021193873145559938,
+            "over_2_5_log_loss": 0.13254497601344845
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "usa.1",
+        "match_count": 17,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1475274473650337,
+            "btts_log_loss": 0.43481472550146194,
+            "goal_market_brier": 0.14695147805096767,
+            "goal_market_log_loss": 0.4777243293707317,
+            "next_event_brier": 0.4475008397351607,
+            "next_event_log_loss": 2.292349916641651,
+            "objective": 0.9313807261884617,
+            "one_x_two_brier": 0.1789626837725012,
+            "one_x_two_log_loss": 0.6361437961496655,
+            "over_2_5_brier": 0.11436430301536811,
+            "over_2_5_log_loss": 0.36221446646106786
+          },
+          "markov": {
+            "btts_brier": 0.14635619322400245,
+            "btts_log_loss": 0.4323661149672717,
+            "goal_market_brier": 0.14787068937841386,
+            "goal_market_log_loss": 0.4795023068291717,
+            "next_event_brier": 0.44492520796972995,
+            "next_event_log_loss": 2.271038628492882,
+            "objective": 0.9273863872450994,
+            "one_x_two_brier": 0.17945015546631773,
+            "one_x_two_log_loss": 0.6376726578642828,
+            "over_2_5_brier": 0.1178057194449214,
+            "over_2_5_log_loss": 0.3684681476559608
+          }
+        }
+      }
+    ],
+    "snapshot_count": 6985
+  },
+  "development": {
+    "aggregate": {
+      "league_count": 31,
+      "match_count": 4417,
+      "models": {
+        "engine": {
+          "btts_brier": 0.17595652635608824,
+          "btts_log_loss": 0.5049036110531679,
+          "goal_market_brier": 0.1927421122997833,
+          "goal_market_log_loss": 0.5993241314283932,
+          "next_event_brier": 0.4541999331824639,
+          "next_event_log_loss": 2.378625346234673,
+          "objective": 1.0441494351299632,
+          "one_x_two_brier": 0.2388772044448477,
+          "one_x_two_log_loss": 0.8132526641508151,
+          "over_2_5_brier": 0.163392606098414,
+          "over_2_5_log_loss": 0.4798161190811966
+        },
+        "markov": {
+          "btts_brier": 0.17695711268983075,
+          "btts_log_loss": 0.5074423144857964,
+          "goal_market_brier": 0.19411072445261052,
+          "goal_market_log_loss": 0.6031761640065367,
+          "next_event_brier": 0.4522053572342345,
+          "next_event_log_loss": 2.3643777836380324,
+          "objective": 1.0434765689144108,
+          "one_x_two_brier": 0.24036979932207678,
+          "one_x_two_log_loss": 0.8180540754680231,
+          "over_2_5_brier": 0.16500526134592403,
+          "over_2_5_log_loss": 0.4840321020657907
+        }
+      }
+    },
+    "bootstrap_engine_minus_markov": {
+      "goal_market_log_loss": {
+        "ci_95": [
+          -0.0049371860053264854,
+          -0.002753846153057261
+        ],
+        "mean_delta": -0.003852032578143598,
+        "probability_improvement": 1.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "next_event_log_loss": {
+        "ci_95": [
+          0.01312188688663783,
+          0.01537894146519736
+        ],
+        "mean_delta": 0.014247562596640263,
+        "probability_improvement": 0.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "objective": {
+        "ci_95": [
+          -0.00018349217072542937,
+          0.001510575106002881
+        ],
+        "mean_delta": 0.0006728662155523705,
+        "probability_improvement": 0.0685,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "one_x_two_log_loss": {
+        "ci_95": [
+          -0.006532275690273734,
+          -0.003049892212746745
+        ],
+        "mean_delta": -0.004801411317208065,
+        "probability_improvement": 1.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      }
+    },
+    "by_league": [
+      {
+        "league_count": 1,
+        "league_slug": "arg.1",
+        "match_count": 308,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17401560121806625,
+            "btts_log_loss": 0.5074878523554425,
+            "goal_market_brier": 0.19329192766445585,
+            "goal_market_log_loss": 0.6075097534570494,
+            "next_event_brier": 0.451639177274582,
+            "next_event_log_loss": 2.3412629764064565,
+            "objective": 1.0409480591944011,
+            "one_x_two_brier": 0.2487046259074872,
+            "one_x_two_log_loss": 0.847910498523731,
+            "over_2_5_brier": 0.15715555586781413,
+            "over_2_5_log_loss": 0.4671309094919749
+          },
+          "markov": {
+            "btts_brier": 0.17504927586172989,
+            "btts_log_loss": 0.5107363068810945,
+            "goal_market_brier": 0.19394137345022855,
+            "goal_market_log_loss": 0.6094577391116119,
+            "next_event_brier": 0.44999518325625487,
+            "next_event_log_loss": 2.3291834090493406,
+            "objective": 1.039389156596044,
+            "one_x_two_brier": 0.24824770419880016,
+            "one_x_two_log_loss": 0.8466480288007479,
+            "over_2_5_brier": 0.15852714029015566,
+            "over_2_5_log_loss": 0.4709888816529935
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "bra.1",
+        "match_count": 191,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18267836372917487,
+            "btts_log_loss": 0.523397432044973,
+            "goal_market_brier": 0.20276132006159558,
+            "goal_market_log_loss": 0.6263971861294009,
+            "next_event_brier": 0.45153382636634926,
+            "next_event_log_loss": 2.3429667655710866,
+            "objective": 1.0555395809898225,
+            "one_x_two_brier": 0.24447109594443406,
+            "one_x_two_log_loss": 0.8306965607588289,
+            "over_2_5_brier": 0.18113450051117783,
+            "over_2_5_log_loss": 0.5250975655844009
+          },
+          "markov": {
+            "btts_brier": 0.18359561910068523,
+            "btts_log_loss": 0.5249586818852625,
+            "goal_market_brier": 0.20361067321360743,
+            "goal_market_log_loss": 0.6272242307731627,
+            "next_event_brier": 0.449703522868784,
+            "next_event_log_loss": 2.3284510510564003,
+            "objective": 1.0525309358439723,
+            "one_x_two_brier": 0.2447351712752122,
+            "one_x_two_log_loss": 0.8272853749593403,
+            "over_2_5_brier": 0.18250122926492493,
+            "over_2_5_log_loss": 0.5294286354748853
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "chi.1",
+        "match_count": 138,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17272213822835733,
+            "btts_log_loss": 0.5001552734970378,
+            "goal_market_brier": 0.19592123795192415,
+            "goal_market_log_loss": 0.613509478716522,
+            "next_event_brier": 0.4594013503127433,
+            "next_event_log_loss": 2.4338418422589605,
+            "objective": 1.0685925696021314,
+            "one_x_two_brier": 0.24275923555879161,
+            "one_x_two_log_loss": 0.8343368560137325,
+            "over_2_5_brier": 0.1722823400686235,
+            "over_2_5_log_loss": 0.5060363066387954
+          },
+          "markov": {
+            "btts_brier": 0.17603066671946951,
+            "btts_log_loss": 0.5082013184695899,
+            "goal_market_brier": 0.19926866769856683,
+            "goal_market_log_loss": 0.6214732987797694,
+            "next_event_brier": 0.45673850213793904,
+            "next_event_log_loss": 2.4142136511150842,
+            "objective": 1.0696583868635983,
+            "one_x_two_brier": 0.2474421390148118,
+            "one_x_two_log_loss": 0.8448842861705874,
+            "over_2_5_brier": 0.17433319736141914,
+            "over_2_5_log_loss": 0.5113342916991307
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "col.1",
+        "match_count": 293,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16819084245993837,
+            "btts_log_loss": 0.4909242568949156,
+            "goal_market_brier": 0.18624672399278894,
+            "goal_market_log_loss": 0.5860401767741275,
+            "next_event_brier": 0.45326327462951915,
+            "next_event_log_loss": 2.356226356552217,
+            "objective": 1.02858672171865,
+            "one_x_two_brier": 0.2406543341123269,
+            "one_x_two_log_loss": 0.8181752719870762,
+            "over_2_5_brier": 0.14989499540610166,
+            "over_2_5_log_loss": 0.4490210014403906
+          },
+          "markov": {
+            "btts_brier": 0.16900008752227538,
+            "btts_log_loss": 0.4930926886268031,
+            "goal_market_brier": 0.1874755235683338,
+            "goal_market_log_loss": 0.5896518283825088,
+            "next_event_brier": 0.4514656126410904,
+            "next_event_log_loss": 2.343821505226082,
+            "objective": 1.028194247593402,
+            "one_x_two_brier": 0.24178689869187697,
+            "one_x_two_log_loss": 0.8221450265311274,
+            "over_2_5_brier": 0.15163958449084908,
+            "over_2_5_log_loss": 0.45371776998959606
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "concacaf.champions",
+        "match_count": 17,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18028066555377614,
+            "btts_log_loss": 0.5129248088743859,
+            "goal_market_brier": 0.1825130560337896,
+            "goal_market_log_loss": 0.5694258832975814,
+            "next_event_brier": 0.4497993715340582,
+            "next_event_log_loss": 2.326322425206094,
+            "objective": 1.0086500187747096,
+            "one_x_two_brier": 0.23778178986327017,
+            "one_x_two_log_loss": 0.8010736890915857,
+            "over_2_5_brier": 0.12947671268432243,
+            "over_2_5_log_loss": 0.3942791519267726
+          },
+          "markov": {
+            "btts_brier": 0.18641133502662807,
+            "btts_log_loss": 0.5285356308685438,
+            "goal_market_brier": 0.18740554998460257,
+            "goal_market_log_loss": 0.5811502690527417,
+            "next_event_brier": 0.4486711372017544,
+            "next_event_log_loss": 2.3201841004116943,
+            "objective": 1.0159087268924798,
+            "one_x_two_brier": 0.2390979974641772,
+            "one_x_two_log_loss": 0.8067469083572336,
+            "over_2_5_brier": 0.13670731746300238,
+            "over_2_5_log_loss": 0.4081682679324477
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.libertadores",
+        "match_count": 58,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1529033858556144,
+            "btts_log_loss": 0.45887862478924046,
+            "goal_market_brier": 0.16868304033352235,
+            "goal_market_log_loss": 0.5298803962996694,
+            "next_event_brier": 0.45749086937121186,
+            "next_event_log_loss": 2.402448261034602,
+            "objective": 0.9980223624834026,
+            "one_x_two_brier": 0.20640318071366312,
+            "one_x_two_log_loss": 0.6972639906375886,
+            "over_2_5_brier": 0.14674255443128956,
+            "over_2_5_log_loss": 0.43349857347217935
+          },
+          "markov": {
+            "btts_brier": 0.15181384641633977,
+            "btts_log_loss": 0.45638456053664106,
+            "goal_market_brier": 0.16837466666017561,
+            "goal_market_log_loss": 0.5287207560567407,
+            "next_event_brier": 0.45369007920161447,
+            "next_event_log_loss": 2.3736362618625693,
+            "objective": 0.9899496325081978,
+            "one_x_two_brier": 0.20652232093734585,
+            "one_x_two_log_loss": 0.6976986059525003,
+            "over_2_5_brier": 0.14678783262684122,
+            "over_2_5_log_loss": 0.4320791016810807
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.sudamericana",
+        "match_count": 80,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1637835139189802,
+            "btts_log_loss": 0.4864233791331804,
+            "goal_market_brier": 0.19052321608579528,
+            "goal_market_log_loss": 0.5969795932313141,
+            "next_event_brier": 0.4519574003919355,
+            "next_event_log_loss": 2.352072878536457,
+            "objective": 1.0357529145575999,
+            "one_x_two_brier": 0.23546451124511755,
+            "one_x_two_log_loss": 0.800474472496646,
+            "over_2_5_brier": 0.17232162309328808,
+            "over_2_5_log_loss": 0.5040409280641158
+          },
+          "markov": {
+            "btts_brier": 0.16590088188893326,
+            "btts_log_loss": 0.4925041247462293,
+            "goal_market_brier": 0.19168415691453475,
+            "goal_market_log_loss": 0.6010474108651817,
+            "next_event_brier": 0.45045551880288903,
+            "next_event_log_loss": 2.3403679391544587,
+            "objective": 1.035877542937501,
+            "one_x_two_brier": 0.2354602836740373,
+            "one_x_two_log_loss": 0.8031273824136897,
+            "over_2_5_brier": 0.1736913051806337,
+            "over_2_5_log_loss": 0.507510725435626
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.1",
+        "match_count": 201,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17701255913325942,
+            "btts_log_loss": 0.5057513433886808,
+            "goal_market_brier": 0.19303276021690088,
+            "goal_market_log_loss": 0.5951861172443044,
+            "next_event_brier": 0.4520382715024249,
+            "next_event_log_loss": 2.351746000229695,
+            "objective": 1.034326087990652,
+            "one_x_two_brier": 0.23031121489774758,
+            "one_x_two_log_loss": 0.7790154144689159,
+            "over_2_5_brier": 0.17177450661969568,
+            "over_2_5_log_loss": 0.5007915938753162
+          },
+          "markov": {
+            "btts_brier": 0.1751852814021863,
+            "btts_log_loss": 0.5014295094810826,
+            "goal_market_brier": 0.19192994034675062,
+            "goal_market_log_loss": 0.5931354432687069,
+            "next_event_brier": 0.44994450662214486,
+            "next_event_log_loss": 2.336599931757845,
+            "objective": 1.0290015653909916,
+            "one_x_two_brier": 0.23074460084472007,
+            "one_x_two_log_loss": 0.7810831542023287,
+            "over_2_5_brier": 0.16985993879334546,
+            "over_2_5_log_loss": 0.4968936661227097
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.2",
+        "match_count": 285,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1875378869461779,
+            "btts_log_loss": 0.5324497269066925,
+            "goal_market_brier": 0.20365095388031546,
+            "goal_market_log_loss": 0.6290998470174879,
+            "next_event_brier": 0.4496834748191438,
+            "next_event_log_loss": 2.3241232868986335,
+            "objective": 1.0528557069877744,
+            "one_x_two_brier": 0.24402558079906445,
+            "one_x_two_log_loss": 0.8323707592000058,
+            "over_2_5_brier": 0.17938939389570405,
+            "over_2_5_log_loss": 0.5224790549457654
+          },
+          "markov": {
+            "btts_brier": 0.18865091430971553,
+            "btts_log_loss": 0.5356833700106189,
+            "goal_market_brier": 0.20521011159978175,
+            "goal_market_log_loss": 0.6340526797810455,
+            "next_event_brier": 0.44777822172640064,
+            "next_event_log_loss": 2.3103646672460774,
+            "objective": 1.0531306766473034,
+            "one_x_two_brier": 0.24549968009078105,
+            "one_x_two_log_loss": 0.8380953241602973,
+            "over_2_5_brier": 0.18147974039884865,
+            "over_2_5_log_loss": 0.5283793451722201
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.3",
+        "match_count": 332,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18653890665138106,
+            "btts_log_loss": 0.5282773384966577,
+            "goal_market_brier": 0.20146030591938383,
+            "goal_market_log_loss": 0.620291754650051,
+            "next_event_brier": 0.458506268055459,
+            "next_event_log_loss": 2.435379829373259,
+            "objective": 1.0740637733308531,
+            "one_x_two_brier": 0.24510670414152297,
+            "one_x_two_log_loss": 0.8290307634186708,
+            "over_2_5_brier": 0.17273530696524736,
+            "over_2_5_log_loss": 0.5035671620348247
+          },
+          "markov": {
+            "btts_brier": 0.187581300727286,
+            "btts_log_loss": 0.5304437000548566,
+            "goal_market_brier": 0.20319447287102452,
+            "goal_market_log_loss": 0.6248081656740775,
+            "next_event_brier": 0.45612685386861945,
+            "next_event_log_loss": 2.41988764512239,
+            "objective": 1.0735780355361555,
+            "one_x_two_brier": 0.24736291864977017,
+            "one_x_two_log_loss": 0.8350889716468936,
+            "over_2_5_brier": 0.17463919923601745,
+            "over_2_5_log_loss": 0.5088918253204822
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.4",
+        "match_count": 334,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1744273522812946,
+            "btts_log_loss": 0.5051392860527186,
+            "goal_market_brier": 0.19664073316155276,
+            "goal_market_log_loss": 0.6138846952803648,
+            "next_event_brier": 0.45835900846723526,
+            "next_event_log_loss": 2.4319639982858665,
+            "objective": 1.0684045210317403,
+            "one_x_two_brier": 0.2529552854710089,
+            "one_x_two_log_loss": 0.8540932498267457,
+            "over_2_5_brier": 0.16253956173235473,
+            "over_2_5_log_loss": 0.48242154996162995
+          },
+          "markov": {
+            "btts_brier": 0.17549055062864405,
+            "btts_log_loss": 0.5076406781408465,
+            "goal_market_brier": 0.19827369343951357,
+            "goal_market_log_loss": 0.6186878192873201,
+            "next_event_brier": 0.4560356968199201,
+            "next_event_log_loss": 2.41574115909405,
+            "objective": 1.0679511542390026,
+            "one_x_two_brier": 0.25470902624882835,
+            "one_x_two_log_loss": 0.8599983166309434,
+            "over_2_5_brier": 0.16462150344106824,
+            "over_2_5_log_loss": 0.4884244630901705
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.5",
+        "match_count": 310,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1781286887496104,
+            "btts_log_loss": 0.5084270285439875,
+            "goal_market_brier": 0.19386489314593067,
+            "goal_market_log_loss": 0.6005021924846337,
+            "next_event_brier": 0.46005356358986604,
+            "next_event_log_loss": 2.4495738706301555,
+            "objective": 1.062770112021014,
+            "one_x_two_brier": 0.23840336838136653,
+            "one_x_two_log_loss": 0.8121065427783454,
+            "over_2_5_brier": 0.1650626223068151,
+            "over_2_5_log_loss": 0.480973006131568
+          },
+          "markov": {
+            "btts_brier": 0.17915648915699053,
+            "btts_log_loss": 0.5113185441230502,
+            "goal_market_brier": 0.19544179207867923,
+            "goal_market_log_loss": 0.6040349872092382,
+            "next_event_brier": 0.4575369863041693,
+            "next_event_log_loss": 2.4323333230711635,
+            "objective": 1.0611095711747196,
+            "one_x_two_brier": 0.23983377001777273,
+            "one_x_two_log_loss": 0.8146480737910166,
+            "over_2_5_brier": 0.16733511706127446,
+            "over_2_5_log_loss": 0.4861383437136478
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.fa",
+        "match_count": 16,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1595944561428031,
+            "btts_log_loss": 0.4696357997843339,
+            "goal_market_brier": 0.18309264390012814,
+            "goal_market_log_loss": 0.5677298128986596,
+            "next_event_brier": 0.44793065523230713,
+            "next_event_log_loss": 2.324025049905319,
+            "objective": 1.0068036221503245,
+            "one_x_two_brier": 0.1879709809968563,
+            "one_x_two_log_loss": 0.6703002137781805,
+            "over_2_5_brier": 0.20171249456072496,
+            "over_2_5_log_loss": 0.5632534251334644
+          },
+          "markov": {
+            "btts_brier": 0.15552475607119629,
+            "btts_log_loss": 0.4590801375381981,
+            "goal_market_brier": 0.18470595903794867,
+            "goal_market_log_loss": 0.5729779878656669,
+            "next_event_brier": 0.4473342992181454,
+            "next_event_log_loss": 2.32240104609288,
+            "objective": 1.0103337524224703,
+            "one_x_two_brier": 0.19221964656587393,
+            "one_x_two_log_loss": 0.6859895681224345,
+            "over_2_5_brier": 0.20637347447677581,
+            "over_2_5_log_loss": 0.5738642579363682
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.league_cup",
+        "match_count": 33,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18104339202577108,
+            "btts_log_loss": 0.5185699205884315,
+            "goal_market_brier": 0.1798480491125037,
+            "goal_market_log_loss": 0.5730975781473037,
+            "next_event_brier": 0.4629340272940623,
+            "next_event_log_loss": 2.4990038836197215,
+            "objective": 1.0545741545154081,
+            "one_x_two_brier": 0.19952557844326502,
+            "one_x_two_log_loss": 0.7287355318967086,
+            "over_2_5_brier": 0.158975176868475,
+            "over_2_5_log_loss": 0.471987281956771
+          },
+          "markov": {
+            "btts_brier": 0.17857699655574197,
+            "btts_log_loss": 0.5128959384890195,
+            "goal_market_brier": 0.1808684048224388,
+            "goal_market_log_loss": 0.5760089017572597,
+            "next_event_brier": 0.4594581057823863,
+            "next_event_log_loss": 2.4725355490985006,
+            "objective": 1.0501405635925698,
+            "one_x_two_brier": 0.20160391399739228,
+            "one_x_two_log_loss": 0.7354430315631253,
+            "over_2_5_brier": 0.16242430391418217,
+            "over_2_5_log_loss": 0.47968773521963426
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.w.1",
+        "match_count": 56,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1662031850333831,
+            "btts_log_loss": 0.47322398439381513,
+            "goal_market_brier": 0.1717357192818744,
+            "goal_market_log_loss": 0.5345137200187602,
+            "next_event_brier": 0.4606877867632303,
+            "next_event_log_loss": 2.449994923039431,
+            "objective": 1.013384020773928,
+            "one_x_two_brier": 0.21047512788614858,
+            "one_x_two_log_loss": 0.7230940727702592,
+            "over_2_5_brier": 0.13852884492609144,
+            "over_2_5_log_loss": 0.40722310289220615
+          },
+          "markov": {
+            "btts_brier": 0.1653291308186536,
+            "btts_log_loss": 0.4718416493572097,
+            "goal_market_brier": 0.171733274131384,
+            "goal_market_log_loss": 0.5349746586186047,
+            "next_event_brier": 0.4578782346793126,
+            "next_event_log_loss": 2.4315405353470365,
+            "objective": 1.0091161278007126,
+            "one_x_two_brier": 0.20984968824458056,
+            "one_x_two_log_loss": 0.7226845804445231,
+            "over_2_5_brier": 0.14002100333091785,
+            "over_2_5_log_loss": 0.4103977460540812
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.1",
+        "match_count": 219,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1716053194892892,
+            "btts_log_loss": 0.49237560154485477,
+            "goal_market_brier": 0.18904446117142046,
+            "goal_market_log_loss": 0.5904945288234174,
+            "next_event_brier": 0.44915571643594693,
+            "next_event_log_loss": 2.322310329509664,
+            "objective": 1.023448478994979,
+            "one_x_two_brier": 0.24325955498993063,
+            "one_x_two_log_loss": 0.8243606342116528,
+            "over_2_5_brier": 0.15226850903504158,
+            "over_2_5_log_loss": 0.45474735071374417
+          },
+          "markov": {
+            "btts_brier": 0.17422285820198602,
+            "btts_log_loss": 0.4988960671310551,
+            "goal_market_brier": 0.19044666164951513,
+            "goal_market_log_loss": 0.5942412566196422,
+            "next_event_brier": 0.44750103902474564,
+            "next_event_log_loss": 2.308837346396748,
+            "objective": 1.0228902790639187,
+            "one_x_two_brier": 0.24508312022998338,
+            "one_x_two_log_loss": 0.8294039227343009,
+            "over_2_5_brier": 0.15203400651657595,
+            "over_2_5_log_loss": 0.4544237799935708
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.2",
+        "match_count": 230,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17963635887266755,
+            "btts_log_loss": 0.5094394600472718,
+            "goal_market_brier": 0.20271418745666608,
+            "goal_market_log_loss": 0.6241275663861479,
+            "next_event_brier": 0.45983535021506106,
+            "next_event_log_loss": 2.4442455977594486,
+            "objective": 1.079157074229473,
+            "one_x_two_brier": 0.25978952804030814,
+            "one_x_two_log_loss": 0.8701168904854238,
+            "over_2_5_brier": 0.16871667545702265,
+            "over_2_5_log_loss": 0.49282634862574776
+          },
+          "markov": {
+            "btts_brier": 0.18253947671756549,
+            "btts_log_loss": 0.515708193541864,
+            "goal_market_brier": 0.20674145780897876,
+            "goal_market_log_loss": 0.6366864178542344,
+            "next_event_brier": 0.4576958521988552,
+            "next_event_log_loss": 2.4297215067079474,
+            "objective": 1.0849451900676628,
+            "one_x_two_brier": 0.26581145392346545,
+            "one_x_two_log_loss": 0.8937452329917983,
+            "over_2_5_brier": 0.17187344278590536,
+            "over_2_5_log_loss": 0.5006058270290409
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.w.1",
+        "match_count": 118,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17534114612809187,
+            "btts_log_loss": 0.5052221987595091,
+            "goal_market_brier": 0.17379514199745918,
+            "goal_market_log_loss": 0.5424553247385606,
+            "next_event_brier": 0.4598144269309962,
+            "next_event_log_loss": 2.4442336821445387,
+            "objective": 1.017899914090055,
+            "one_x_two_brier": 0.209484645340904,
+            "one_x_two_log_loss": 0.7091855485174468,
+            "over_2_5_brier": 0.13655963452338168,
+            "over_2_5_log_loss": 0.41295822693872586
+          },
+          "markov": {
+            "btts_brier": 0.1743175242129139,
+            "btts_log_loss": 0.5030960262825797,
+            "goal_market_brier": 0.17383888361205202,
+            "goal_market_log_loss": 0.5423760444329284,
+            "next_event_brier": 0.4572018468154833,
+            "next_event_log_loss": 2.4260380782608184,
+            "objective": 1.013291552889901,
+            "one_x_two_brier": 0.20970704812555827,
+            "one_x_two_log_loss": 0.7093134409584919,
+            "over_2_5_brier": 0.13749207849768383,
+            "over_2_5_log_loss": 0.4147186660577136
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.cwc",
+        "match_count": 18,
+        "models": {
+          "engine": {
+            "btts_brier": 0.20524557866269139,
+            "btts_log_loss": 0.5882711434878186,
+            "goal_market_brier": 0.16243464078415507,
+            "goal_market_log_loss": 0.5121484358917978,
+            "next_event_brier": 0.4508033138575077,
+            "next_event_log_loss": 2.34144037705621,
+            "objective": 0.969471421182901,
+            "one_x_two_brier": 0.16405602909275765,
+            "one_x_two_log_loss": 0.5894986655426097,
+            "over_2_5_brier": 0.11800231459701616,
+            "over_2_5_log_loss": 0.3586754986449653
+          },
+          "markov": {
+            "btts_brier": 0.20117193407790174,
+            "btts_log_loss": 0.580952867377938,
+            "goal_market_brier": 0.16014373509704063,
+            "goal_market_log_loss": 0.5064084872728329,
+            "next_event_brier": 0.44650514183366496,
+            "next_event_log_loss": 2.3008279518181256,
+            "objective": 0.9550133534091559,
+            "one_x_two_brier": 0.1627614112578009,
+            "one_x_two_log_loss": 0.5840053981435567,
+            "over_2_5_brier": 0.11649785995541932,
+            "over_2_5_log_loss": 0.3542671962970041
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly",
+        "match_count": 4,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18736711761029054,
+            "btts_log_loss": 0.5329059414327335,
+            "goal_market_brier": 0.17919189107635122,
+            "goal_market_log_loss": 0.5518142732761578,
+            "next_event_brier": 0.4741959928681349,
+            "next_event_log_loss": 2.581829935125297,
+            "objective": 1.0593181887384429,
+            "one_x_two_brier": 0.26902663615459493,
+            "one_x_two_log_loss": 0.8396028515327897,
+            "over_2_5_brier": 0.0811819194641683,
+            "over_2_5_log_loss": 0.2829340268629503
+          },
+          "markov": {
+            "btts_brier": 0.18845505134754664,
+            "btts_log_loss": 0.5349737799222383,
+            "goal_market_brier": 0.1755415304486255,
+            "goal_market_log_loss": 0.5424118061823824,
+            "next_event_brier": 0.4715570873236827,
+            "next_event_log_loss": 2.5602259775317044,
+            "objective": 1.0468653490197128,
+            "one_x_two_brier": 0.26574431265431386,
+            "one_x_two_log_loss": 0.8301677951475871,
+            "over_2_5_brier": 0.07242522734401599,
+            "over_2_5_log_loss": 0.2620938434773219
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly.w",
+        "match_count": 2,
+        "models": {
+          "engine": {
+            "btts_brier": 0.10535163522135929,
+            "btts_log_loss": 0.3751487519504674,
+            "goal_market_brier": 0.09379926118285015,
+            "goal_market_log_loss": 0.343995462095681,
+            "next_event_brier": 0.44325594558619574,
+            "next_event_log_loss": 2.2322012559962965,
+            "objective": 0.8160469105708349,
+            "one_x_two_brier": 0.04967756199859856,
+            "one_x_two_log_loss": 0.2368277154246393,
+            "over_2_5_brier": 0.12636858632859255,
+            "over_2_5_log_loss": 0.4200099189119364
+          },
+          "markov": {
+            "btts_brier": 0.10070476901523857,
+            "btts_log_loss": 0.364540856849522,
+            "goal_market_brier": 0.09548786881431895,
+            "goal_market_log_loss": 0.3472870455023959,
+            "next_event_brier": 0.4371577820881729,
+            "next_event_log_loss": 2.1856095212945377,
+            "objective": 0.8068676644504313,
+            "one_x_two_brier": 0.05240289481354672,
+            "one_x_two_log_loss": 0.24445542272785992,
+            "over_2_5_brier": 0.13335594261417155,
+            "over_2_5_log_loss": 0.43286485692980586
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.worldq.concacaf",
+        "match_count": 8,
+        "models": {
+          "engine": {
+            "btts_brier": 0.12111299514284847,
+            "btts_log_loss": 0.3813876468841642,
+            "goal_market_brier": 0.19759639698864112,
+            "goal_market_log_loss": 0.6335755675634924,
+            "next_event_brier": 0.4408217730405337,
+            "next_event_log_loss": 2.232637409402271,
+            "objective": 1.0333410280231872,
+            "one_x_two_brier": 0.30964396041476805,
+            "one_x_two_log_loss": 1.0410288976384554,
+            "over_2_5_brier": 0.16203223540830677,
+            "over_2_5_log_loss": 0.4783101581678574
+          },
+          "markov": {
+            "btts_brier": 0.11938300331983658,
+            "btts_log_loss": 0.3759865588538916,
+            "goal_market_brier": 0.19369266805159077,
+            "goal_market_log_loss": 0.6218947487751715,
+            "next_event_brier": 0.4393038045300563,
+            "next_event_log_loss": 2.2177437152458324,
+            "objective": 1.0208569903928366,
+            "one_x_two_brier": 0.30486598378580265,
+            "one_x_two_log_loss": 1.024464767241069,
+            "over_2_5_brier": 0.15682901704913302,
+            "over_2_5_log_loss": 0.46523292023055396
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.worldq.uefa",
+        "match_count": 11,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17440710160416373,
+            "btts_log_loss": 0.49101894152447634,
+            "goal_market_brier": 0.15703162624968736,
+            "goal_market_log_loss": 0.4827687240229018,
+            "next_event_brier": 0.4548286140084255,
+            "next_event_log_loss": 2.39425086085057,
+            "objective": 0.9606392582298188,
+            "one_x_two_brier": 0.18574325339242675,
+            "one_x_two_log_loss": 0.6214540319562054,
+            "over_2_5_brier": 0.1109445237524716,
+            "over_2_5_log_loss": 0.33583319858802346
+          },
+          "markov": {
+            "btts_brier": 0.17710745607846792,
+            "btts_log_loss": 0.4979834584005785,
+            "goal_market_brier": 0.16014385631950745,
+            "goal_market_log_loss": 0.4894555115470792,
+            "next_event_brier": 0.45320008212519075,
+            "next_event_log_loss": 2.3820945597660597,
+            "objective": 0.9626152736018244,
+            "one_x_two_brier": 0.18433362971536757,
+            "one_x_two_log_loss": 0.6152715685132208,
+            "over_2_5_brier": 0.11899048316468686,
+            "over_2_5_log_loss": 0.3551115077274382
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fra.1",
+        "match_count": 158,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16079581094015824,
+            "btts_log_loss": 0.4669429664060606,
+            "goal_market_brier": 0.17741127247554253,
+            "goal_market_log_loss": 0.5547638701883827,
+            "next_event_brier": 0.4509020551033513,
+            "next_event_log_loss": 2.344647547439784,
+            "objective": 1.0022347895012331,
+            "one_x_two_brier": 0.2103814744844464,
+            "one_x_two_log_loss": 0.7287225464018284,
+            "over_2_5_brier": 0.1610565320020229,
+            "over_2_5_log_loss": 0.46862609775725916
+          },
+          "markov": {
+            "btts_brier": 0.16037784481461526,
+            "btts_log_loss": 0.46584643532869713,
+            "goal_market_brier": 0.1786317677253854,
+            "goal_market_log_loss": 0.5587591473298006,
+            "next_event_brier": 0.44981946002260936,
+            "next_event_log_loss": 2.3383498057610708,
+            "objective": 1.0036568119376181,
+            "one_x_two_brier": 0.21419623946059171,
+            "one_x_two_log_loss": 0.7416405208051805,
+            "over_2_5_brier": 0.1613212189009492,
+            "over_2_5_log_loss": 0.46879048585552413
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ger.1",
+        "match_count": 156,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17586027192010453,
+            "btts_log_loss": 0.5000546960638146,
+            "goal_market_brier": 0.1885468487554245,
+            "goal_market_log_loss": 0.5877472139919104,
+            "next_event_brier": 0.45320861247854893,
+            "next_event_log_loss": 2.371853235310501,
+            "objective": 1.0337737193215581,
+            "one_x_two_brier": 0.2432019165870065,
+            "one_x_two_log_loss": 0.8282463729469205,
+            "over_2_5_brier": 0.14657835775916245,
+            "over_2_5_log_loss": 0.43494057296499633
+          },
+          "markov": {
+            "btts_brier": 0.17775575132384905,
+            "btts_log_loss": 0.5039343950543175,
+            "goal_market_brier": 0.19064993792900475,
+            "goal_market_log_loss": 0.5935795185379149,
+            "next_event_brier": 0.4514349446030786,
+            "next_event_log_loss": 2.360641694245486,
+            "objective": 1.0353450624648077,
+            "one_x_two_brier": 0.2455161265632112,
+            "one_x_two_log_loss": 0.837348004495129,
+            "over_2_5_brier": 0.148677935899954,
+            "over_2_5_log_loss": 0.4394561560642982
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ita.1",
+        "match_count": 182,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18199098192837926,
+            "btts_log_loss": 0.5251399886595397,
+            "goal_market_brier": 0.19298963278386086,
+            "goal_market_log_loss": 0.6037135447869084,
+            "next_event_brier": 0.45153176718187826,
+            "next_event_log_loss": 2.343812424161621,
+            "objective": 1.0387382646305867,
+            "one_x_two_brier": 0.24168416103991947,
+            "one_x_two_log_loss": 0.8204347516597067,
+            "over_2_5_brier": 0.15529375538328385,
+            "over_2_5_log_loss": 0.46556589404147897
+          },
+          "markov": {
+            "btts_brier": 0.18174439061091371,
+            "btts_log_loss": 0.5245061601565602,
+            "goal_market_brier": 0.1934182689043276,
+            "goal_market_log_loss": 0.6045407174272394,
+            "next_event_brier": 0.45005435974974856,
+            "next_event_log_loss": 2.3336664688207516,
+            "objective": 1.0368221552756174,
+            "one_x_two_brier": 0.24235509150151932,
+            "one_x_two_log_loss": 0.8219834657517531,
+            "over_2_5_brier": 0.1561553246005498,
+            "over_2_5_log_loss": 0.46713252637340497
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "mex.1",
+        "match_count": 214,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1749185338166062,
+            "btts_log_loss": 0.49569317654386214,
+            "goal_market_brier": 0.19232417084276554,
+            "goal_market_log_loss": 0.5967774248915856,
+            "next_event_brier": 0.45288045782152153,
+            "next_event_log_loss": 2.3677677872717897,
+            "objective": 1.0395250154866367,
+            "one_x_two_brier": 0.23354924181764886,
+            "one_x_two_log_loss": 0.8068021001692286,
+            "over_2_5_brier": 0.1685047368940416,
+            "over_2_5_log_loss": 0.48783699796166574
+          },
+          "markov": {
+            "btts_brier": 0.17693575207679718,
+            "btts_log_loss": 0.5009540392648111,
+            "goal_market_brier": 0.19406786896516187,
+            "goal_market_log_loss": 0.6018968404606515,
+            "next_event_brier": 0.45191926827228757,
+            "next_event_log_loss": 2.3616334688986877,
+            "objective": 1.0418309975701607,
+            "one_x_two_brier": 0.23523400486360707,
+            "one_x_two_log_loss": 0.8120695736913199,
+            "over_2_5_brier": 0.1700338499550814,
+            "over_2_5_log_loss": 0.4926669084258237
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.champions",
+        "match_count": 36,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17205816864887089,
+            "btts_log_loss": 0.48822922213530173,
+            "goal_market_brier": 0.17242991188887472,
+            "goal_market_log_loss": 0.5355952318262563,
+            "next_event_brier": 0.4525646088004276,
+            "next_event_log_loss": 2.3547687344494466,
+            "objective": 0.9903886074820539,
+            "one_x_two_brier": 0.189929502163951,
+            "one_x_two_log_loss": 0.6690137556973748,
+            "over_2_5_brier": 0.15530206485380235,
+            "over_2_5_log_loss": 0.4495427176460926
+          },
+          "markov": {
+            "btts_brier": 0.17297308007007609,
+            "btts_log_loss": 0.4909897387956488,
+            "goal_market_brier": 0.1762693307394175,
+            "goal_market_log_loss": 0.5458779136350107,
+            "next_event_brier": 0.4489712713021381,
+            "next_event_log_loss": 2.3273944023787134,
+            "objective": 0.9912570358209363,
+            "one_x_two_brier": 0.19198047272754853,
+            "one_x_two_log_loss": 0.6748435388793708,
+            "over_2_5_brier": 0.16385443942062788,
+            "over_2_5_log_loss": 0.47180046323001257
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa",
+        "match_count": 21,
+        "models": {
+          "engine": {
+            "btts_brier": 0.21715368894275416,
+            "btts_log_loss": 0.5944945057251304,
+            "goal_market_brier": 0.2148503699729202,
+            "goal_market_log_loss": 0.6426306468933654,
+            "next_event_brier": 0.4568466601190802,
+            "next_event_log_loss": 2.405835660401653,
+            "objective": 1.0834319002704373,
+            "one_x_two_brier": 0.23170658497422572,
+            "one_x_two_log_loss": 0.7764232917538398,
+            "over_2_5_brier": 0.1956908360017807,
+            "over_2_5_log_loss": 0.5569741432011258
+          },
+          "markov": {
+            "btts_brier": 0.21663530987271995,
+            "btts_log_loss": 0.5917710173612942,
+            "goal_market_brier": 0.21758109434931472,
+            "goal_market_log_loss": 0.6492284841997381,
+            "next_event_brier": 0.45607370568970673,
+            "next_event_log_loss": 2.4012910939237946,
+            "objective": 1.0872441366307524,
+            "one_x_two_brier": 0.23552533743834184,
+            "one_x_two_log_loss": 0.7883574533121372,
+            "over_2_5_brier": 0.20058263573688234,
+            "over_2_5_log_loss": 0.5675569819257829
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa.conf",
+        "match_count": 3,
+        "models": {
+          "engine": {
+            "btts_brier": 0.2941095967196807,
+            "btts_log_loss": 0.837453174067606,
+            "goal_market_brier": 0.24591526418891865,
+            "goal_market_log_loss": 0.7720728078950757,
+            "next_event_brier": 0.4414450657040742,
+            "next_event_log_loss": 2.217647501107973,
+            "objective": 1.1334664811983,
+            "one_x_two_brier": 0.280671021838936,
+            "one_x_two_log_loss": 1.007163334789968,
+            "over_2_5_brier": 0.16296517400813929,
+            "over_2_5_log_loss": 0.4716019148276532
+          },
+          "markov": {
+            "btts_brier": 0.30879634235125375,
+            "btts_log_loss": 0.8818317963236266,
+            "goal_market_brier": 0.2546883268559157,
+            "goal_market_log_loss": 0.796601448370792,
+            "next_event_brier": 0.44039837838377244,
+            "next_event_log_loss": 2.2163016836731555,
+            "objective": 1.151526507196383,
+            "one_x_two_brier": 0.2791224092993438,
+            "one_x_two_log_loss": 1.0077593482734224,
+            "over_2_5_brier": 0.1761462289171496,
+            "over_2_5_log_loss": 0.5002132005153274
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "usa.1",
+        "match_count": 385,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17175537866449553,
+            "btts_log_loss": 0.48823793210410954,
+            "goal_market_brier": 0.19353313850431528,
+            "goal_market_log_loss": 0.598802020007522,
+            "next_event_brier": 0.44949689576177854,
+            "next_event_log_loss": 2.328184699374758,
+            "objective": 1.031147689849331,
+            "one_x_two_brier": 0.23868013111932515,
+            "one_x_two_log_loss": 0.8164685983362351,
+            "over_2_5_brier": 0.1701639057291252,
+            "over_2_5_log_loss": 0.49169952958222146
+          },
+          "markov": {
+            "btts_brier": 0.173073045504903,
+            "btts_log_loss": 0.49178602029740937,
+            "goal_market_brier": 0.19464404795498536,
+            "goal_market_log_loss": 0.6022376213801848,
+            "next_event_brier": 0.4475627506836375,
+            "next_event_log_loss": 2.3126302351359858,
+            "objective": 1.0298357748191351,
+            "one_x_two_brier": 0.23859528277290412,
+            "one_x_two_log_loss": 0.8176714659787737,
+            "over_2_5_brier": 0.17226381558714893,
+            "over_2_5_log_loss": 0.49725537786437124
+          }
+        }
+      }
+    ],
+    "snapshot_count": 22085
+  },
+  "validation": {
+    "aggregate": {
+      "league_count": 31,
+      "match_count": 1586,
+      "models": {
+        "engine": {
+          "btts_brier": 0.17230323742213638,
+          "btts_log_loss": 0.4961450962728235,
+          "goal_market_brier": 0.18844760323925566,
+          "goal_market_log_loss": 0.585532742750167,
+          "next_event_brier": 0.4537035277411931,
+          "next_event_log_loss": 2.3720491053893458,
+          "objective": 1.0321618334099616,
+          "one_x_two_brier": 0.22946753936459197,
+          "one_x_two_log_loss": 0.7811728798659512,
+          "over_2_5_brier": 0.16357203293103867,
+          "over_2_5_log_loss": 0.4792802521117263
+        },
+        "markov": {
+          "btts_brier": 0.17323262269753464,
+          "btts_log_loss": 0.4986498907858966,
+          "goal_market_brier": 0.18981095667952635,
+          "goal_market_log_loss": 0.5894444676272299,
+          "next_event_brier": 0.4517480325258126,
+          "next_event_log_loss": 2.3579974172727725,
+          "objective": 1.0315827050386155,
+          "one_x_two_brier": 0.2309817799264333,
+          "one_x_two_log_loss": 0.7862280111924276,
+          "over_2_5_brier": 0.16521846741461108,
+          "over_2_5_log_loss": 0.48345550090336553
+        }
+      }
+    },
+    "bootstrap_engine_minus_markov": {
+      "goal_market_log_loss": {
+        "ci_95": [
+          -0.00562357522395881,
+          -0.0021311624516996463
+        ],
+        "mean_delta": -0.00391172487706294,
+        "probability_improvement": 1.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "next_event_log_loss": {
+        "ci_95": [
+          0.012038382352137259,
+          0.01602723871034018
+        ],
+        "mean_delta": 0.014051688116573398,
+        "probability_improvement": 0.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "objective": {
+        "ci_95": [
+          -0.0008278222502718445,
+          0.002020474583671353
+        ],
+        "mean_delta": 0.0005791283713461451,
+        "probability_improvement": 0.2185,
+        "replicates": 2000,
+        "unit": "complete_match"
+      },
+      "one_x_two_log_loss": {
+        "ci_95": [
+          -0.007617510550108,
+          -0.0024492008000536443
+        ],
+        "mean_delta": -0.005055131326476376,
+        "probability_improvement": 1.0,
+        "replicates": 2000,
+        "unit": "complete_match"
+      }
+    },
+    "by_league": [
+      {
+        "league_count": 1,
+        "league_slug": "arg.1",
+        "match_count": 107,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16235775715104286,
+            "btts_log_loss": 0.48201828972366617,
+            "goal_market_brier": 0.1852910112719786,
+            "goal_market_log_loss": 0.5854758639556112,
+            "next_event_brier": 0.45110937529416517,
+            "next_event_log_loss": 2.3341036699175004,
+            "objective": 1.0226328154460835,
+            "one_x_two_brier": 0.24190861756768192,
+            "one_x_two_log_loss": 0.8115984894226751,
+            "over_2_5_brier": 0.15160665909721097,
+            "over_2_5_log_loss": 0.4628108127204924
+          },
+          "markov": {
+            "btts_brier": 0.1638247295609583,
+            "btts_log_loss": 0.4860049593823002,
+            "goal_market_brier": 0.186546493227827,
+            "goal_market_log_loss": 0.5900256865698491,
+            "next_event_brier": 0.44967851925383356,
+            "next_event_log_loss": 2.3252336328953276,
+            "objective": 1.0238276731512188,
+            "one_x_two_brier": 0.24319886668999585,
+            "one_x_two_log_loss": 0.8181838246460282,
+            "over_2_5_brier": 0.1526158834325268,
+            "over_2_5_log_loss": 0.4658882756812188
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "bra.1",
+        "match_count": 106,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16824587977496286,
+            "btts_log_loss": 0.49227365698822845,
+            "goal_market_brier": 0.1822386984404028,
+            "goal_market_log_loss": 0.5717340167304665,
+            "next_event_brier": 0.4506369079453856,
+            "next_event_log_loss": 2.3319791122212505,
+            "objective": 1.0117952906031624,
+            "one_x_two_brier": 0.2250587502308685,
+            "one_x_two_log_loss": 0.764859087383074,
+            "over_2_5_brier": 0.15341146531537703,
+            "over_2_5_log_loss": 0.4580693058200971
+          },
+          "markov": {
+            "btts_brier": 0.1643640242698705,
+            "btts_log_loss": 0.4843050549051036,
+            "goal_market_brier": 0.1818684307094268,
+            "goal_market_log_loss": 0.5720358362104694,
+            "next_event_brier": 0.448934267943396,
+            "next_event_log_loss": 2.3180329676019307,
+            "objective": 1.0085351190583347,
+            "one_x_two_brier": 0.22603274770134502,
+            "one_x_two_log_loss": 0.7699281698690656,
+            "over_2_5_brier": 0.15520852015706488,
+            "over_2_5_log_loss": 0.461874283857239
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "chi.1",
+        "match_count": 36,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17261204983134723,
+            "btts_log_loss": 0.4994540508856995,
+            "goal_market_brier": 0.18564126169714007,
+            "goal_market_log_loss": 0.5840565184532193,
+            "next_event_brier": 0.4606109868093843,
+            "next_event_log_loss": 2.4479540272554163,
+            "objective": 1.0500308956537685,
+            "one_x_two_brier": 0.2228936720135811,
+            "one_x_two_log_loss": 0.7761817612243321,
+            "over_2_5_brier": 0.16141806324649194,
+            "over_2_5_log_loss": 0.4765337432496263
+          },
+          "markov": {
+            "btts_brier": 0.17706367723945637,
+            "btts_log_loss": 0.5101087304849803,
+            "goal_market_brier": 0.1891138173676306,
+            "goal_market_log_loss": 0.591870227608213,
+            "next_event_brier": 0.4581233394070137,
+            "next_event_log_loss": 2.429857027942337,
+            "objective": 1.051366927691744,
+            "one_x_two_brier": 0.22529239801713657,
+            "one_x_two_log_loss": 0.7809086886457388,
+            "over_2_5_brier": 0.16498537684629885,
+            "over_2_5_log_loss": 0.4845932636939198
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "col.1",
+        "match_count": 84,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1577502948141721,
+            "btts_log_loss": 0.4612815744818479,
+            "goal_market_brier": 0.17364151886172532,
+            "goal_market_log_loss": 0.5482170326197815,
+            "next_event_brier": 0.4553916240211083,
+            "next_event_log_loss": 2.3944080571103683,
+            "objective": 1.0097647887424281,
+            "one_x_two_brier": 0.21670838624577873,
+            "one_x_two_log_loss": 0.7477236369225518,
+            "over_2_5_brier": 0.14646587552522516,
+            "over_2_5_log_loss": 0.43564588645494445
+          },
+          "markov": {
+            "btts_brier": 0.16072652375431254,
+            "btts_log_loss": 0.46896708702877304,
+            "goal_market_brier": 0.17638159989853247,
+            "goal_market_log_loss": 0.5540170993748676,
+            "next_event_brier": 0.45394521621106804,
+            "next_event_log_loss": 2.3838178802921965,
+            "objective": 1.0114672946042,
+            "one_x_two_brier": 0.2193784102180509,
+            "one_x_two_log_loss": 0.7520892863128739,
+            "over_2_5_brier": 0.149039865723234,
+            "over_2_5_log_loss": 0.440994924782956
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.libertadores",
+        "match_count": 4,
+        "models": {
+          "engine": {
+            "btts_brier": 0.0930827451611234,
+            "btts_log_loss": 0.3354229463092653,
+            "goal_market_brier": 0.11469975578557609,
+            "goal_market_log_loss": 0.38908754815242697,
+            "next_event_brier": 0.4447246670553586,
+            "next_event_log_loss": 2.2900957236902966,
+            "objective": 0.8643395920368944,
+            "one_x_two_brier": 0.16256353467503193,
+            "one_x_two_log_loss": 0.5493377492026464,
+            "over_2_5_brier": 0.08845298752057294,
+            "over_2_5_log_loss": 0.28250194894536923
+          },
+          "markov": {
+            "btts_brier": 0.0888450996551409,
+            "btts_log_loss": 0.32546697878537395,
+            "goal_market_brier": 0.11324617463259892,
+            "goal_market_log_loss": 0.38471655309917235,
+            "next_event_brier": 0.4405452535748225,
+            "next_event_log_loss": 2.2532127399755444,
+            "objective": 0.8518405998182654,
+            "one_x_two_brier": 0.158918734037835,
+            "one_x_two_log_loss": 0.5407955436085675,
+            "over_2_5_brier": 0.09197469020482091,
+            "over_2_5_log_loss": 0.28788713690357554
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "conmebol.sudamericana",
+        "match_count": 4,
+        "models": {
+          "engine": {
+            "btts_brier": 0.24610567961493002,
+            "btts_log_loss": 0.6657040550496341,
+            "goal_market_brier": 0.27052662734556726,
+            "goal_market_log_loss": 0.7816745124289429,
+            "next_event_brier": 0.441241670678841,
+            "next_event_log_loss": 2.23634676328718,
+            "objective": 1.1453425751435022,
+            "one_x_two_brier": 0.41340138997160475,
+            "one_x_two_log_loss": 1.2298853227181883,
+            "over_2_5_brier": 0.15207281245016696,
+            "over_2_5_log_loss": 0.4494341595190064
+          },
+          "markov": {
+            "btts_brier": 0.2505835182100767,
+            "btts_log_loss": 0.6757850528614398,
+            "goal_market_brier": 0.2725457837513534,
+            "goal_market_log_loss": 0.7821498993911772,
+            "next_event_brier": 0.4422426613231089,
+            "next_event_log_loss": 2.253017227355063,
+            "objective": 1.1498667313821487,
+            "one_x_two_brier": 0.4134375625613239,
+            "one_x_two_log_loss": 1.2189178928972075,
+            "over_2_5_brier": 0.1536162704826597,
+            "over_2_5_log_loss": 0.4517467524148841
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.1",
+        "match_count": 60,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17906127421099025,
+            "btts_log_loss": 0.5114981921761507,
+            "goal_market_brier": 0.2055128295860071,
+            "goal_market_log_loss": 0.6334092980645243,
+            "next_event_brier": 0.44794206866241093,
+            "next_event_log_loss": 2.3010310659565585,
+            "objective": 1.0503147400375328,
+            "one_x_two_brier": 0.22900486615471533,
+            "one_x_two_log_loss": 0.7943723757979894,
+            "over_2_5_brier": 0.20847234839231576,
+            "over_2_5_log_loss": 0.5943573262194327
+          },
+          "markov": {
+            "btts_brier": 0.18180742509396333,
+            "btts_log_loss": 0.5183706346144311,
+            "goal_market_brier": 0.20939602087440243,
+            "goal_market_log_loss": 0.6457994628451031,
+            "next_event_brier": 0.44595363174904973,
+            "next_event_log_loss": 2.286174536605623,
+            "objective": 1.0558932312852332,
+            "one_x_two_brier": 0.2325467354547498,
+            "one_x_two_log_loss": 0.8087734656835421,
+            "over_2_5_brier": 0.21383390207449407,
+            "over_2_5_log_loss": 0.6102542882373362
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.2",
+        "match_count": 108,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17818585408276946,
+            "btts_log_loss": 0.5064377151393513,
+            "goal_market_brier": 0.19931386220748004,
+            "goal_market_log_loss": 0.6110791668387097,
+            "next_event_brier": 0.448620096510533,
+            "next_event_log_loss": 2.314851159283763,
+            "objective": 1.0370221649499731,
+            "one_x_two_brier": 0.24963197824036779,
+            "one_x_two_log_loss": 0.8326386299901068,
+            "over_2_5_brier": 0.17012375429930285,
+            "over_2_5_log_loss": 0.49416115538667105
+          },
+          "markov": {
+            "btts_brier": 0.18099063777674684,
+            "btts_log_loss": 0.5123976493459493,
+            "goal_market_brier": 0.20153676918416236,
+            "goal_market_log_loss": 0.6164287416179788,
+            "next_event_brier": 0.4469443921348829,
+            "next_event_log_loss": 2.302593000252778,
+            "objective": 1.0379698062766787,
+            "one_x_two_brier": 0.25130829350464023,
+            "one_x_two_log_loss": 0.8385469305871475,
+            "over_2_5_brier": 0.17231137627110002,
+            "over_2_5_log_loss": 0.4983416449208396
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.3",
+        "match_count": 79,
+        "models": {
+          "engine": {
+            "btts_brier": 0.182003305687872,
+            "btts_log_loss": 0.5217897432494574,
+            "goal_market_brier": 0.2071267166802375,
+            "goal_market_log_loss": 0.6448420289710993,
+            "next_event_brier": 0.4592369235322541,
+            "next_event_log_loss": 2.446468218138309,
+            "objective": 1.0952485762629016,
+            "one_x_two_brier": 0.27151500598908446,
+            "one_x_two_log_loss": 0.9218569487075207,
+            "over_2_5_brier": 0.16786183836375604,
+            "over_2_5_log_loss": 0.49087939495631977
+          },
+          "markov": {
+            "btts_brier": 0.18331245598693327,
+            "btts_log_loss": 0.5247847877533074,
+            "goal_market_brier": 0.20878362895352667,
+            "goal_market_log_loss": 0.6485167281240617,
+            "next_event_brier": 0.45708710665907276,
+            "next_event_log_loss": 2.4325206091079297,
+            "objective": 1.0945176983700287,
+            "one_x_two_brier": 0.2721190674895031,
+            "one_x_two_log_loss": 0.9233287274572612,
+            "over_2_5_brier": 0.1709193633841437,
+            "over_2_5_log_loss": 0.49743666916161644
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.4",
+        "match_count": 85,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16932478765099382,
+            "btts_log_loss": 0.4851517388180267,
+            "goal_market_brier": 0.19188625158645065,
+            "goal_market_log_loss": 0.5912551035959795,
+            "next_event_brier": 0.45913456128766184,
+            "next_event_log_loss": 2.4373201075854545,
+            "objective": 1.0527713545933484,
+            "one_x_two_brier": 0.23926123506787164,
+            "one_x_two_log_loss": 0.8048117065052731,
+            "over_2_5_brier": 0.16707273204048642,
+            "over_2_5_log_loss": 0.48380186546463905
+          },
+          "markov": {
+            "btts_brier": 0.17050985080539727,
+            "btts_log_loss": 0.48782234164937416,
+            "goal_market_brier": 0.19385720253794156,
+            "goal_market_log_loss": 0.5968720168635732,
+            "next_event_brier": 0.45664127778623886,
+            "next_event_log_loss": 2.4221947118402563,
+            "objective": 1.0532026906077439,
+            "one_x_two_brier": 0.24189607450130113,
+            "one_x_two_log_loss": 0.8140602748854067,
+            "over_2_5_brier": 0.16916568230712623,
+            "over_2_5_log_loss": 0.48873343405593866
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.5",
+        "match_count": 101,
+        "models": {
+          "engine": {
+            "btts_brier": 0.19414883208818445,
+            "btts_log_loss": 0.5469507301892905,
+            "goal_market_brier": 0.20050530512905476,
+            "goal_market_log_loss": 0.6134367493021248,
+            "next_event_brier": 0.4601171652960774,
+            "next_event_log_loss": 2.451461277972554,
+            "objective": 1.072942881469732,
+            "one_x_two_brier": 0.2374572959363705,
+            "one_x_two_log_loss": 0.7971266118248914,
+            "over_2_5_brier": 0.16990978736260934,
+            "over_2_5_log_loss": 0.4962329058921923
+          },
+          "markov": {
+            "btts_brier": 0.19637565164687745,
+            "btts_log_loss": 0.5522628834842935,
+            "goal_market_brier": 0.20202592352819404,
+            "goal_market_log_loss": 0.6174276445548731,
+            "next_event_brier": 0.45775015233439625,
+            "next_event_log_loss": 2.4369418385152266,
+            "objective": 1.0723061930449616,
+            "one_x_two_brier": 0.23840865863460814,
+            "one_x_two_log_loss": 0.8001820183538807,
+            "over_2_5_brier": 0.1712934603030965,
+            "over_2_5_log_loss": 0.4998380318264452
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.fa",
+        "match_count": 21,
+        "models": {
+          "engine": {
+            "btts_brier": 0.21429049464376354,
+            "btts_log_loss": 0.599426884853525,
+            "goal_market_brier": 0.21425577492273074,
+            "goal_market_log_loss": 0.6580270916401771,
+            "next_event_brier": 0.45990572209247516,
+            "next_event_log_loss": 2.4567217322518267,
+            "objective": 1.1077007517930895,
+            "one_x_two_brier": 0.21060377395374066,
+            "one_x_two_log_loss": 0.7473561881204555,
+            "over_2_5_brier": 0.21787305617068803,
+            "over_2_5_log_loss": 0.6272982019465511
+          },
+          "markov": {
+            "btts_brier": 0.21933806743115666,
+            "btts_log_loss": 0.6121998760424735,
+            "goal_market_brier": 0.21943169312892247,
+            "goal_market_log_loss": 0.6741388449837346,
+            "next_event_brier": 0.4579668683056089,
+            "next_event_log_loss": 2.446772704393385,
+            "objective": 1.1172973098361472,
+            "one_x_two_brier": 0.21554955707569312,
+            "one_x_two_log_loss": 0.7657920849398213,
+            "over_2_5_brier": 0.22340745487991756,
+            "over_2_5_log_loss": 0.6444245739689088
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.league_cup",
+        "match_count": 7,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1393410459005249,
+            "btts_log_loss": 0.4246198342344731,
+            "goal_market_brier": 0.1454732878198131,
+            "goal_market_log_loss": 0.4622684746020287,
+            "next_event_brier": 0.46115052135009277,
+            "next_event_log_loss": 2.470236470999151,
+            "objective": 0.9642604737013093,
+            "one_x_two_brier": 0.149626030434211,
+            "one_x_two_log_loss": 0.5279271980567607,
+            "over_2_5_brier": 0.1474527871247035,
+            "over_2_5_log_loss": 0.43425839151485224
+          },
+          "markov": {
+            "btts_brier": 0.13950982300522335,
+            "btts_log_loss": 0.42578320457675783,
+            "goal_market_brier": 0.14857050542200417,
+            "goal_market_log_loss": 0.4709761064650489,
+            "next_event_brier": 0.4588049874410203,
+            "next_event_log_loss": 2.448757716378861,
+            "objective": 0.9654215089435019,
+            "one_x_two_brier": 0.1556885765828568,
+            "one_x_two_log_loss": 0.5464800263726135,
+            "over_2_5_brier": 0.1505131166779324,
+            "over_2_5_log_loss": 0.4406650884457753
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "eng.w.1",
+        "match_count": 34,
+        "models": {
+          "engine": {
+            "btts_brier": 0.18758434493237908,
+            "btts_log_loss": 0.5281654903663006,
+            "goal_market_brier": 0.20180218361484298,
+            "goal_market_log_loss": 0.6093995383384446,
+            "next_event_brier": 0.45147260553004953,
+            "next_event_log_loss": 2.337222643037772,
+            "objective": 1.0413553145132766,
+            "one_x_two_brier": 0.2364897600309489,
+            "one_x_two_log_loss": 0.78437743972963,
+            "over_2_5_brier": 0.1813324458812009,
+            "over_2_5_log_loss": 0.5156556849194031
+          },
+          "markov": {
+            "btts_brier": 0.18931441019082004,
+            "btts_log_loss": 0.5319788457926907,
+            "goal_market_brier": 0.19973291017253833,
+            "goal_market_log_loss": 0.6032798541947387,
+            "next_event_brier": 0.4482420718154962,
+            "next_event_log_loss": 2.31123336773414,
+            "objective": 1.030268232579589,
+            "one_x_two_brier": 0.23459413989331576,
+            "one_x_two_log_loss": 0.7772877499572565,
+            "over_2_5_brier": 0.1752901804334792,
+            "over_2_5_log_loss": 0.500572966834269
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.1",
+        "match_count": 60,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1713214962689624,
+            "btts_log_loss": 0.4949648632513625,
+            "goal_market_brier": 0.19653801439894414,
+            "goal_market_log_loss": 0.6179383496334588,
+            "next_event_brier": 0.4501841790487839,
+            "next_event_log_loss": 2.325486405428134,
+            "objective": 1.0448253635821276,
+            "one_x_two_brier": 0.25151910211650536,
+            "one_x_two_log_loss": 0.8610751238551771,
+            "over_2_5_brier": 0.1667734448113647,
+            "over_2_5_log_loss": 0.4977750617938369
+          },
+          "markov": {
+            "btts_brier": 0.17332142859123578,
+            "btts_log_loss": 0.5000692568151072,
+            "goal_market_brier": 0.1993830089488607,
+            "goal_market_log_loss": 0.6270887243147191,
+            "next_event_brier": 0.44760575446441336,
+            "next_event_log_loss": 2.3046742159643574,
+            "objective": 1.0464850972271287,
+            "one_x_two_brier": 0.25620804733193653,
+            "one_x_two_log_loss": 0.8751102457213118,
+            "over_2_5_brier": 0.1686195509234098,
+            "over_2_5_log_loss": 0.5060866704077382
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.2",
+        "match_count": 86,
+        "models": {
+          "engine": {
+            "btts_brier": 0.17134523730119874,
+            "btts_log_loss": 0.49349397701617514,
+            "goal_market_brier": 0.1943979162399411,
+            "goal_market_log_loss": 0.6083072135668858,
+            "next_event_brier": 0.45832680156468153,
+            "next_event_log_loss": 2.4115066522471738,
+            "objective": 1.0591070732369579,
+            "one_x_two_brier": 0.24799308222213073,
+            "one_x_two_log_loss": 0.8526038638735004,
+            "over_2_5_brier": 0.16385542919649385,
+            "over_2_5_log_loss": 0.47882379981098205
+          },
+          "markov": {
+            "btts_brier": 0.1724434224550326,
+            "btts_log_loss": 0.4957971243043325,
+            "goal_market_brier": 0.19560390369630146,
+            "goal_market_log_loss": 0.6113634143911697,
+            "next_event_brier": 0.45534888351339187,
+            "next_event_log_loss": 2.3876664848460947,
+            "objective": 1.055439182004901,
+            "one_x_two_brier": 0.24937459908699317,
+            "one_x_two_log_loss": 0.8565462802362795,
+            "over_2_5_brier": 0.16499368954687857,
+            "over_2_5_log_loss": 0.4817468386328971
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "esp.w.1",
+        "match_count": 54,
+        "models": {
+          "engine": {
+            "btts_brier": 0.16835901133656742,
+            "btts_log_loss": 0.4992374976673766,
+            "goal_market_brier": 0.16653895621932074,
+            "goal_market_log_loss": 0.5267969378870182,
+            "next_event_brier": 0.4569179829821731,
+            "next_event_log_loss": 2.402730903208431,
+            "objective": 0.9957804292173716,
+            "one_x_two_brier": 0.19718678387581448,
+            "one_x_two_log_loss": 0.6713798698476218,
+            "over_2_5_brier": 0.13407107344558036,
+            "over_2_5_log_loss": 0.4097734461460564
+          },
+          "markov": {
+            "btts_brier": 0.16762593288709843,
+            "btts_log_loss": 0.49873218979372164,
+            "goal_market_brier": 0.16630005330855738,
+            "goal_market_log_loss": 0.5263488160133064,
+            "next_event_brier": 0.45424266518565887,
+            "next_event_log_loss": 2.3849265996862434,
+            "objective": 0.9909932619315406,
+            "one_x_two_brier": 0.1978025804739336,
+            "one_x_two_log_loss": 0.6727688062523204,
+            "over_2_5_brier": 0.13347164656464006,
+            "over_2_5_log_loss": 0.4075454519938776
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly",
+        "match_count": 30,
+        "models": {
+          "engine": {
+            "btts_brier": 0.15672946355495707,
+            "btts_log_loss": 0.4586221535841569,
+            "goal_market_brier": 0.1823234187438216,
+            "goal_market_log_loss": 0.5774753224666647,
+            "next_event_brier": 0.45963543058525025,
+            "next_event_log_loss": 2.447475266582906,
+            "objective": 1.044975308495725,
+            "one_x_two_brier": 0.21852539312358382,
+            "one_x_two_log_loss": 0.7629842064199582,
+            "over_2_5_brier": 0.17171539955292395,
+            "over_2_5_log_loss": 0.5108196073958787
+          },
+          "markov": {
+            "btts_brier": 0.1571850817141835,
+            "btts_log_loss": 0.45966191530761796,
+            "goal_market_brier": 0.18149222375684315,
+            "goal_market_log_loss": 0.5756116395391805,
+            "next_event_brier": 0.45741875849368197,
+            "next_event_log_loss": 2.4342432089341184,
+            "objective": 1.040269531887915,
+            "one_x_two_brier": 0.21621107348491211,
+            "one_x_two_log_loss": 0.7537619775687816,
+            "over_2_5_brier": 0.17108051607143387,
+            "over_2_5_log_loss": 0.5134110257411418
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.friendly.w",
+        "match_count": 8,
+        "models": {
+          "engine": {
+            "btts_brier": 0.12018005536573906,
+            "btts_log_loss": 0.38855814896913526,
+            "goal_market_brier": 0.12754307109460172,
+            "goal_market_log_loss": 0.4084352218476932,
+            "next_event_brier": 0.46750329912485805,
+            "next_event_log_loss": 2.5091480613268975,
+            "objective": 0.9336134317174942,
+            "one_x_two_brier": 0.07453614647663238,
+            "one_x_two_log_loss": 0.31041462837103245,
+            "over_2_5_brier": 0.18791301144143377,
+            "over_2_5_log_loss": 0.5263328882029119
+          },
+          "markov": {
+            "btts_brier": 0.11756051101575019,
+            "btts_log_loss": 0.3852633115434378,
+            "goal_market_brier": 0.12353885944830308,
+            "goal_market_log_loss": 0.4002527738233603,
+            "next_event_brier": 0.46364804193679804,
+            "next_event_log_loss": 2.4725362950011993,
+            "objective": 0.91832365411782,
+            "one_x_two_brier": 0.07435407891910613,
+            "one_x_two_log_loss": 0.31145493691892173,
+            "over_2_5_brier": 0.17870198841005291,
+            "over_2_5_log_loss": 0.5040400730077214
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.worldq.concacaf",
+        "match_count": 22,
+        "models": {
+          "engine": {
+            "btts_brier": 0.20205112231577071,
+            "btts_log_loss": 0.5762770706079525,
+            "goal_market_brier": 0.18749287505693754,
+            "goal_market_log_loss": 0.5729057922622578,
+            "next_event_brier": 0.45332404932245196,
+            "next_event_log_loss": 2.3577323262562184,
+            "objective": 1.019112425760748,
+            "one_x_two_brier": 0.20352796498884781,
+            "one_x_two_log_loss": 0.6813033364151901,
+            "over_2_5_brier": 0.15689953786619407,
+            "over_2_5_log_loss": 0.4611369697636307
+          },
+          "markov": {
+            "btts_brier": 0.19838438047905219,
+            "btts_log_loss": 0.5688170642118847,
+            "goal_market_brier": 0.183749413713375,
+            "goal_market_log_loss": 0.563221759655513,
+            "next_event_brier": 0.45154014483408195,
+            "next_event_log_loss": 2.349012203282935,
+            "objective": 1.0096693705623685,
+            "one_x_two_brier": 0.1993145633166721,
+            "one_x_two_log_loss": 0.6679963653365726,
+            "over_2_5_brier": 0.15354929734440062,
+            "over_2_5_log_loss": 0.45285184941808204
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fifa.worldq.uefa",
+        "match_count": 94,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1598329534363065,
+            "btts_log_loss": 0.46420442774036175,
+            "goal_market_brier": 0.16454211128644375,
+            "goal_market_log_loss": 0.5158488579786494,
+            "next_event_brier": 0.451275005105624,
+            "next_event_log_loss": 2.350196002341019,
+            "objective": 0.9744356440692418,
+            "one_x_two_brier": 0.1984849026017673,
+            "one_x_two_log_loss": 0.6790603326155915,
+            "over_2_5_brier": 0.1353084778212574,
+            "over_2_5_log_loss": 0.40428181357999493
+          },
+          "markov": {
+            "btts_brier": 0.15732750916392288,
+            "btts_log_loss": 0.4596758064902113,
+            "goal_market_brier": 0.16425719553046264,
+            "goal_market_log_loss": 0.5161935778531658,
+            "next_event_brier": 0.4497171187423487,
+            "next_event_log_loss": 2.337593796122222,
+            "objective": 0.9715436324204298,
+            "one_x_two_brier": 0.19983448829345685,
+            "one_x_two_log_loss": 0.6831846482433138,
+            "over_2_5_brier": 0.13560958913400822,
+            "over_2_5_log_loss": 0.40572027882597245
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "fra.1",
+        "match_count": 63,
+        "models": {
+          "engine": {
+            "btts_brier": 0.170353134352818,
+            "btts_log_loss": 0.48718897151723606,
+            "goal_market_brier": 0.19953117698973039,
+            "goal_market_log_loss": 0.6202920767299571,
+            "next_event_brier": 0.45232037697463623,
+            "next_event_log_loss": 2.353927303021143,
+            "objective": 1.0537008833027535,
+            "one_x_two_brier": 0.2637152465242804,
+            "one_x_two_log_loss": 0.8929057544608051,
+            "over_2_5_brier": 0.1645251500920928,
+            "over_2_5_log_loss": 0.48078150421182997
+          },
+          "markov": {
+            "btts_brier": 0.16895254698157142,
+            "btts_log_loss": 0.4844007924243692,
+            "goal_market_brier": 0.1991640939293133,
+            "goal_market_log_loss": 0.6194332340121043,
+            "next_event_brier": 0.4508191451170046,
+            "next_event_log_loss": 2.3434201343963745,
+            "objective": 1.0504299591081718,
+            "one_x_two_brier": 0.2624469444814106,
+            "one_x_two_log_loss": 0.8892313590555657,
+            "over_2_5_brier": 0.1660927903249579,
+            "over_2_5_log_loss": 0.48466755055637795
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ger.1",
+        "match_count": 51,
+        "models": {
+          "engine": {
+            "btts_brier": 0.19298165169860818,
+            "btts_log_loss": 0.5379769605008355,
+            "goal_market_brier": 0.19092165395844182,
+            "goal_market_log_loss": 0.5799435092202319,
+            "next_event_brier": 0.4518460142145766,
+            "next_event_log_loss": 2.361355043509425,
+            "objective": 1.02529639279253,
+            "one_x_two_brier": 0.19722931535294627,
+            "one_x_two_log_loss": 0.6797010734603136,
+            "over_2_5_brier": 0.18255399482377102,
+            "over_2_5_log_loss": 0.5221524936995465
+          },
+          "markov": {
+            "btts_brier": 0.19363726357738248,
+            "btts_log_loss": 0.5393760195593587,
+            "goal_market_brier": 0.1921934099918289,
+            "goal_market_log_loss": 0.582924020914582,
+            "next_event_brier": 0.4508948440424925,
+            "next_event_log_loss": 2.3519031740022114,
+            "objective": 1.0251688091864894,
+            "one_x_two_brier": 0.19723507222739967,
+            "one_x_two_log_loss": 0.6799594524867877,
+            "over_2_5_brier": 0.18570789417070457,
+            "over_2_5_log_loss": 0.5294365906975999
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "ita.1",
+        "match_count": 67,
+        "models": {
+          "engine": {
+            "btts_brier": 0.15857874101215433,
+            "btts_log_loss": 0.4662259574799477,
+            "goal_market_brier": 0.18789031643192025,
+            "goal_market_log_loss": 0.5893992926087108,
+            "next_event_brier": 0.44925629647607584,
+            "next_event_log_loss": 2.318969493018815,
+            "objective": 1.021791842711237,
+            "one_x_two_brier": 0.2396058419787211,
+            "one_x_two_log_loss": 0.8148516273430307,
+            "over_2_5_brier": 0.16548636630488534,
+            "over_2_5_log_loss": 0.48712029300315407
+          },
+          "markov": {
+            "btts_brier": 0.15842724349097065,
+            "btts_log_loss": 0.4661921924464317,
+            "goal_market_brier": 0.18782784614403003,
+            "goal_market_log_loss": 0.5887885862756891,
+            "next_event_brier": 0.4471633115259177,
+            "next_event_log_loss": 2.3012619064560247,
+            "objective": 1.016906916320773,
+            "one_x_two_brier": 0.23833004560873214,
+            "one_x_two_log_loss": 0.8098905923793337,
+            "over_2_5_brier": 0.16672624933238728,
+            "over_2_5_log_loss": 0.490282974001302
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "mex.1",
+        "match_count": 62,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1759842442387487,
+            "btts_log_loss": 0.4970535806941266,
+            "goal_market_brier": 0.19292744046431015,
+            "goal_market_log_loss": 0.598762985653685,
+            "next_event_brier": 0.45498488738359905,
+            "next_event_log_loss": 2.3805252356198423,
+            "objective": 1.0442035481452245,
+            "one_x_two_brier": 0.23486653363362975,
+            "one_x_two_log_loss": 0.8146520000639996,
+            "over_2_5_brier": 0.16793154352055203,
+            "over_2_5_log_loss": 0.484583376202929
+          },
+          "markov": {
+            "btts_brier": 0.18097964440143408,
+            "btts_log_loss": 0.5092900767913069,
+            "goal_market_brier": 0.19526208797978775,
+            "goal_market_log_loss": 0.6059029368190884,
+            "next_event_brier": 0.45286012339941273,
+            "next_event_log_loss": 2.3640207525472787,
+            "objective": 1.045432390751136,
+            "one_x_two_brier": 0.2382308107181785,
+            "one_x_two_log_loss": 0.8262846326714992,
+            "over_2_5_brier": 0.16657580881975068,
+            "over_2_5_log_loss": 0.4821341009944591
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.champions",
+        "match_count": 46,
+        "models": {
+          "engine": {
+            "btts_brier": 0.15976638210023447,
+            "btts_log_loss": 0.462536907834728,
+            "goal_market_brier": 0.1756331679074726,
+            "goal_market_log_loss": 0.5374556393215396,
+            "next_event_brier": 0.45259240259289574,
+            "next_event_log_loss": 2.3708991579562304,
+            "objective": 0.9958165189802123,
+            "one_x_two_brier": 0.20735004363777493,
+            "one_x_two_log_loss": 0.6953876831982025,
+            "over_2_5_brier": 0.15978307798440838,
+            "over_2_5_log_loss": 0.45444232693168835
+          },
+          "markov": {
+            "btts_brier": 0.1584913779424922,
+            "btts_log_loss": 0.4600031545929788,
+            "goal_market_brier": 0.1769649093534875,
+            "goal_market_log_loss": 0.5413116314481116,
+            "next_event_brier": 0.4526087112358491,
+            "next_event_log_loss": 2.3736988209801906,
+            "objective": 0.9994084288311313,
+            "one_x_two_brier": 0.20861445294972994,
+            "one_x_two_log_loss": 0.7009876074053555,
+            "over_2_5_brier": 0.16378889716824033,
+            "over_2_5_log_loss": 0.46294413234600035
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa",
+        "match_count": 28,
+        "models": {
+          "engine": {
+            "btts_brier": 0.15277895876058345,
+            "btts_log_loss": 0.446438877607088,
+            "goal_market_brier": 0.15655006353401918,
+            "goal_market_log_loss": 0.49203912307059144,
+            "next_event_brier": 0.4475065618893132,
+            "next_event_log_loss": 2.300595985704091,
+            "objective": 0.9441783387289663,
+            "one_x_two_brier": 0.17042841125581673,
+            "one_x_two_log_loss": 0.6069429240733817,
+            "over_2_5_brier": 0.1464428205856574,
+            "over_2_5_log_loss": 0.42273556753130465
+          },
+          "markov": {
+            "btts_brier": 0.15119571722727868,
+            "btts_log_loss": 0.4420595578018124,
+            "goal_market_brier": 0.15635074690010278,
+            "goal_market_log_loss": 0.4931410578513001,
+            "next_event_brier": 0.4461576961522216,
+            "next_event_log_loss": 2.2907106987732564,
+            "objective": 0.9425334680817892,
+            "one_x_two_brier": 0.17561195627661966,
+            "one_x_two_log_loss": 0.6239826357444608,
+            "over_2_5_brier": 0.14224456719640996,
+            "over_2_5_log_loss": 0.41338098000762696
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.europa.conf",
+        "match_count": 4,
+        "models": {
+          "engine": {
+            "btts_brier": 0.22955192452898382,
+            "btts_log_loss": 0.6174987995244747,
+            "goal_market_brier": 0.2695573003654761,
+            "goal_market_log_loss": 0.7976452771249665,
+            "next_event_brier": 0.45925808880891356,
+            "next_event_log_loss": 2.430005366912586,
+            "objective": 1.2057352995718713,
+            "one_x_two_brier": 0.3642963930228752,
+            "one_x_two_log_loss": 1.1799091815646106,
+            "over_2_5_brier": 0.21482358354456924,
+            "over_2_5_log_loss": 0.595527850285814
+          },
+          "markov": {
+            "btts_brier": 0.24497055669066403,
+            "btts_log_loss": 0.651153451549872,
+            "goal_market_brier": 0.2830858274644504,
+            "goal_market_log_loss": 0.8317881063426831,
+            "next_event_brier": 0.4567693309267161,
+            "next_event_log_loss": 2.4234336668880543,
+            "objective": 1.229699496479026,
+            "one_x_two_brier": 0.3734821739982305,
+            "one_x_two_log_loss": 1.214216439271251,
+            "over_2_5_brier": 0.2308047517044566,
+            "over_2_5_log_loss": 0.6299944282069265
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uefa.wchampions",
+        "match_count": 3,
+        "models": {
+          "engine": {
+            "btts_brier": 0.05550959696571272,
+            "btts_log_loss": 0.17263933820484814,
+            "goal_market_brier": 0.17717839883278633,
+            "goal_market_log_loss": 0.5557120600729961,
+            "next_event_brier": 0.44631315406050387,
+            "next_event_log_loss": 2.3163844973925687,
+            "objective": 0.9958801694028891,
+            "one_x_two_brier": 0.2709423836967713,
+            "one_x_two_log_loss": 0.9188862911001845,
+            "over_2_5_brier": 0.20508321583587494,
+            "over_2_5_log_loss": 0.5756105509139556
+          },
+          "markov": {
+            "btts_brier": 0.05964952195418305,
+            "btts_log_loss": 0.18167233006754693,
+            "goal_market_brier": 0.17776293009564448,
+            "goal_market_log_loss": 0.5567531428775171,
+            "next_event_brier": 0.44130770322498414,
+            "next_event_log_loss": 2.2782459809701954,
+            "objective": 0.9871263524006867,
+            "one_x_two_brier": 0.27114837560158866,
+            "one_x_two_log_loss": 0.9227371023087039,
+            "over_2_5_brier": 0.20249089273116175,
+            "over_2_5_log_loss": 0.5658499962563006
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "uru.1",
+        "match_count": 3,
+        "models": {
+          "engine": {
+            "btts_brier": 0.009023668298923156,
+            "btts_log_loss": 0.0838932878816614,
+            "goal_market_brier": 0.047021017817215786,
+            "goal_market_log_loss": 0.21412468087702838,
+            "next_event_brier": 0.4087455985697561,
+            "next_event_log_loss": 1.8845822287645768,
+            "objective": 0.6317390678489154,
+            "one_x_two_brier": 0.12981322089286573,
+            "one_x_two_log_loss": 0.5215817774591981,
+            "over_2_5_brier": 0.002226164259858452,
+            "over_2_5_log_loss": 0.036898977290225794
+          },
+          "markov": {
+            "btts_brier": 0.008179691869887188,
+            "btts_log_loss": 0.07856071711616099,
+            "goal_market_brier": 0.044478103129676656,
+            "goal_market_log_loss": 0.2048924665654178,
+            "next_event_brier": 0.4083512511453342,
+            "next_event_log_loss": 1.8807009714551022,
+            "objective": 0.6238445927878389,
+            "one_x_two_brier": 0.12329110614932447,
+            "one_x_two_log_loss": 0.5021677873605611,
+            "over_2_5_brier": 0.0019635113698183056,
+            "over_2_5_log_loss": 0.033948895219531254
+          }
+        }
+      },
+      {
+        "league_count": 1,
+        "league_slug": "usa.1",
+        "match_count": 69,
+        "models": {
+          "engine": {
+            "btts_brier": 0.1874736070294528,
+            "btts_log_loss": 0.5262874611723055,
+            "goal_market_brier": 0.1899731392424007,
+            "goal_market_log_loss": 0.5785868940148358,
+            "next_event_brier": 0.4520752629255967,
+            "next_event_log_loss": 2.36044103121964,
+            "objective": 1.024050428316037,
+            "one_x_two_brier": 0.20392302369544527,
+            "one_x_two_log_loss": 0.699761562960507,
+            "over_2_5_brier": 0.178522787002304,
+            "over_2_5_log_loss": 0.5097116579116949
+          },
+          "markov": {
+            "btts_brier": 0.1902245036133163,
+            "btts_log_loss": 0.5327823696582655,
+            "goal_market_brier": 0.1949446570981615,
+            "goal_market_log_loss": 0.5922609868042622,
+            "next_event_brier": 0.450054240586179,
+            "next_event_log_loss": 2.3467635547703907,
+            "objective": 1.0308866287957943,
+            "one_x_two_brier": 0.20913515072836503,
+            "one_x_two_log_loss": 0.717862874856204,
+            "over_2_5_brier": 0.18547431695280314,
+            "over_2_5_log_loss": 0.526137715898317
+          }
+        }
+      }
+    ],
+    "snapshot_count": 7930
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "database_audit": {
+    "counts_after": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_before": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_identical": true,
+    "event_source_hash": "5b6de4089e4c743531cedf4dc8223d923ef0d3621180e925c90256ba81137333",
+    "match_source_hash": "21abe3f79635778c0c4fa804c3216791c792b7932f2b14e7aeea6febbc492e1d",
+    "model_events": 402631,
+    "postgresql_writes": 0,
+    "read_only": true,
+    "reconciled_regulation_matches": 9649,
+    "represented_leagues": 42
+  },
+  "partition": {
+    "development_end": "2025-09-26T18:30:00+00:00",
+    "kickoff_counts": {
+      "confirmation": 645,
+      "development": 1935,
+      "validation": 645
+    },
+    "kickoff_overlap": 0,
+    "match_counts": {
+      "confirmation": 1397,
+      "development": 4417,
+      "validation": 1586
+    },
+    "match_overlap": 0,
+    "validation_end": "2025-11-20T21:00:00+00:00"
+  },
+  "prior_audit": {
+    "atomic_same_kickoff_updates": true,
+    "cold_start_matches_excluded": 2249,
+    "prior_count": 7400,
+    "strictly_prior": true
+  }
+}

@@ -2072,6 +2072,40 @@ y worker. El smoke público confirmó servicio
 `ready` con PostgreSQL/upstream y `/markets` HTTP 200. Los endpoints protegidos
 continúan cerrados sin la credencial server-side.
 
+DEC-155
+Fecha: 2026-08-09
+Problema: Fase 114 entrega Markov Live y Hawkes como capas shadow validadas,
+pero la salida live oficial heredada sigue siendo `markov_v1` y no representa
+de forma conjunta tiempo restante, estados continuos, presión reciente,
+expulsiones, fuerza relativa ni incertidumbre numérica.
+Opciones: mantener las capas shadow; promover sólo Markov Live tras otro gate;
+o reemplazar inmediatamente la salida live por un motor compuesto con fallback
+automático, conservando intacta la ruta pre-match.
+Decisión: abrir Fase 116 y crear `live_probability_engine_v1`. El motor oficial
+compone Poisson dinámico, CTMC, hazard tipo Cox, Elo live latente y
+`hawkes_live_v2` residual en escala de intensidades. Monte Carlo será un
+diagnóstico asincrónico determinista de 20,000 simulaciones y no decidirá la
+salida. `POST /v1/predict/live/fixture` publicará el bloque oficial nuevo; los
+bloques de Fase 114 se conservan como aliases de compatibilidad. Un fallo o un
+snapshot sin reloj/marcador revierte a Markov Live o a `markov_v1` sin alterar
+pre-match. Predictor ESPN y `pickcenter` permanecen benchmark display-only y
+archivo financiero aislado, nunca features.
+Motivo: modelar la evolución física del partido con componentes identificables
+y auditables sin promediar probabilidades competidoras ni duplicar la señal de
+Hawkes. El fallback permite revertir el cambio oficial sin tocar snapshots,
+datos históricos o Dixon-Coles/Kalman.
+Estado: congelada e implementada; replay histórico y gates integrales aprobados
+Impacto en contratos/fases: sustituye DEC-142/147/148 únicamente respecto de la
+clasificación oficial de la ruta live y crea
+`live_probability_engine_contract_v1`. No reabre DEC-100, no modifica
+`match_features v1`, la ruta pre-match, mercados financieros ni predicciones
+congeladas. La evaluación histórica de Fase 116 se registra, pero no bloquea la
+activación inicial solicitada.
+Evidencia requerida: causalidad por snapshot, probabilidades normalizadas,
+CTMC conservativa, hazards finitos, Hawkes subcrítico, replay, Monte Carlo
+determinista no bloqueante, fallback exacto, p95 analítico menor a 250 ms,
+compatibilidad API/bot/Mini App y suites integrales.
+
 ```text
 DEC-NNN
 Fecha:

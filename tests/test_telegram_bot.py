@@ -92,8 +92,9 @@ class FakeGateway(PredictionGateway):
 
         return {"models": [
             {"name": "Dixon-Coles + Kalman", "mode": "official"},
-            {"name": "Markov Live v1", "mode": "shadow"},
-            {"name": "Hawkes Live v2 residual", "mode": "shadow"},
+            {"name": "Motor probabilístico Live v1", "mode": "official"},
+            {"name": "Markov Live v1", "mode": "compatibility_fallback"},
+            {"name": "Hawkes Live v2 residual", "mode": "official_component"},
         ], "hawkes_policy": {
             "allowed_league_count": 17, "rho_goal": 1.0,
             "rho_next_event": 0.0,
@@ -164,7 +165,8 @@ def _live_prediction() -> dict[str, Any]:
         "probability_no_event": 0.82,
     }
     return {
-        "status": "shadow_predicted",
+        "status": "live_predicted",
+        "official_source": "live_probability_engine_v1",
         "fixture": {
             "league_slug": "esp.1", "match_id": 900001,
             "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
@@ -172,6 +174,20 @@ def _live_prediction() -> dict[str, Any]:
             "match_clock_seconds": 1920.0,
         },
         "prior": {"status": "reconstructed_causal_prematch_prior"},
+        "official_live_prediction": {
+            "status": "official", "markets": markets,
+            "remaining_intensities": {"home": 1.2, "away": 0.5},
+            "next_event": next_event,
+            "fallback": {"applied": False},
+        },
+        "live_probability_engine": {
+            "audit": {"passed": True},
+            "ctmc": {"dominant_regime": "home_pressure"},
+            "hazard": {"multipliers": {"home": 1.1, "away": 0.9}},
+            "dynamic_elo": {"multipliers": {"home": 1.03, "away": 0.97}},
+            "hawkes_residual": {"status": "official_component_residual"},
+            "monte_carlo_diagnostic": {"status": "scheduled", "simulations": 20000},
+        },
         "experimental_markov_live": {
             "status": "experimental_shadow_not_promoted",
             "markets": markets, "next_event": next_event,
@@ -380,8 +396,8 @@ def test_upcoming_command_preserves_ids_and_kickoff() -> None:
     }
 
 
-def test_live_command_runs_markov_hawkes_and_combined_layers() -> None:
-    """Hace visible el menú live y mantiene las capas separadas."""
+def test_live_command_exposes_official_composed_engine() -> None:
+    """Hace visible el motor oficial y mantiene transparentes sus capas."""
 
     transport, gateway = FakeTransport(), FakeGateway()
     bot = _bot(transport, gateway)
@@ -392,11 +408,12 @@ def test_live_command_runs_markov_hawkes_and_combined_layers() -> None:
         "league_slug": "esp.1", "match_id": 900001,
     }]
     message = transport.sent[-1][1]
-    assert "Markov Live" in message
-    assert "Hawkes Live" in message
-    assert "Combinado" in message
-    assert "SHADOW" in message
-    assert "Markov + residual Hawkes" in message
+    assert "Motor probabilístico Live v1" in message
+    assert "Poisson dinámico" in message
+    assert "CTMC" in message
+    assert "Hawkes" in message
+    assert "OFICIAL" in message
+    assert "Auditoría matemática" in message
     assert not mobile_layout_issues(message)
     assert len(message) <= 3900
 
@@ -409,6 +426,7 @@ def test_models_command_exposes_official_and_shadow_models() -> None:
 
     message = transport.sent[-1][1]
     assert "Dixon-Coles + Kalman" in message
+    assert "Motor probabilístico Live v1" in message
     assert "Markov Live v1" in message
     assert "Hawkes Live v2 residual" in message
     assert "Shadow" in message

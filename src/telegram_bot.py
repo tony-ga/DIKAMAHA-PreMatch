@@ -405,7 +405,7 @@ class DikamahaHttpGateway(PredictionGateway):
     def predict_live_fixture(
         self, payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Solicita Markov Live, Hawkes residual y su combinación."""
+        """Solicita el motor probabilístico live oficial y sus componentes."""
 
         return self._post(
             "/v1/predict/live/fixture", payload, timeout_multiplier=3.0)
@@ -739,7 +739,7 @@ class TelegramPredictionBot:
         buttons.extend(_live_navigation_rows())
         return [(
             "🔴 <b>PARTIDOS EN VIVO</b>\n"
-            "<i>Toca un partido para calcular Markov + Hawkes ahora</i>",
+            "<i>Toca un partido para calcular el motor probabilístico oficial</i>",
             {"inline_keyboard": buttons},
         )]
 
@@ -2112,10 +2112,84 @@ def _percent_plain(value: Any) -> str:
 
 
 def _format_live_prediction(payload: dict[str, Any]) -> str:
-    """Presenta Markov, Hawkes residual y combinado como capas distintas."""
+    """Presenta la salida oficial live y sus componentes auditables."""
 
     fixture = payload.get("fixture")
     fixture = fixture if isinstance(fixture, dict) else {}
+    official = payload.get("official_live_prediction")
+    engine = payload.get("live_probability_engine")
+    if isinstance(official, dict) and isinstance(engine, dict):
+        home, away = _team_names({"fixture": fixture})
+        score_home = fixture.get("score_home", fixture.get("home_score", "–"))
+        score_away = fixture.get("score_away", fixture.get("away_score", "–"))
+        intensities = official.get("remaining_intensities")
+        intensities = intensities if isinstance(intensities, dict) else {}
+        fallback = official.get("fallback")
+        fallback = fallback if isinstance(fallback, dict) else {}
+        audit = engine.get("audit")
+        audit = audit if isinstance(audit, dict) else {}
+        ctmc = engine.get("ctmc")
+        ctmc = ctmc if isinstance(ctmc, dict) else {}
+        hazard = engine.get("hazard")
+        hazard = hazard if isinstance(hazard, dict) else {}
+        hazard_multipliers = hazard.get("multipliers")
+        hazard_multipliers = (
+            hazard_multipliers if isinstance(hazard_multipliers, dict) else {}
+        )
+        elo = engine.get("dynamic_elo")
+        elo = elo if isinstance(elo, dict) else {}
+        elo_multipliers = elo.get("multipliers")
+        elo_multipliers = (
+            elo_multipliers if isinstance(elo_multipliers, dict) else {}
+        )
+        hawkes = engine.get("hawkes_residual")
+        hawkes = hawkes if isinstance(hawkes, dict) else {}
+        diagnostic = engine.get("monte_carlo_diagnostic")
+        diagnostic = diagnostic if isinstance(diagnostic, dict) else {}
+        lines = [
+            "🔴 <b>PREDICCIÓN EN VIVO · OFICIAL</b>",
+            f"<b>{html.escape(_compact(home, 26))} "
+            f"{html.escape(str(score_home))}-{html.escape(str(score_away))} "
+            f"{html.escape(_compact(away, 26))}</b>",
+            f"🏆 {html.escape(str(fixture.get('league_slug') or ''))} · "
+            f"⏱ {html.escape(_live_clock(fixture))}",
+            "",
+            "🧠 <b>Motor probabilístico Live v1</b>",
+            _live_market_table(official.get("markets"), (home, away)),
+            f"Goles restantes λ · {html.escape(_compact(home, 14))} "
+            f"{float(intensities.get('home', 0.0)):.2f} / "
+            f"{html.escape(_compact(away, 14))} "
+            f"{float(intensities.get('away', 0.0)):.2f}",
+        ]
+        lines.extend(_next_event_lines(official.get("next_event"), home, away))
+        lines.extend([
+            "",
+            "⚙️ <b>Componentes de la composición</b>",
+            f"• Poisson dinámico · integración por intervalos",
+            f"• CTMC · régimen {html.escape(str(ctmc.get('dominant') or 'auditado'))}",
+            f"• Hazard/Cox · H {float(hazard_multipliers.get('home', 1.0)):.2f} / "
+            f"A {float(hazard_multipliers.get('away', 1.0)):.2f}",
+            f"• Elo live · H {float(elo_multipliers.get('home', 1.0)):.2f} / "
+            f"A {float(elo_multipliers.get('away', 1.0)):.2f}",
+            f"• Hawkes · residual {html.escape(str(hawkes.get('status') or 'acotado'))}",
+            "",
+            f"🛡 Auditoría matemática: <b>{'APROBADA' if audit.get('passed') else 'REVISAR'}</b>",
+            f"🎲 Monte Carlo: {html.escape(str(diagnostic.get('status') or 'pendiente'))} · "
+            f"{int(diagnostic.get('simulations') or 0):,} simulaciones",
+        ])
+        if fallback.get("applied"):
+            lines.append(
+                "↩️ Fallback aplicado: "
+                f"{html.escape(str(fallback.get('source') or 'Markov Live'))}."
+            )
+        lines.extend([
+            "",
+            "📡 <i>ESPN/Pickcenter: benchmark externo, fuera del cálculo.</i>",
+            "<i>Análisis informativo, no constituye una apuesta.</i>",
+        ])
+        return "\n".join(lines)
+
+    # Compatibilidad temporal con despliegues que todavía publiquen Fase 114.
     markov = payload.get("experimental_markov_live")
     hawkes = payload.get("experimental_hawkes_residual")
     combined = payload.get("experimental_combined_live")
@@ -2160,7 +2234,7 @@ def _format_live_prediction(payload: dict[str, Any]) -> str:
             "🔒 <i>Prior causal reconstruido sólo con historia anterior al kickoff.</i>",
         ])
     lines.extend([
-        "⚠️ <i>Modelos experimentales shadow; no están promovidos a salida oficial.</i>",
+        "⚠️ <i>Fallback de compatibilidad Fase 114; la salida oficial live no estuvo disponible.</i>",
         "<i>Análisis informativo, no constituye una apuesta.</i>",
     ])
     return "\n".join(lines)
@@ -2252,15 +2326,22 @@ def _live_clock(fixture: dict[str, Any]) -> str:
 
 
 def _format_models(payload: dict[str, Any]) -> str:
-    """Expone el inventario de modelos sin ocultar su estado shadow."""
+    """Expone el inventario completo, incluidos componentes y fallbacks."""
 
     rows = payload.get("models")
     models = [row for row in rows or [] if isinstance(row, dict)]
     lines = [
         "🧠 <b>MODELOS EN OPERACIÓN</b>",
-        "<i>Oficiales y shadow visibles, con responsabilidades separadas.</i>",
+        "<i>Modelos, componentes, fallbacks y shadow con funciones separadas.</i>",
     ]
-    for mode, title in (("official", "✅ Oficiales"), ("shadow", "🧪 Shadow")):
+    groups = (
+        ("official", "✅ Oficiales"),
+        ("official_component", "⚙️ Componentes oficiales"),
+        ("compatibility_fallback", "↩️ Fallbacks"),
+        ("compatibility_alias", "🔗 Alias compatibles"),
+        ("shadow", "🧪 Shadow"),
+    )
+    for mode, title in groups:
         selected = [row for row in models if row.get("mode") == mode]
         if not selected:
             continue
@@ -2279,7 +2360,7 @@ def _format_models(payload: dict[str, Any]) -> str:
         ])
     lines.extend([
         "",
-        "<i>Shadow significa operativo y visible, pero no promovido a oficial.</i>",
+        "<i>Shadow sigue significando operativo y visible, pero no promovido.</i>",
     ])
     return "\n".join(lines)
 
@@ -2348,7 +2429,7 @@ def _help_text() -> str:
         "📡 <b>/estado</b>\n"
         "   Consulta disponibilidad del servicio DIKAMAHA.\n\n"
         "🔴 <b>/en_vivo</b>\n"
-        "   Lista partidos activos y calcula Markov Live + Hawkes residual.\n\n"
+        "   Lista partidos activos y calcula el motor probabilístico Live v1.\n\n"
         "🧠 <b>/modelos</b>\n"
         "   Muestra modelos oficiales y shadow realmente operativos.\n\n"
         "📅 <b>/partidos</b> | <b>/menu</b>\n"
@@ -2374,13 +2455,14 @@ def _help_text() -> str:
         "🏟 <b>Contexto del partido</b>\n"
         "   Partido → 🏟 Contexto → Clasificación, lesiones, sede, TV\n\n"
         "🔴 <b>Partidos en vivo</b>\n"
-        "   Partido → Markov Live → residual Hawkes → salida combinada\n"
-        "   <i>Hawkes complementa a Markov y usa fallback exacto por liga.</i>\n\n"
+        "   Partido → Poisson + CTMC + Hazard + Elo + residual Hawkes\n"
+        "   <i>Composición oficial auditable con fallback automático a Markov.</i>\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "ℹ️ <b>Sobre las predicciones</b>\n"
         "Pre-match usa datos anteriores al inicio. Live usa snapshots ESPN y\n"
         "un prior causal reconstruido sólo con historia anterior al kickoff.\n"
-        "Las salidas shadow están visibles, pero no promovidas a oficiales.\n\n"
+        "El motor live es oficial. ESPN Predictor y Pickcenter son\n"
+        "benchmarks externos separados.\n\n"
         "<i>La información es analítica y no constituye una apuesta.</i>")
 
 

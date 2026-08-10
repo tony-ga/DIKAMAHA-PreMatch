@@ -98,6 +98,32 @@ def test_non_admitted_hawkes_is_exact_markov_complement() -> None:
         result["experimental_markov_live"]["markets"])
 
 
+class _BrokenProbabilityEngine:
+    def predict(self, *_args: object, **_kwargs: object) -> dict[str, object]:
+        """Simula un fallo matemático interno sin filtrar payloads."""
+
+        raise FloatingPointError("synthetic_engine_failure")
+
+
+def test_official_live_engine_falls_back_to_markov_on_internal_error() -> None:
+    """Conserva una salida oficial usable si falla el motor compuesto."""
+
+    result = predict_shadow_snapshot(
+        DikamahaInferenceEngine(), _snapshot(), _prior(),
+        {
+            "allowed_leagues": ["esp.1"], "rho_goal": 1.0,
+            "rho_next_event": 0.0,
+        },
+        probability_engine=_BrokenProbabilityEngine(),
+    )
+
+    assert result["official_source"] == "markov_live_v1_fallback"
+    assert result["official_live_prediction"]["fallback"]["applied"] is True
+    assert result["official_live_prediction"]["markets"] == (
+        result["experimental_markov_live"]["markets"]
+    )
+
+
 class _ScoreboardConnector:
     def scoreboard(self, date: str) -> dict[str, object]:
         assert date == "20260808"
@@ -207,7 +233,7 @@ def test_observed_live_presentation_aggregates_teams_and_ignores_annulled() -> N
     assert statistics["away"]["saves"] == 1
     assert len(result["recent_actions"]) == 4
     assert result["recent_actions"][0]["event_id"] == "4"
-    assert result["automatic_refresh_recommended_seconds"] == 10
+    assert result["automatic_refresh_recommended_seconds"] == 15
 
 
 def test_match_dynamics_applies_signed_weights_and_centered_smoothing() -> None:
