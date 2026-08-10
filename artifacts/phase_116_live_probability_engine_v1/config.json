@@ -1,0 +1,62 @@
+{
+  "engine": {
+    "contract_version": "live_probability_engine_contract_v1",
+    "ctmc_generator": [
+      [
+        -0.04,
+        0.032,
+        0.008
+      ],
+      [
+        0.018,
+        -0.036,
+        0.018
+      ],
+      [
+        0.008,
+        0.032,
+        -0.04
+      ]
+    ],
+    "ctmc_goal_multipliers_away": [
+      0.86,
+      1.0,
+      1.18
+    ],
+    "ctmc_goal_multipliers_home": [
+      1.18,
+      1.0,
+      0.86
+    ],
+    "elo_points_per_goal": 82.0,
+    "elo_points_per_pressure": 26.0,
+    "elo_points_per_red_card": 95.0,
+    "extra_time_minutes": 120.0,
+    "maximum_additional_goals": 14,
+    "maximum_log_elo": 0.24,
+    "maximum_log_hazard": 0.45,
+    "maximum_remaining_intensity": 12.0,
+    "model_version": "live_probability_engine_v1",
+    "next_event_horizon_minutes": 5.0,
+    "red_card_log_penalty": 0.38,
+    "red_card_opponent_log_gain": 0.2,
+    "regulation_minutes": 90.0,
+    "segment_minutes": 5.0
+  },
+  "evaluation": {
+    "bootstrap_replicates": 2000,
+    "bootstrap_seed": 11607,
+    "hawkes_rho_goal": 1.0,
+    "hawkes_rho_next_event": 0.0,
+    "minimum_historical_leagues": 20,
+    "minimum_historical_matches": 5000,
+    "snapshot_minutes": [
+      15,
+      30,
+      45,
+      60,
+      75
+    ],
+    "version": "phase_116_historical_live_engine_v1"
+  }
+}

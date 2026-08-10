@@ -6,6 +6,7 @@ selectivo de acuerdo con la política congelada de Fase 114.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -16,6 +17,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.dikamaha_inference import DikamahaInferenceEngine, LiveSnapshotInput
+from src.hawkes_live_v2 import HawkesLiveConfig
+from src.live_probability_engine_v1 import (
+    LiveProbabilityEngineV1,
+    MonteCarloDiagnosticRunner,
+)
+from src.markov_live_v1 import MarkovLiveInput
 from src.espn_fixture_resolver import scoreboard_fixtures
 from src.espn_live_follower import (
     EspnLiveMatchFollower,
@@ -111,8 +118,14 @@ def predict_shadow_snapshot(
     snapshot: dict[str, Any],
     prior: dict[str, Any],
     policy: dict[str, Any],
+    *,
+    probability_engine: LiveProbabilityEngineV1 | None = None,
+    monte_carlo: MonteCarloDiagnosticRunner | None = None,
+    probability_engine_enabled: bool = True,
+    probability_engine_official: bool = True,
+    fallback_enabled: bool = True,
 ) -> dict[str, Any]:
-    """Ejecuta Markov y compone Hawkes sin alterar el router oficial."""
+    """Ejecuta capas legadas y compone el motor live oficial."""
 
     event_id = str(snapshot["provider_event_id"])
     identity = {
@@ -143,9 +156,9 @@ def predict_shadow_snapshot(
         prior_source_hash=str(prior["source_hash"]),
     )
     output = engine.predict_live(LiveSnapshotInput(**request))
-    return {
+    result = {
         "provider_event_id": event_id,
-        "status": "shadow_predicted",
+        "status": "live_predicted",
         "snapshot_source_hash": snapshot["source_hash"],
         "prior": prior,
         "experimental_markov_live": output.experimental_markov_live,
@@ -164,10 +177,155 @@ def predict_shadow_snapshot(
         },
         "audit": asdict(output.audit),
     }
+    result.update(compose_official_live_output(
+        output,
+        LiveSnapshotInput(**request),
+        probability_engine=probability_engine,
+        monte_carlo=monte_carlo,
+        enabled=probability_engine_enabled,
+        official=probability_engine_official,
+        fallback_enabled=fallback_enabled,
+    ))
+    return result
+
+
+def compose_official_live_output(
+    output: Any,
+    request: LiveSnapshotInput,
+    *,
+    probability_engine: LiveProbabilityEngineV1 | None = None,
+    monte_carlo: MonteCarloDiagnosticRunner | None = None,
+    enabled: bool = True,
+    official: bool = True,
+    fallback_enabled: bool = True,
+) -> dict[str, Any]:
+    """Promueve el motor compuesto y aplica fallback explícito y reversible."""
+
+    markov_live = output.experimental_markov_live
+    if not enabled or markov_live is None:
+        return {
+            "official_source": output.official_source,
+            "official_live_prediction": None,
+            "live_probability_engine": {
+                "status": "disabled" if not enabled else "snapshot_incomplete",
+                "fallback": output.official_source,
+            },
+        }
+    source_hash = request.source_hash or hashlib.sha256(
+        json.dumps(
+            {
+                "match_id": request.match_id,
+                "league_slug": request.league_slug,
+                "kickoff_ts": request.kickoff_ts,
+                "snapshot_ts": request.snapshot_ts,
+                "home_team_id": request.home_team_id,
+                "away_team_id": request.away_team_id,
+                "score_home": request.score_home,
+                "score_away": request.score_away,
+                "period": request.period,
+                "match_clock_seconds": request.match_clock_seconds,
+                "events": request.events,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    live_request = MarkovLiveInput(
+        match_id=request.match_id,
+        home_team_id=request.home_team_id,
+        away_team_id=request.away_team_id,
+        kickoff_ts=request.kickoff_ts,
+        snapshot_ts=request.snapshot_ts,
+        match_clock_seconds=float(request.match_clock_seconds or 0.0),
+        period=request.period,
+        score_home=int(request.score_home or 0),
+        score_away=int(request.score_away or 0),
+        lambda_base_home=request.lambda_base_home,
+        lambda_base_away=request.lambda_base_away,
+        events=tuple(dict(event) for event in request.events),
+        league_slug=request.league_slug,
+        source_hash=source_hash,
+    )
+    hawkes = HawkesLiveConfig(
+        rho=request.hawkes_rho if request.hawkes_rho is not None else 1.0,
+        rho_goal=request.hawkes_rho_goal,
+        rho_next_event=request.hawkes_rho_next_event,
+    )
+    try:
+        composed = (probability_engine or LiveProbabilityEngineV1()).predict(
+            live_request, markov_live, hawkes_config=hawkes,
+        )
+    except (TypeError, ValueError, OverflowError, FloatingPointError) as exc:
+        if not fallback_enabled:
+            raise
+        return _official_markov_fallback(output, request, type(exc).__name__)
+    if not official:
+        composed["status"] = "candidate_not_official"
+        composed["official_source"] = output.official_source
+        composed["official_live_prediction"]["status"] = "candidate"
+    diagnostic = {
+        "status": "disabled", "simulations": 0, "blocking": False,
+    }
+    if monte_carlo is not None:
+        diagnostic = monte_carlo.submit(
+            request.match_id,
+            source_hash,
+            composed["official_live_prediction"],
+        )
+    composed["live_probability_engine"]["monte_carlo_diagnostic"] = diagnostic
+    composed["official_live_prediction"]["confidence"][
+        "monte_carlo_status"
+    ] = diagnostic["status"]
+    return composed
+
+
+def _official_markov_fallback(
+    output: Any, request: LiveSnapshotInput, reason: str,
+) -> dict[str, Any]:
+    markov = dict(output.experimental_markov_live or {})
+    markets = dict(markov.get("markets") or {})
+    return {
+        "status": "official_fallback",
+        "official_source": "markov_live_v1_fallback",
+        "official_live_prediction": {
+            "status": "official_fallback",
+            "model_version": "markov_live_v1_shadow",
+            "markets": markets,
+            "periods": {},
+            "remaining_intensities": {
+                "home": float(markov.get("lambda_remaining_home", 0.0)),
+                "away": float(markov.get("lambda_remaining_away", 0.0)),
+            },
+            "next_event": markov.get("next_event") or {},
+            "exact_score": [],
+            "remaining_goals_distribution": [],
+            "goal_horizons": {},
+            "confidence": {
+                "classification": "fallback",
+                "monte_carlo_status": "not_scheduled",
+            },
+            "updated_at": request.snapshot_ts,
+            "fallback": {
+                "applied": True,
+                "source": "markov_live_v1",
+                "reason": reason,
+            },
+        },
+        "live_probability_engine": {
+            "status": "fallback_applied",
+            "model_version": "live_probability_engine_v1",
+            "audit": {"passed": False, "reason": reason},
+            "monte_carlo_diagnostic": {
+                "status": "not_scheduled", "simulations": 0,
+                "blocking": False,
+            },
+        },
+    }
 
 
 class LivePredictionRuntime:
-    """Orquesta ESPN raw-first, prior causal y modelos live shadow."""
+    """Orquesta ESPN raw-first, prior causal y el motor live oficial."""
 
     def __init__(
         self,
@@ -176,11 +334,28 @@ class LivePredictionRuntime:
         *,
         connector_factory: ConnectorFactory | None = None,
         policy_path: Path = DEFAULT_HAWKES_POLICY,
+        probability_engine: LiveProbabilityEngineV1 | None = None,
+        monte_carlo_runner: MonteCarloDiagnosticRunner | None = None,
+        probability_engine_enabled: bool = True,
+        probability_engine_official: bool = True,
+        monte_carlo_enabled: bool = True,
+        monte_carlo_simulations: int = 20_000,
+        fallback_enabled: bool = True,
+        refresh_seconds: int = 15,
     ) -> None:
         self._prematch = prematch_engine
         self._inference = inference_engine
         self._connector_factory = connector_factory or self._connector
         self._policy = load_hawkes_league_policy(policy_path)
+        self._probability_engine = probability_engine or LiveProbabilityEngineV1()
+        self._monte_carlo = monte_carlo_runner or (
+            MonteCarloDiagnosticRunner(monte_carlo_simulations)
+            if monte_carlo_enabled else None
+        )
+        self._probability_engine_enabled = probability_engine_enabled
+        self._probability_engine_official = probability_engine_official
+        self._fallback_enabled = fallback_enabled
+        self._refresh_seconds = max(5, min(int(refresh_seconds), 60))
 
     @staticmethod
     def _connector(league: str) -> EspnProspectiveConnector:
@@ -275,7 +450,13 @@ class LivePredictionRuntime:
             match_id=int(match_id),
         ))
         result = predict_shadow_snapshot(
-            self._inference, snapshot, prior, self._policy)
+            self._inference, snapshot, prior, self._policy,
+            probability_engine=self._probability_engine,
+            monte_carlo=self._monte_carlo,
+            probability_engine_enabled=self._probability_engine_enabled,
+            probability_engine_official=self._probability_engine_official,
+            fallback_enabled=self._fallback_enabled,
+        )
         result["fixture"] = {
             "league_slug": league,
             "match_id": int(match_id),
@@ -301,7 +482,31 @@ class LivePredictionRuntime:
             "source_hash": str(snapshot["source_hash"]),
         }
         result.update(_observed_live_presentation(snapshot))
+        result["automatic_refresh_recommended_seconds"] = (
+            self._refresh_seconds
+        )
         return result
+
+    def officialize(
+        self, output: Any, request: LiveSnapshotInput,
+    ) -> dict[str, Any]:
+        """Aplica el mismo contrato oficial a snapshots HTTP ya normalizados."""
+
+        return compose_official_live_output(
+            output,
+            request,
+            probability_engine=self._probability_engine,
+            monte_carlo=self._monte_carlo,
+            enabled=self._probability_engine_enabled,
+            official=self._probability_engine_official,
+            fallback_enabled=self._fallback_enabled,
+        )
+
+    def close(self) -> None:
+        """Cierra exclusivamente el executor Monte Carlo propio del runtime."""
+
+        if self._monte_carlo is not None:
+            self._monte_carlo.shutdown()
 
     @staticmethod
     def _find_active_fixture_day(
@@ -476,7 +681,7 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
         },
         "recent_actions": actions[:24],
         "match_dynamics": _match_dynamics(snapshot),
-        "automatic_refresh_recommended_seconds": 10,
+        "automatic_refresh_recommended_seconds": 15,
     }
 
 
@@ -550,19 +755,29 @@ def model_inventory(policy: dict[str, Any]) -> dict[str, Any]:
                 "scope": "pre_match_team_markets_by_period",
             },
             {
+                "name": "Motor probabilístico Live v1",
+                "mode": "official",
+                "scope": "live_1x2_periods_goals_exact_score_next_event",
+                "components": [
+                    "Poisson dinámico", "CTMC", "Hazard Cox",
+                    "Elo dinámico", "Hawkes residual",
+                    "Monte Carlo diagnóstico",
+                ],
+            },
+            {
                 "name": "Markov Live v1",
-                "mode": "shadow",
-                "scope": "live_universal_baseline",
+                "mode": "compatibility_fallback",
+                "scope": "live_fallback_and_component_diagnostic",
             },
             {
                 "name": "Hawkes Live v2 residual",
-                "mode": "shadow",
+                "mode": "official_component",
                 "scope": "live_goal_residual_selected_leagues",
             },
             {
                 "name": "Markov + Hawkes combinado",
-                "mode": "shadow",
-                "scope": "live_complementary_output",
+                "mode": "compatibility_alias",
+                "scope": "legacy_live_complementary_output",
             },
         ],
         "hawkes_policy": {
@@ -571,7 +786,9 @@ def model_inventory(policy: dict[str, Any]) -> dict[str, Any]:
             "rho_goal": float(policy["rho_goal"]),
             "rho_next_event": float(policy["rho_next_event"]),
         },
-        "official_router_modified": False,
+        "official_router_modified": True,
+        "official_live_source": "live_probability_engine_v1",
+        "pre_match_router_modified": False,
     }
 
 

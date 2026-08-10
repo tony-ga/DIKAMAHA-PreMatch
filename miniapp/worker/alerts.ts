@@ -76,6 +76,14 @@ function numeric(value: unknown): number | null {
 
 function liveMarket(prediction: Json | null, marketKey: string | null): number | null {
   if (!prediction || !marketKey) return null;
+  const official = prediction.official_live_prediction;
+  if (official && typeof official === "object") {
+    const markets = (official as Json).markets;
+    if (markets && typeof markets === "object") {
+      const found = numeric((markets as Json)[marketKey]);
+      if (found !== null) return found;
+    }
+  }
   for (const layerName of ["experimental_combined_live", "experimental_markov_live"]) {
     const layer = prediction[layerName];
     if (!layer || typeof layer !== "object") continue;
@@ -121,6 +129,9 @@ function observation(
     case "model_status":
       return {
         present,
+        official_source: prediction?.official_source ?? "unavailable",
+        official: (prediction?.official_live_prediction as Json | undefined)?.status ?? "unavailable",
+        engine_audit: ((prediction?.live_probability_engine as Json | undefined)?.audit as Json | undefined)?.passed ?? false,
         markov: (prediction?.experimental_markov_live as Json | undefined)?.status ?? "unavailable",
         hawkes: (prediction?.experimental_hawkes_residual as Json | undefined)?.status ?? "unavailable",
         combined: (prediction?.experimental_combined_live as Json | undefined)?.status ?? "unavailable",
@@ -179,11 +190,11 @@ function message(subscription: Subscription, current: Json): string {
   const value = current.value === undefined
     ? JSON.stringify(current)
     : `${Math.round(Number(current.value) * 100)}%`;
-  const shadow = ["market_threshold", "probability_delta", "model_status"]
+  const modelNote = ["market_threshold", "probability_delta", "model_status"]
     .includes(subscription.rule_type)
-    ? "\n\n🧪 Señal experimental shadow; no es una recomendación de apuesta."
+    ? "\n\n🧠 Señal del motor probabilístico live. No es una recomendación de apuesta."
     : "";
-  return `🔔 DIKAMAHA · ${scope}\n${subscription.rule_type}: ${value}${shadow}`;
+  return `🔔 DIKAMAHA · ${scope}\n${subscription.rule_type}: ${value}${modelNote}`;
 }
 
 async function sendTelegram(chatId: number, text: string): Promise<void> {

@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field as dataclass_field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -79,7 +80,7 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from provider_match_context import ProviderMatchContextService
 
 LOGGER = logging.getLogger(__name__)
-SERVICE_VERSION = "dikamaha_local_service_v1.8_provider_markets"
+SERVICE_VERSION = "dikamaha_local_service_v1.9_live_probability_engine"
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -143,7 +144,7 @@ class MetricsStore:
         self._requests: dict[str, int] = {}
         self._status: dict[str, int] = {}
         self._latencies: dict[str, list[float]] = {}
-        self._counters = {"validation_errors": 0, "pre_match_responses": 0, "live_responses": 0, "hawkes_enabled": 0, "hawkes_disabled": 0, "hawkes_shadow_enabled": 0, "markov_live_enabled": 0, "markov_live_disabled": 0, "combined_live_shadow_enabled": 0, "leakage_rejections": 0, "match_704766_rejections": 0}
+        self._counters = {"validation_errors": 0, "pre_match_responses": 0, "live_responses": 0, "hawkes_enabled": 0, "hawkes_disabled": 0, "hawkes_shadow_enabled": 0, "markov_live_enabled": 0, "markov_live_disabled": 0, "combined_live_shadow_enabled": 0, "live_probability_engine_official": 0, "live_probability_engine_fallback": 0, "leakage_rejections": 0, "match_704766_rejections": 0}
 
     def observe(self, endpoint: str, status: int, duration_ms: float, error_code: str | None) -> None:
         """Registra una request sin almacenar su payload."""
@@ -181,6 +182,17 @@ class MetricsStore:
             self._counters["markov_live_enabled" if markov_enabled else "markov_live_disabled"] += 1
             if markov_enabled and combined_enabled:
                 self._counters["combined_live_shadow_enabled"] += 1
+
+    def mark_live_probability_engine(self, source: str) -> None:
+        """Registra promoción o fallback sin conservar el payload."""
+
+        with self._lock:
+            key = (
+                "live_probability_engine_official"
+                if source == "live_probability_engine_v1"
+                else "live_probability_engine_fallback"
+            )
+            self._counters[key] += 1
 
     def snapshot(self) -> dict[str, Any]:
         """Devuelve métricas serializables y agregadas."""
@@ -301,6 +313,12 @@ class ServiceConfig:
     openapi_local_only: bool = True
     prematch_snapshot_id: str | None = None
     prematch_snapshot_root: str | None = None
+    live_probability_engine_enabled: bool = True
+    live_probability_engine_official: bool = True
+    live_monte_carlo_diagnostic: bool = True
+    live_monte_carlo_simulations: int = 20_000
+    live_engine_refresh_seconds: int = 15
+    live_engine_fallback_enabled: bool = True
 
     def __post_init__(self) -> None:
         """Rechaza configuraciones incompatibles con el alcance local."""
@@ -323,6 +341,12 @@ class ServiceConfig:
             raise ValueError("La configuración de rate limiting es inválida.")
         if self.inference_timeout_seconds <= 0:
             raise ValueError("El timeout de inferencia debe ser positivo.")
+        if self.live_probability_engine_official and not self.live_probability_engine_enabled:
+            raise ValueError("El motor live oficial requiere habilitar el motor.")
+        if not 1_000 <= self.live_monte_carlo_simulations <= 100_000:
+            raise ValueError("Las simulaciones Monte Carlo deben estar entre 1000 y 100000.")
+        if not 5 <= self.live_engine_refresh_seconds <= 60:
+            raise ValueError("El refresco live debe estar entre 5 y 60 segundos.")
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -349,6 +373,18 @@ def service_config_from_env() -> ServiceConfig:
         allowed_origins=origins,
         prematch_snapshot_id=os.getenv("DIKAMAHA_PREMATCH_SNAPSHOT_ID") or None,
         prematch_snapshot_root=os.getenv("DIKAMAHA_PREMATCH_SNAPSHOT_ROOT") or None,
+        live_probability_engine_enabled=_env_bool(
+            "LIVE_PROBABILITY_ENGINE_ENABLED", True),
+        live_probability_engine_official=_env_bool(
+            "LIVE_PROBABILITY_ENGINE_OFFICIAL", True),
+        live_monte_carlo_diagnostic=_env_bool(
+            "LIVE_MONTE_CARLO_DIAGNOSTIC", True),
+        live_monte_carlo_simulations=int(os.getenv(
+            "LIVE_MONTE_CARLO_SIMULATIONS", "20000")),
+        live_engine_refresh_seconds=int(os.getenv(
+            "LIVE_ENGINE_REFRESH_SECONDS", "15")),
+        live_engine_fallback_enabled=_env_bool(
+            "LIVE_ENGINE_FALLBACK_ENABLED", True),
     )
 
 
@@ -723,9 +759,33 @@ def create_app(
     except SnapshotRegistryError as error:
         raise PrematchUnavailableError("active_snapshot_unavailable") from error
     upcoming_engine = UniversalPrematchEngine(snapshot_path)
-    live_engine = live_runtime or LivePredictionRuntime(upcoming_engine, engine)
+    live_engine = live_runtime or LivePredictionRuntime(
+        upcoming_engine,
+        engine,
+        probability_engine_enabled=effective.live_probability_engine_enabled,
+        probability_engine_official=effective.live_probability_engine_official,
+        monte_carlo_enabled=effective.live_monte_carlo_diagnostic,
+        monte_carlo_simulations=effective.live_monte_carlo_simulations,
+        fallback_enabled=effective.live_engine_fallback_enabled,
+        refresh_seconds=effective.live_engine_refresh_seconds,
+    )
     shadow_catalog = load_shadow_catalog()
-    app = FastAPI(title="DIKAMAHA Local Inference Service", version=SERVICE_VERSION)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Libera sólo el executor creado y poseído por esta aplicación."""
+
+        try:
+            yield
+        finally:
+            if live_runtime is None and hasattr(live_engine, "close"):
+                live_engine.close()
+
+    app = FastAPI(
+        title="DIKAMAHA Local Inference Service",
+        version=SERVICE_VERSION,
+        lifespan=lifespan,
+    )
     app.state.service_config = effective
     app.state.inference_engine = engine
     app.state.upcoming_engine = upcoming_engine
@@ -1056,7 +1116,7 @@ def create_app(
     async def predict_live_fixture(
         request: LiveFixtureRequest,
     ) -> dict[str, Any]:
-        """Captura ESPN y ejecuta Markov Live + Hawkes residual shadow."""
+        """Captura ESPN y ejecuta el motor probabilístico live oficial."""
 
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
@@ -1071,13 +1131,15 @@ def create_app(
             raise _error(str(exc)) from exc
         app.state.metrics.mark_hawkes(True, True)
         app.state.metrics.mark_live_layers(True, True)
+        app.state.metrics.mark_live_probability_engine(
+            str(result.get("official_source") or ""))
         result["shadow_catalog"] = build_shadow_observation(
             app.state.shadow_catalog)
         return result
 
     @app.post("/v1/predict/live", tags=["inference"])
     async def predict_live(request: LiveRequest) -> dict[str, Any]:
-        """Ejecuta v1 compatible y capas Markov Live/Hawkes sólo en shadow."""
+        """Ejecuta el contrato legado y promueve el motor live si hay snapshot."""
 
         try:
             if request.official_prediction and (
@@ -1090,13 +1152,19 @@ def create_app(
                 request.markov_live_enabled,
                 request.markov_live_enabled and request.hawkes_enabled,
             )
+            live_input = _live_input(request)
             result = await _infer_with_timeout(
-                engine.predict_live, _live_input(request), effective.inference_timeout_seconds
+                engine.predict_live, live_input, effective.inference_timeout_seconds
             )
         except (ValueError, OverflowError, FloatingPointError) as exc:
             LOGGER.warning("Rechazo live: %s", exc)
             raise _error(str(exc)) from exc
-        return asdict(result)
+        payload = asdict(result)
+        if result.experimental_markov_live is not None:
+            payload.update(app.state.live_runtime.officialize(result, live_input))
+            app.state.metrics.mark_live_probability_engine(
+                str(payload.get("official_source") or ""))
+        return payload
 
     return app
 

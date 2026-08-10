@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
-import { api, layerMarkets, percentage, record } from "@/lib/client-api";
+import { api, percentage, record } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
 import { EntityImage } from "@/components/entity-image";
 import { ProviderPredictor } from "@/components/provider-predictor";
@@ -15,7 +15,7 @@ const PressureChart = dynamic(() => import("@/components/pressure-chart"), { ssr
 
 type Props = { fixtureId: string; league: string };
 
-const LIVE_REFRESH_MS = 10_000;
+const LIVE_REFRESH_MS = 15_000;
 
 const STAT_ROWS = [
   ["goals", "Goles"],
@@ -50,43 +50,73 @@ function probabilities(markets: Record<string, unknown>, homeName: string, awayN
   ].filter((row) => Number.isFinite(row.value));
 }
 
-function Layer({ title, value, note, homeName, awayName }: { title: string; value: unknown; note: string; homeName: string; awayName: string }) {
-  const layer = record(value);
-  const markets = layerMarkets(layer);
-  const values = probabilities(markets, homeName, awayName);
-  const nextEvent = record(layer.next_event);
-  const rho = record(layer.rho_by_target);
-  const nextProbabilities = Object.entries(record(nextEvent.probabilities))
-    .map(([name, probability]) => ({ name: name.replace(":", " · "), value: Number(probability) }))
-    .filter((row) => Number.isFinite(row.value))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 3);
+function OfficialLivePrediction({ value, engine, homeName, awayName }: { value: unknown; engine: unknown; homeName: string; awayName: string }) {
+  const official = record(value);
+  const layers = record(engine);
+  const markets = record(official.markets);
+  const periods = record(official.periods);
+  const intensities = record(official.remaining_intensities);
+  const confidence = record(official.confidence);
+  const fallback = record(official.fallback);
+  const exactScores = Array.isArray(official.exact_score) ? official.exact_score.map(record).slice(0, 5) : [];
+  const horizon = record(official.goal_horizons);
+  const nextEvent = record(official.next_event);
+  const nextEvents = Object.entries(record(nextEvent.probabilities)).map(([name, probability]) => ({ name: name.replace(":", " · "), probability: Number(probability) })).filter((row) => Number.isFinite(row.probability)).sort((left, right) => right.probability - left.probability).slice(0, 3);
+  const audit = record(layers.audit);
+  const monteCarlo = record(layers.monte_carlo_diagnostic);
+  const periodRows = [
+    ["Primer tiempo", record(record(periods.first_half).markets)],
+    ["Segundo tiempo", record(record(periods.second_half).markets)],
+    ["Tiempo completo", record(record(periods.full_time).markets)],
+  ] as const;
+
+  if (!Object.keys(official).length) {
+    return <StatePanel title="Motor live no disponible">La API no publicó el contrato oficial para este snapshot. Se conserva el fallback operativo.</StatePanel>;
+  }
   return (
-    <article className="model-card">
-      <div className="model-card-header"><h3>{title}</h3><ShadowBadge /></div>
-      <p>{note}</p>
-      {values.length === 3 ? (
-        <>
-          <div className="probability-grid" style={{ marginTop: 14 }}>
-            {values.map((row) => <div className="probability" key={row.name}><span>{row.name}</span><strong>{percentage(row.value)}</strong></div>)}
-          </div>
-          <ProbabilityChart values={values} />
-          <div className="probability-grid">
-            <div className="probability"><span>Over 2.5</span><strong>{percentage(markets.probability_over_2_5)}</strong></div>
-            <div className="probability"><span>BTTS</span><strong>{percentage(markets.probability_btts)}</strong></div>
-            <div className="probability"><span>Goles restantes</span><strong>{Number(layer.lambda_remaining_home ?? 0).toFixed(1)}–{Number(layer.lambda_remaining_away ?? 0).toFixed(1)}</strong></div>
-          </div>
-          {nextProbabilities.length ? (
-            <div className="next-event">
-              <p className="eyebrow">PRÓXIMO EVENTO · {String(nextEvent.horizon_minutes ?? 5)} MIN</p>
-              {nextProbabilities.map((event) => <div className="subscription-row" key={event.name}><span>{event.name}</span><strong>{percentage(event.value)}</strong></div>)}
-              <div className="subscription-row"><span>Sin evento</span><strong>{percentage(nextEvent.probability_no_event)}</strong></div>
-            </div>
-          ) : null}
-        </>
-      ) : <div className="notice" style={{ marginTop: 14 }}>Esta capa describe el ajuste de memoria corta y no publica un 1X2 independiente.{Object.keys(rho).length ? <><br />Intensidad aplicada: gol ρ={Number(rho.goal ?? 0).toFixed(2)} · próximo evento ρ={Number(rho.next_event ?? 0).toFixed(2)}.</> : null}</div>}
-    </article>
+    <>
+      <article className="model-card official-live-card">
+        <div className="model-card-header"><div><p className="eyebrow">SALIDA OFICIAL DIKAMAHA</p><h3>Motor probabilístico in-live v1</h3></div><ShadowBadge official /></div>
+        <p>Poisson dinámico, CTMC, peligro reciente, Elo live y residual Hawkes compuestos sobre intensidades.</p>
+        <ProbabilityChart values={probabilities(markets, homeName, awayName)} />
+        <div className="probability-grid">
+          <div className="probability"><span>{homeName}</span><strong>{percentage(markets.probability_home)}</strong></div>
+          <div className="probability"><span>Empate</span><strong>{percentage(markets.probability_draw)}</strong></div>
+          <div className="probability"><span>{awayName}</span><strong>{percentage(markets.probability_away)}</strong></div>
+        </div>
+        <div className="live-engine-metrics">
+          <div><span>λ restante {homeName}</span><strong>{Number(intensities.home ?? 0).toFixed(2)}</strong></div>
+          <div><span>λ restante {awayName}</span><strong>{Number(intensities.away ?? 0).toFixed(2)}</strong></div>
+          <div><span>Gol próximos 5 min</span><strong>{percentage(record(horizon.next_5m).probability_any_goal)}</strong></div>
+          <div><span>Gol próximos 10 min</span><strong>{percentage(record(horizon.next_10m).probability_any_goal)}</strong></div>
+        </div>
+        <div className="live-period-table">
+          {periodRows.map(([label, periodMarkets]) => <div key={label}><strong>{label}</strong><span>1 {percentage(periodMarkets.probability_home)}</span><span>X {percentage(periodMarkets.probability_draw)}</span><span>2 {percentage(periodMarkets.probability_away)}</span></div>)}
+        </div>
+        {nextEvents.length ? <div className="next-event"><p className="eyebrow">PRÓXIMO EVENTO · {String(nextEvent.horizon_minutes ?? 5)} MIN</p>{nextEvents.map((event) => <div className="subscription-row" key={event.name}><span>{event.name}</span><strong>{percentage(event.probability)}</strong></div>)}<div className="subscription-row"><span>Sin evento</span><strong>{percentage(nextEvent.probability_no_event)}</strong></div></div> : null}
+        {exactScores.length ? <div className="exact-score-strip"><span>Marcadores más probables</span>{exactScores.map((score) => <b key={`${score.score_home}-${score.score_away}`}>{String(score.score_home)}–{String(score.score_away)} <small>{percentage(score.probability)}</small></b>)}</div> : null}
+        <div className="engine-health">
+          <span className={audit.passed ? "health-ok" : "health-warn"}>{audit.passed ? "✓ Auditoría matemática aprobada" : "⚠ Auditoría en revisión"}</span>
+          <span>Confianza {String(confidence.level ?? confidence.status ?? "calculada")}</span>
+          <span>Monte Carlo: {String(monteCarlo.status ?? "pendiente")} · {Number(monteCarlo.simulations ?? 0).toLocaleString("es-MX")} simulaciones</span>
+        </div>
+        {fallback.applied ? <div className="notice">Fallback aplicado: {String(fallback.source ?? "Markov Live")} · {String(fallback.reason ?? "calidad insuficiente")}</div> : null}
+      </article>
+      <div className="component-grid">
+        <ComponentCard title="Poisson dinámico" value={layers.dynamic_poisson} detailKeys={["integration", "remaining_seconds", "lambda_remaining_home", "lambda_remaining_away"]} />
+        <ComponentCard title="CTMC" value={layers.ctmc} detailKeys={["dominant", "model"]} />
+        <ComponentCard title="Hazard / Cox" value={layers.hazard} detailKeys={["model", "features_are_live_only"]} />
+        <ComponentCard title="Elo dinámico" value={layers.dynamic_elo} detailKeys={["prior_difference", "live_difference", "shrinkage"]} />
+        <ComponentCard title="Hawkes residual" value={layers.hawkes_residual} detailKeys={["model_version", "rho"]} residual />
+      </div>
+    </>
   );
+}
+
+function ComponentCard({ title, value, detailKeys, residual = false }: { title: string; value: unknown; detailKeys: string[]; residual?: boolean }) {
+  const layer = record(value);
+  const details = detailKeys.map((key) => [key.replaceAll("_", " "), layer[key]] as const).filter(([, value]) => value !== undefined);
+  return <article className="model-card component-card"><div className="model-card-header"><h3>{title}</h3><span className={residual ? "mode-badge" : "mode-badge official"}>{residual ? "RESIDUAL" : "COMPONENTE"}</span></div><p>{residual ? "Memoria corta acotada; no publica una probabilidad competidora." : "Capa auditable integrada en la composición oficial."}</p>{details.map(([key, value]) => <div className="subscription-row" key={key}><span>{key}</span><strong>{typeof value === "number" ? value.toFixed(4) : String(value)}</strong></div>)}</article>;
 }
 
 function numberValue(row: Record<string, unknown>, key: string) {
@@ -150,7 +180,6 @@ export function LiveDetail({ fixtureId, league }: Props) {
   });
   const payload = query.data ?? {};
   const fixture = record(payload.fixture);
-  const admission = record(payload.hawkes_league_admission);
   const clockSeconds = Number(fixture.match_clock_seconds);
   const clock = Number.isFinite(clockSeconds)
     ? `${Math.floor(clockSeconds / 60)}:${String(Math.floor(clockSeconds % 60)).padStart(2, "0")}`
@@ -163,7 +192,7 @@ export function LiveDetail({ fixtureId, league }: Props) {
   if (query.isError) return <StatePanel title="Predicción live no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>El snapshot fue rechazado o el partido ya no está activo.</StatePanel>;
   return (
     <>
-      <PageHeader eyebrow={`${league} · AUTO 10 S`} title={`${homeName} vs ${awayName}`} action={
+      <PageHeader eyebrow={`${league} · AUTO 15 S`} title={`${homeName} vs ${awayName}`} action={
         <div style={{ display: "flex", gap: 8 }}>
           <FavoriteButton entityType="fixture" entityId={fixtureId} label={`${homeName} vs ${awayName}`} metadata={{ league }} />
           <button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar predicción">↻</button>
@@ -172,7 +201,7 @@ export function LiveDetail({ fixtureId, league }: Props) {
       {query.isLoading ? <StatePanel title="Reconstruyendo snapshot causal">La API prepara el prior pre-match y observa únicamente eventos ya ocurridos.</StatePanel> : (
         <div className="stack">
           <article className="data-panel live-scoreboard">
-            <div className="live-auto-status"><span><i /> DATOS EN VIVO</span><span>Actualización automática cada 10 s</span></div>
+            <div className="live-auto-status"><span><i /> DATOS EN VIVO</span><span>Actualización automática cada 15 s</span></div>
             <div className="live-team-stage">
               <div><EntityImage source={String(fixture.home_team_logo || "")} label={homeName} size={82} /><strong>{homeName}</strong><small>LOCAL</small></div>
               <div className="live-score"><span>{String(fixture.score_home ?? fixture.home_score ?? 0)}</span><b>–</b><span>{String(fixture.score_away ?? fixture.away_score ?? 0)}</span></div>
@@ -184,11 +213,10 @@ export function LiveDetail({ fixtureId, league }: Props) {
           <RecentActions value={payload.recent_actions} />
           <PressureChart value={payload.match_dynamics} homeName={homeName} awayName={awayName} />
           <div className="prediction-divider"><span>PREDICCIONES EN TIEMPO REAL</span></div>
+          <OfficialLivePrediction value={payload.official_live_prediction} engine={payload.live_probability_engine} homeName={homeName} awayName={awayName} />
+          <div className="prediction-divider"><span>BENCHMARK EXTERNO · NO ES FEATURE DEL MODELO</span></div>
           <ProviderPredictor eventId={fixtureId} league={league} scope="live" homeName={homeName} awayName={awayName} />
-          <Layer title="Markov Live" value={payload.experimental_markov_live} note="Baseline universal: régimen, marcador y tiempo restante." homeName={homeName} awayName={awayName} />
-          <Layer title="Hawkes residual" value={payload.experimental_hawkes_residual} note="Memoria corta complementaria; nunca sustituye a Markov." homeName={homeName} awayName={awayName} />
-          <Layer title="Resultado combinado" value={payload.experimental_combined_live} note="Markov más residual Hawkes acotado en escala logarítmica." homeName={homeName} awayName={awayName} />
-          <div className="notice">Hawkes {admission.admitted ? "está admitido para esta liga" : "usa fallback Markov exacto en esta liga"}. Toda la vista permanece experimental shadow.</div>
+          <div className="notice">Predictor y Pickcenter del proveedor se muestran sólo como referencia externa. Sus probabilidades y cuotas no alimentan el cálculo DIKAMAHA.</div>
         </div>
       )}
     </>

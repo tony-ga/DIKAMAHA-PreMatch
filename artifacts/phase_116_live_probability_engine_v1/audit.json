@@ -1,0 +1,16 @@
+{
+  "classification": "official_immediate_with_historical_evaluation",
+  "gates": {
+    "atomic_kickoffs": true,
+    "database_read_only": true,
+    "database_unchanged": true,
+    "minimum_historical_leagues": true,
+    "minimum_historical_matches": true,
+    "pre_match_router_modified": false,
+    "priors_strictly_prior": true,
+    "provider_odds_used": false,
+    "provider_probabilities_used": false,
+    "snapshot_audits_passed": true
+  },
+  "replay_hash": "674a46c58a1bfff214d040b001cab606f450a5105c992e85e94acc1589a92087"
+}

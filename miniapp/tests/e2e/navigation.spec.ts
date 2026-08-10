@@ -289,6 +289,30 @@ test("renders the real live score, source timestamp and next event", async ({ pa
         })),
         goal_markers: [{ minute: 31, team_side: "home", team_name: "Real Madrid" }],
       },
+      official_source: "live_probability_engine_v1",
+      official_live_prediction: {
+        status: "official", markets,
+        remaining_intensities: { home: 1.1, away: 0.5 },
+        next_event: { horizon_minutes: 5, probabilities: { "home:goal": 0.12, "away:goal": 0.06 }, probability_no_event: 0.82 },
+        exact_score: [{ score_home: 2, score_away: 1, probability: 0.22 }, { score_home: 3, score_away: 1, probability: 0.16 }],
+        periods: {
+          first_half: { markets }, second_half: { markets }, full_time: { markets },
+        },
+        goal_horizons: {
+          next_5m: { probability_any_goal: 0.14 }, next_10m: { probability_any_goal: 0.25 },
+        },
+        confidence: { level: "medium" },
+        fallback: { applied: false },
+      },
+      live_probability_engine: {
+        dynamic_poisson: { integration: "piecewise_5_minute", remaining_seconds: 3480 },
+        ctmc: { dominant: "home_pressure", model: "ctmc_regime_v1" },
+        hazard: { model: "bounded_cox_hazard_v1", features_are_live_only: true },
+        dynamic_elo: { prior_difference: 40, live_difference: 62, shrinkage: 0.23 },
+        hawkes_residual: { status: "official_component_residual", model_version: "hawkes_live_v2", rho: 1 },
+        monte_carlo_diagnostic: { status: "scheduled", simulations: 20000 },
+        audit: { passed: true },
+      },
       experimental_markov_live: {
         status: "experimental_shadow_not_promoted", markets,
         next_event: { horizon_minutes: 5, probabilities: { "home:goal": 0.12 }, probability_no_event: 0.82 },
@@ -310,13 +334,15 @@ test("renders the real live score, source timestamp and next event", async ({ pa
   await expect(page.getByRole("heading", { name: "Presión por acciones" })).toBeVisible();
   await expect(page.getByLabel("Curva de presión de Real Madrid y Barcelona")).toBeVisible();
   await expect(page.getByText("PREDICCIONES EN TIEMPO REAL")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Motor probabilístico in-live v1" })).toBeVisible();
+  await expect(page.getByText("Auditoría matemática aprobada")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Predictor del proveedor" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Expectativa de resultado" })).toBeVisible();
   await expect(page.getByText(/PRÓXIMO EVENTO/)).toBeVisible();
   await expect(page.getByText("32:00", { exact: true })).toBeVisible();
   await expect(page.getByText(/Sincronizado/)).toBeVisible();
-  await expect(page.getByText(/Actualización automática cada 10 s/)).toBeVisible();
-  await expect.poll(() => liveRequests, { timeout: 12_000 }).toBeGreaterThanOrEqual(2);
+  await expect(page.getByText(/Actualización automática cada 15 s/)).toBeVisible();
+  await expect.poll(() => liveRequests, { timeout: 18_000 }).toBeGreaterThanOrEqual(2);
 });
 
 test("navigates the complete historical match flow", async ({ page }) => {

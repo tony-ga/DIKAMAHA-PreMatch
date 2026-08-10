@@ -1,9 +1,9 @@
 # Roadmap vigente de DIKAMAHA
 
 **Actualizado:** 2026-08-09
-**Objetivo operativo:** preservar la integridad matemática y causal de Fase
-113 mientras Fase 115 presenta Fase 114 mediante una Mini App Telegram
-híbrida, sin ampliar mercados ni afirmar ventaja económica.
+**Objetivo operativo:** preservar la integridad matemática y causal pre-match
+de Fase 113 mientras Fase 116 opera el motor in-live oficial compuesto y Fase
+115 lo presenta mediante la Mini App, sin afirmar ventaja económica.
 
 La corrección operativa DEC-151 adapta exclusivamente la cookie HttpOnly al
 contexto embebido de Telegram Web/Desktop y exige confirmar la sesión antes de
@@ -28,9 +28,9 @@ con duración, aprendido sobre microventanas causales y agregado a mercados de
 
 `historial causal + contexto snapshot -> Dixon-Coles/Kalman -> estados latentes y duración -> simulación Markov v4 -> mercados temporales pre-match`
 
-Hawkes queda fuera del núcleo pre-match. En live sólo puede operar como
-residual `shadow` de Markov Live hasta demostrar valor incremental fuera de
-muestra.
+Hawkes queda fuera del núcleo pre-match. En live opera exclusivamente como
+residual logarítmico acotado dentro de `live_probability_engine_v1`; no publica
+una probabilidad competidora y `rho=0` reproduce el baseline analítico.
 
 La Fase 74 rematerializada cerró `ready_for_phase_75`: 9,465 partidos de 39 ligas fueron
 reconstruidos directamente desde 1.32 millones de eventos con reloj original,
@@ -233,6 +233,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 113 | `model_integrity_v1` | validada con salidas selectivas; hotfix portable listo | fórmula, causalidad, PMF, métricas, hashes runtime portables, fallbacks, replays y 522 pruebas aprobadas |
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
 | 115 | `telegram_mini_app` | paridad visual y analítica desplegada; DEC-154 en producción | Catálogo de 49 ligas/torneos, detalle live automático, predictor externo tolerante a ausencia, cinta open/close/live aislada, curva de presión, logos, acciones y Markov/Hawkes/combinado separados |
+| 116 | `live_probability_engine_v1` | implementada y evaluada; despliegue pendiente | Poisson dinámico + CTMC + Hazard/Cox + Elo live + residual Hawkes; 7,400 partidos/34 ligas, gates causales completos, MC diagnóstico asincrónico y fallback Markov |
 
 ## Componentes heredados
 

@@ -1,9 +1,45 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-09
-**Fase activa:** Fase 115 Telegram Mini App
-**Objetivo:** desplegar el dashboard híbrido y alertas sobre la API DIKAMAHA,
-sin cambiar salidas oficiales, modelos ni la ruta pre-match revalidada.
+**Fase activa:** Fase 116 Motor matemático de probabilidades in-live
+**Objetivo:** operar `live_probability_engine_v1` como salida live oficial,
+con fallback automático a Markov Live y sin modificar la ruta pre-match.
+
+## Fase 116 — Motor matemático de probabilidades in-live
+
+Implementada y evaluada sobre la base histórica existente.
+
+- DEC-155 y `live_probability_engine_contract_v1` congelan entrada causal,
+  salida, provenance, invariantes y rollback;
+- Poisson dinámico integra tasas por segmentos de cinco minutos y deriva 1X2,
+  periodos, O/U 0.5–3.5, BTTS, marcador exacto y goles restantes;
+- CTMC propaga tres regímenes mediante una matriz generadora válida y conserva
+  masa; Hazard/Cox usa eventos observados con ventanas 5/10/20; Elo live actúa
+  como ajuste latente con shrinkage;
+- `hawkes_live_v2` permanece residual logarítmico acotado; `rho=0` reproduce
+  exactamente el baseline analítico;
+- Monte Carlo ejecuta 20,000 simulaciones asincrónicas, deterministas por
+  snapshot, sin bloquear ni decidir la salida oficial;
+- `/v1/predict/live` y `/v1/predict/live/fixture` publican el contrato nuevo y
+  conservan los tres campos experimentales de Fase 114 como alias compatibles;
+- Mini App actualiza cada 15 s, muestra salida oficial, periodos, intensidades,
+  próximos eventos, marcador exacto, componentes y salud matemática; ESPN
+  Predictor/Pickcenter permanece como benchmark externo aislado;
+- bot y worker de alertas consumen primero `official_live_prediction`;
+- replay read-only: 7,400 partidos, 34 ligas, cinco snapshots por partido,
+  6,985 snapshots de confirmación y bootstrap por partido completo;
+- todos los gates causales y de integridad aprobaron; hash del replay
+  `674a46c58a1bfff214d040b001cab606f450a5105c992e85e94acc1589a92087`;
+- el delta objetivo confirmatorio frente a Markov fue `+0.0010468`, con IC95
+  `[-0.0005522, 0.0025056]`: no prueba mejora estadística, pero tampoco bloquea
+  la activación inmediata fijada por DEC-155 y se registra sin afirmar ventaja;
+- benchmark local del motor analítico: p95 `2.908 ms` en 300 ejecuciones,
+  ampliamente inferior al gate de 250 ms;
+- gates finales: 567 pruebas Python aprobadas/8 omitidas, 18 Vitest, 11
+  Playwright, typecheck, build Next y builds Docker API/bot/Mini App aprobados.
+
+Estado: `implemented_historical_evidence_pending_deployment`. El rollback es
+`LIVE_PROBABILITY_ENGINE_OFFICIAL=false`.
 
 ## Fase 115 — Telegram Mini App híbrida
 
@@ -29,7 +65,7 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - catálogo live robusto a medianoche UTC mediante ventana D-1/D/D+1, con
   detalle que muestra ambos escudos, marcador, tiros, córners, tarjetas,
   faltas, acciones recientes y las tres capas predictivas;
-- refresco automático cada 20 s en catálogo y 10 s en detalle, conservando el
+- refresco automático cada 20 s en catálogo y 15 s en detalle, conservando el
   botón manual sólo como fallback;
 - catálogo visual ampliado a los 49 slugs auditados en Fase 36; próximos usa
   14 días y live conserva D-1/D/D+1 con concurrencia acotada y caché;
@@ -56,9 +92,8 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
 - el detalle live incorpora una curva firmada de presión por minuto con media
   móvil de cinco minutos y marcadores de gol; la serie es heurística visual y
   no alimenta Markov, Hawkes, combinado ni el prior pre-match;
-- Markov Live y Hawkes no fueron sustituidos: el primero conserva el baseline
-  universal históricamente validado y el segundo el residual selectivo con
-  fallback Markov exacto;
+- Fase 116 reemplaza la tarjeta live shadow por el motor oficial compuesto;
+  Markov permanece fallback y Hawkes permanece residual selectivo;
 - 543 pruebas Python aprobadas/8 omitidas, 16 Vitest y 8 Playwright; build Next
   aprobado y conexión real validada para readiness, modelos, ligas, fechas y
   próximos, además del transporte BFF autenticado con clave sólo servidor;
