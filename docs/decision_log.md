@@ -1985,7 +1985,9 @@ Evidencia obtenida: prueba real sobre 18 ligas encontró tres fixtures activos
 de D-1 sin fallos parciales. Jaguares de Córdoba–Once Caldas completó captura,
 prior causal, estadísticas observadas y Markov/Hawkes/combinado. Regresiones
 dirigidas y suite integral: 546 Python, 18 Vitest, 10 Playwright, typecheck y
-build Next aprobados.
+build Next aprobados. PR #17 integrada; Railway `SUCCESS`; smoke autenticado de
+producción devolvió catálogo y predicción 200 con 3 activos, 18 ligas, 0 fallos,
+logos, estadísticas, 24 acciones y tres capas.
 
 ```text
 DEC-NNN
