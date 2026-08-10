@@ -68,6 +68,7 @@ export default function DashboardPage() {
       <div className="feature-grid compact-grid">
         <FeatureCard href="/explore/matches" eyebrow="HISTÓRICO" title="Partidos y estadísticas" description="Play-by-play, contexto, 1T, 2T y total." />
         <FeatureCard href="/explore/teams" eyebrow="PLANTILLAS" title="Equipos y jugadores" description="Búsqueda, roster y perfiles publicados." />
+        <FeatureCard href="/markets" eyebrow="ACTIVE ODDS" title="Apertura, cierre y live" description="Movimiento publicado por liga, sin mezclarlo con SPI ni modelos." />
       </div>
     </>
   );

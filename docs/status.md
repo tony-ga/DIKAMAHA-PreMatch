@@ -31,7 +31,9 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
   faltas, acciones recientes y las tres capas predictivas;
 - refresco automático cada 20 s en catálogo y 10 s en detalle, conservando el
   botón manual sólo como fallback;
-- catálogo próximo ampliado a las 18 ligas y 14 días mediante una petición
+- catálogo visual ampliado a los 49 slugs auditados en Fase 36; próximos usa
+  14 días y live conserva D-1/D/D+1 con concurrencia acotada y caché;
+- catálogo próximo ampliado a las 49 ligas y torneos y 14 días mediante una petición
   acotada por liga; búsqueda global de equipos tolerante a acentos;
 - navegación principal con acceso directo a Predicciones y diagnóstico visual
   de cobertura, ligas, fallos parciales y refresco live;
@@ -46,8 +48,11 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
   y barras por equipo con pistas y colores distinguibles;
 - DEC-153 añade `GET /v1/provider/predictor` como benchmark externo
   `display_only`: sólo acepta tripletes 1X2 publicados explícitamente, muestra
-  ausencia normal cuando el proveedor no los ofrece y mantiene `pickcenter`
-  como metadato financiero aislado sin exponer cuotas;
+  ausencia normal cuando el proveedor no los ofrece;
+- DEC-154 añade `GET /v1/provider/markets` y un módulo visual de pronósticos
+  globales. `pickcenter` y `activeodds=true` muestran apertura, cierre y live
+  como cinta financiera aislada, sin derivar SPI, probabilidad, consejo ni
+  entrada a modelos;
 - el detalle live incorpora una curva firmada de presión por minuto con media
   móvil de cinco minutos y marcadores de gol; la serie es heurística visual y
   no alimenta Markov, Hawkes, combinado ni el prior pre-match;
@@ -67,6 +72,14 @@ build Next aprobaron el contrato, la API/BFF y las gráficas. Railway reportó
 `dikamaha_local_service_v1.7_provider_context`, Mini App `ready`, sesión 200,
 benchmark 200 sin cuotas expuestas y predicción live 200 con
 `match_pressure_v1` de 90 puntos más Markov/Hawkes/combinado.
+
+Extensión DEC-154 validada localmente: el predictor analítico sigue
+`not_published` para `col.1/401877857`, mientras `pickcenter` entrega un
+moneyline completo de apertura/cierre/live que ahora se muestra sin derivar
+SPI. `activeodds=true` devolvió tres fixtures con mercado y el barrido real
+encontró un partido activo al consultar los 49 slugs, con cero fallos
+parciales. Gates: 559 Python/8 omitidas, 18 Vitest, 11 Playwright, typecheck y
+build Next aprobados. Pendiente smoke Railway posterior al despliegue.
 
 Corrección live DEC-152 desplegada mediante PR #17. La ventana automática D-1/D/D+1
 encontró tres partidos reales sobre 18 ligas con cero fallos parciales; el

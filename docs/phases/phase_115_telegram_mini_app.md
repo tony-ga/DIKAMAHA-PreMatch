@@ -42,6 +42,9 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   orden;
 - benchmark 1X2 externo en pre-match y live, con curva de expectativa cuando
   el proveedor publica historial y estado de ausencia explícito cuando no;
+- módulo de pronósticos globales por competición/fecha con apertura, cierre y
+  valor live, más la misma cinta dentro de cada detalle cuando está publicada;
+- 49 ligas y torneos auditados por Fase 36 disponibles en todos los filtros;
 - Markov, Hawkes y combinado permanecen visibles después del benchmark y
   conservan sus roles complementarios `shadow`;
 - alertas de kickoff, marcador, estado, probabilidad, modelo y mercados shadow;
@@ -56,7 +59,8 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - modo `private|public` y allowlist conservados;
 - máximo 10 favoritos, 20 suscripciones activas y cooldown mínimo de 300 s;
 - deduplicación `subscription_id + event_key`;
-- sin cuotas, ROI, CLV, Kelly, stakes ni ejecución de apuestas;
+- las cuotas visibles son transporte read-only aislado; sin probabilidad
+  implícita, ROI, CLV, Kelly, stakes, enlaces ni ejecución de apuestas;
 - router, probabilidades, artefactos y promoción permanecen intactos.
 
 ## Gate de salida
@@ -73,8 +77,10 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
    shadow.
 9. La matriz bot/Mini App tiene paridad completa y toda consulta explorer pasa
    por una allowlist BFF autenticada.
-10. `pickcenter` nunca se convierte en predictor ni llega al navegador como
-    cuota; sólo se declara la disponibilidad de contexto financiero aislado.
+10. `pickcenter` nunca se convierte en predictor. Su cinta open/close/live
+    llega normalizada, sin links y marcada `financial_isolated_display_only`.
+11. El catálogo expone exactamente los 49 slugs ya validados en Fase 36 y
+    tolera fallos parciales sin truncarlos a 30.
 
 ## Estado operativo
 
@@ -120,3 +126,6 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
   reportaron `SUCCESS`; el smoke autenticado verificó el benchmark tolerante a
   ausencia, aislamiento financiero, 90 puntos de presión y Markov, Hawkes y
   combinado aún separados.
+- DEC-154 amplía el contrato sin cambiar modelos: predictor analítico y mercado
+  permanecen separados, `activeodds=true` conserva apertura/cierre/live y la
+  navegación usa las 49 competiciones de Fase 36.

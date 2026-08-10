@@ -79,8 +79,11 @@ fallback desde mercado. Ambos recursos son presentación y no features.
 de modelo y 83 snapshots de odds están archivados sin consumidores en la ruta
 predictiva. Ver `phase_100f_report.md`.
 
-`pickcenter` sólo expone disponibilidad financiera aislada. El contrato
-visible omite bookmaker, líneas, moneyline y probabilidad implícita.
+DEC-154 reemplaza parcialmente esta restricción de presentación: `pickcenter`
+y `activeodds=true` exponen proveedor, líneas y cuotas americanas de apertura,
+cierre y live mediante `provider_market_tape_v1`. Siguen omitidos links,
+probabilidad implícita, agregación, recomendación y cualquier consumidor de
+modelo; el predictor analítico conserva un contrato independiente.
 
 ## Clasificación inicial
 

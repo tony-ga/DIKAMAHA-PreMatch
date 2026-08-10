@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 
 import { api, percentage, queryString, record } from "@/lib/client-api";
+import { ProviderMarketTape } from "@/components/provider-market-tape";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
 const ProbabilityHistoryChart = dynamic(() => import("@/components/provider-probability-history-chart"), { ssr: false });
@@ -59,7 +60,7 @@ export function ProviderPredictor({ eventId, league, scope, homeName, awayName }
       <article className="model-card provider-benchmark unavailable">
         <div className="model-card-header"><div><p className="eyebrow">BENCHMARK EXTERNO</p><h3>Predictor no publicado</h3></div><span className="mode-badge benchmark">ADICIONAL</span></div>
         <p>El proveedor externo no publica probabilidades analíticas 1X2 para este partido. No se sustituyen ni estiman con datos de mercado.</p>
-        {market.status === "financial_isolated_available" ? <p className="financial-isolation">Contexto de mercado detectado, aislado y no consumido por los modelos.</p> : null}
+        <ProviderMarketTape value={market} homeName={homeName} awayName={awayName} />
       </article>
     );
   }
@@ -83,7 +84,7 @@ export function ProviderPredictor({ eventId, league, scope, homeName, awayName }
           <ProbabilityHistoryChart points={history} homeName={homeName} awayName={awayName} />
         </section>
       ) : null}
-      {market.status === "financial_isolated_available" ? <p className="financial-isolation">El contexto de mercado permanece aislado; no se muestran cuotas ni se usa como feature.</p> : null}
+      <ProviderMarketTape value={market} homeName={homeName} awayName={awayName} />
     </article>
   );
 }
