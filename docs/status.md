@@ -59,11 +59,14 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
   próximos, además del transporte BFF autenticado con clave sólo servidor;
 - auditoría npm sin vulnerabilidades y build/smoke Docker previos conservados.
 
-Extensión DEC-153 validada localmente y pendiente de despliegue: dos summaries
-reales confirmaron el estado `not_published` del predictor con contexto de
-mercado aislado; 555 pruebas Python aprobadas/8 omitidas, 18 Vitest, 10
-Playwright, typecheck y build Next aprobaron el contrato, la API/BFF y las
-gráficas.
+Extensión DEC-153 desplegada mediante PR #19. Dos summaries reales confirmaron
+el estado `not_published` del predictor con contexto de mercado aislado; 555
+pruebas Python aprobadas/8 omitidas, 18 Vitest, 10 Playwright, typecheck y
+build Next aprobaron el contrato, la API/BFF y las gráficas. Railway reportó
+`SUCCESS` para API, Mini App, bot y worker. El smoke autenticado confirmó API
+`dikamaha_local_service_v1.7_provider_context`, Mini App `ready`, sesión 200,
+benchmark 200 sin cuotas expuestas y predicción live 200 con
+`match_pressure_v1` de 90 puntos más Markov/Hawkes/combinado.
 
 Corrección live DEC-152 desplegada mediante PR #17. La ventana automática D-1/D/D+1
 encontró tres partidos reales sobre 18 ligas con cero fallos parciales; el

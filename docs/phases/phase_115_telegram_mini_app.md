@@ -116,3 +116,7 @@ DIKAMAHA autenticada; el bot nativo conserva comandos, long polling y fallback.
 - DEC-152 está desplegada mediante PR #17. El smoke autenticado de producción
   encontró 3 partidos activos en 18 ligas, sin fallos parciales, y completó el
   detalle con logos, estadísticas, acciones y las tres capas shadow.
+- DEC-153 está desplegada mediante PR #19. API, Mini App, bot y worker
+  reportaron `SUCCESS`; el smoke autenticado verificó el benchmark tolerante a
+  ausencia, aislamiento financiero, 90 puntos de presión y Markov, Hawkes y
+  combinado aún separados.
