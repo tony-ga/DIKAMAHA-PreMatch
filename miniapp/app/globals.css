@@ -343,6 +343,13 @@ button { color: inherit; }
 .prediction-table td { color:var(--text); font-weight:800; }
 .period-market { display:grid; gap:9px; }
 .market-probability { display:grid; gap:7px; }
+.ladder-caption { margin:10px 0 0; color:var(--muted); font-size:.7rem; line-height:1.5; }
+.ladder-group { display:grid; gap:7px; padding:10px; border:1px solid var(--line); border-radius:12px; background:color-mix(in srgb,var(--deep) 45%,transparent); }
+.ladder-group + .ladder-group { margin-top:2px; }
+.ladder-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ladder-head span { min-width:0; overflow:hidden; color:var(--text); font-size:.72rem; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+.ladder-head strong { flex:0 0 auto; color:var(--mint); font-size:.7rem; }
+.ladder-edge { color:var(--muted); font-size:.63rem; letter-spacing:.02em; }
 .form-grid { display: grid; gap: 12px; }
 .field { display: grid; gap: 6px; }
 .field label { color: var(--muted); font-size: .7rem; }

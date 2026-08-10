@@ -89,6 +89,13 @@ Implementada, desplegada y validada en Railway con acceso privado gradual.
   globales. `pickcenter` y `activeodds=true` muestran apertura, cierre y live
   como cinta financiera aislada, sin derivar SPI, probabilidad, consejo ni
   entrada a modelos;
+- DEC-156 añade al detalle pre-match la rejilla adaptativa de Fase 102 desde
+  `bounded_market_grid_view`, agrupada por primer tiempo, segundo tiempo y
+  partido completo. Las líneas se centran en P(over)≈50% de la distribución
+  causal de cada equipo, por lo que varían por partido y por periodo, e
+  incluyen under complementario y delta contra baseline. El bloque congelado
+  `user_market_view` permanece intacto y la rejilla no se monta cuando la vista
+  llega vacía;
 - el detalle live incorpora una curva firmada de presión por minuto con media
   móvil de cinco minutos y marcadores de gol; la serie es heurística visual y
   no alimenta Markov, Hawkes, combinado ni el prior pre-match;
