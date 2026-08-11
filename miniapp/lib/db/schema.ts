@@ -71,4 +71,30 @@ export const alertDeliveries = pgTable("alert_deliveries", {
     .on(table.subscriptionId, table.eventKey),
 ]);
 
+export type MarketVerdict = {
+  predicted: string;
+  actual: string;
+  hit: boolean;
+};
+
+export const predictionSettlements = pgTable("prediction_settlements", {
+  fixtureKey: text("fixture_key").primaryKey(),
+  leagueSlug: text("league_slug").notNull(),
+  matchId: bigint("match_id", { mode: "number" }).notNull(),
+  competitionId: text("competition_id").notNull(),
+  kickoffTs: timestamp("kickoff_ts", { withTimezone: true }).notNull(),
+  settledAt: timestamp("settled_at", { withTimezone: true }).defaultNow().notNull(),
+  homeTeamName: text("home_team_name").notNull(),
+  awayTeamName: text("away_team_name").notNull(),
+  scoreHome: integer("score_home").notNull(),
+  scoreAway: integer("score_away").notNull(),
+  predictionHash: text("prediction_hash").notNull(),
+  officialVerdicts: jsonb("official_verdicts")
+    .$type<Record<string, MarketVerdict>>().default({}).notNull(),
+  shadowVerdicts: jsonb("shadow_verdicts")
+    .$type<Record<string, MarketVerdict>>().default({}).notNull(),
+  contractVersion: text("contract_version"),
+});
+
 export type AlertSubscription = typeof alertSubscriptions.$inferSelect;
+export type PredictionSettlement = typeof predictionSettlements.$inferSelect;

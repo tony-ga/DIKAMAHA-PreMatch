@@ -25,6 +25,12 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.prematch_raw_store import canonical_hash
+from src.settlement_store import (
+    MINIMUM_SAMPLE,
+    SettlementRecord,
+    SettlementRepository,
+    track_record,
+)
 from src.telegram_bot import PredictionGateway
 
 LOGGER = logging.getLogger(__name__)
@@ -34,6 +40,7 @@ SETTLEMENT_DELAY = timedelta(hours=3)
 CHANNEL_MODES = frozenset({"full", "lite"})
 LITE_FIXTURE_LIMIT = 3
 DISTRIBUTIONAL_CONTRACT_VERSION = "phase102_v4_direct_totals"
+TRACK_RECORD_WINDOW = 60
 MARKET_LAYOUT_VERSION = "global_dashboard_direct_totals_v3"
 
 
@@ -359,13 +366,15 @@ class TelegramChannelPublisher:
     def __init__(
         self, gateway: PredictionGateway, repository: ChannelRepository,
         transport: ChannelTransport, mode: str = "full",
+        settlements: SettlementRepository | None = None,
     ) -> None:
-        """Inyecta los tres puertos sin acoplar negocio a infraestructura."""
+        """Inyecta los puertos sin acoplar negocio a infraestructura."""
 
         self._gateway = gateway
         self._repository = repository
         self._transport = transport
         self._mode = _channel_mode(mode)
+        self._settlements = settlements
 
     def run_cycle(self, now: datetime) -> dict[str, int]:
         """Ejecuta un ciclo determinista con reloj UTC consciente."""
@@ -373,7 +382,7 @@ class TelegramChannelPublisher:
         current = _utc(now)
         counts = {
             "frozen": 0, "summaries": 0, "cards": 0,
-            "markets": 0, "results": 0,
+            "markets": 0, "results": 0, "track_record": 0,
         }
         local = current.astimezone(MEXICO_TZ)
         if local.timetz().replace(tzinfo=None) >= SUMMARY_TIME:
@@ -383,7 +392,27 @@ class TelegramChannelPublisher:
                 frozen=frozen, summaries=summaries,
                 cards=cards, markets=markets)
         counts["results"] = self._results(current)
+        counts["track_record"] = self._weekly_track_record(current)
         return counts
+
+    def _weekly_track_record(self, now: datetime) -> int:
+        """Publica el acumulado una vez por semana ISO, sin filtrar aciertos."""
+
+        if self._settlements is None:
+            return 0
+        local = now.astimezone(MEXICO_TZ)
+        if local.weekday() != 0 or local.timetz().replace(
+                tzinfo=None) < SUMMARY_TIME:
+            return 0
+        iso_year, iso_week, _ = local.isocalendar()
+        key = f"track_record:{iso_year}-W{iso_week:02d}"
+        if self._repository.publication_exists(key):
+            return 0
+        records = self._settlements.recent(TRACK_RECORD_WINDOW)
+        if not records:
+            return 0
+        return self._publish(
+            key, "track_record", _track_record_text(track_record(records)), now)
 
     def _daily(
         self, target: date, now: datetime,
@@ -500,10 +529,60 @@ class TelegramChannelPublisher:
                 continue
             result = self._settled_result(row)
             if result is not None:
+                self._seal_settlement(row, result, now)
                 count += self._publish(
                     key, "result", _result_text(row, result), now,
                     fixture_key=row.fixture_key, target_date=row.target_date)
         return count
+
+    def _seal_settlement(
+        self, row: FrozenPrediction, score: dict[str, Any], now: datetime,
+    ) -> None:
+        """Persiste el veredicto por mercado sin alterar la publicación.
+
+        Se ejecuta sólo después de que `_settled_result` exigió estado final,
+        reconciliación y `kickoff + 3h`. Un fallo de persistencia no debe
+        impedir que el canal publique el resultado ya verificado.
+        """
+
+        if self._settlements is None:
+            return
+        snapshot = self._repository.market_snapshot(
+            row.fixture_key, DISTRIBUTIONAL_CONTRACT_VERSION)
+        statistics = self._safe_statistics(row) if snapshot else None
+        home, away = _names(row)
+        try:
+            self._settlements.add_if_absent(SettlementRecord(
+                fixture_key=row.fixture_key,
+                league_slug=row.league_slug,
+                match_id=row.match_id,
+                competition_id=row.competition_id,
+                kickoff_ts=row.kickoff_ts,
+                settled_at=now,
+                home_team_name=home,
+                away_team_name=away,
+                score_home=int(score["home"]),
+                score_away=int(score["away"]),
+                prediction_hash=row.prediction_hash,
+                official_verdicts=official_verdicts(row, score, home, away),
+                shadow_verdicts=_shadow_verdicts(snapshot, statistics),
+                contract_version=(
+                    DISTRIBUTIONAL_CONTRACT_VERSION if snapshot else None),
+            ))
+        except Exception:  # noqa: BLE001 - la publicación no debe romperse
+            LOGGER.warning(
+                "settlement_persist_failed fixture=%s", row.fixture_key)
+
+    def _safe_statistics(
+        self, row: FrozenPrediction,
+    ) -> dict[str, Any] | None:
+        """Relee conteos por periodo sólo para liquidar mercados shadow."""
+
+        try:
+            return self._gateway.explorer_statistics(
+                row.league_slug, str(row.match_id), row.competition_id)
+        except Exception:  # noqa: BLE001 - shadow nunca bloquea el resultado
+            return None
 
     def _settled_result(self, row: FrozenPrediction) -> dict[str, Any] | None:
         """Exige final, marcador y estadísticas reconciliadas."""
@@ -1010,24 +1089,152 @@ def _channel_mode(value: str) -> str:
     return normalized
 
 
+def official_verdicts(
+    row: FrozenPrediction, score: dict[str, Any], home: str, away: str,
+) -> dict[str, dict[str, Any]]:
+    """Deriva el veredicto estructurado de los tres mercados oficiales.
+
+    Es la misma comparación que ya rendía `_result_text`; se extrae para poder
+    sellarla en `prediction_settlements` sin duplicar la regla.
+    """
+
+    home_score, away_score = int(score["home"]), int(score["away"])
+    actual = (
+        home if home_score > away_score
+        else away if away_score > home_score else "Empate")
+    predicted, _ = _top_1x2(row.prediction, home, away)
+    goals = home_score + away_score
+    btts = home_score > 0 and away_score > 0
+    over_predicted = _value(row.prediction.get("probability_over_2_5")) >= 0.5
+    btts_predicted = _value(row.prediction.get("probability_btts")) >= 0.5
+    return {
+        "one_x_two": {
+            "predicted": predicted, "actual": actual,
+            "hit": predicted == actual,
+        },
+        "over_2_5": {
+            "predicted": "Sí" if over_predicted else "No",
+            "actual": "Sí" if goals > 2 else "No",
+            "hit": over_predicted == (goals > 2),
+        },
+        "btts": {
+            "predicted": "Sí" if btts_predicted else "No",
+            "actual": "Sí" if btts else "No",
+            "hit": btts_predicted == btts,
+        },
+    }
+
+
+def _shadow_verdicts(
+    snapshot: dict[str, Any] | None, statistics: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Liquida las líneas shadow contra los conteos por periodo y lado.
+
+    `explorer_statistics` ya expone `periods[side][period][metric]` con `shots`
+    incluyendo goles, es decir la semántica comercial de DEC-110.
+    """
+
+    if not isinstance(snapshot, dict) or not isinstance(statistics, dict):
+        return {}
+    periods = statistics.get("periods")
+    if not isinstance(periods, dict):
+        return {}
+    output: dict[str, dict[str, Any]] = {}
+    for row in _snapshot_lines(snapshot):
+        side, metric = str(row["team_side"]), str(row["metric"])
+        period = str(row["period"])
+        counts = periods.get(side)
+        observed = (counts or {}).get(period, {}).get(metric)
+        if not isinstance(observed, (int, float)):
+            continue
+        line = float(row["line"])
+        predicted_over = float(row["over_probability"]) >= 0.5
+        actual_over = float(observed) > line
+        output[str(row["key"])] = {
+            "predicted": f"Más de {line}" if predicted_over else f"Menos de {line}",
+            "actual": f"{int(observed)} observados",
+            "hit": predicted_over == actual_over,
+        }
+    return output
+
+
+def _snapshot_lines(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Aplana la rejilla congelada en líneas comparables."""
+
+    prediction = snapshot.get("prediction")
+    source = prediction if isinstance(prediction, dict) else snapshot
+    grid = source.get("bounded_market_grid_view")
+    if not isinstance(grid, list):
+        return []
+    output = []
+    for group in grid:
+        if not isinstance(group, dict):
+            continue
+        for line in group.get("lines") or []:
+            if not isinstance(line, dict) or "line" not in line:
+                continue
+            output.append({
+                "key": (
+                    f"{group.get('key')}_over_"
+                    f"{str(line['line']).replace('.', '_')}"),
+                "team_side": group.get("team_side"),
+                "metric": group.get("metric"),
+                "period": group.get("period", "total"),
+                "line": line["line"],
+                "over_probability": line.get("over_probability", 0.0),
+            })
+    return output
+
+
 def _result_text(row: FrozenPrediction, score: dict[str, Any]) -> str:
     """Compara el resultado reconciliado con tres decisiones pre-match."""
 
     home, away = _names(row)
     home_score, away_score = int(score["home"]), int(score["away"])
-    actual = home if home_score > away_score else away if away_score > home_score else "Empate"
-    predicted, _ = _top_1x2(row.prediction, home, away)
-    goals, btts = home_score + away_score, home_score > 0 and away_score > 0
+    verdicts = official_verdicts(row, score, home, away)
     return "\n".join([
         "✅ <b>RESULTADO FINAL VERIFICADO</b>",
         f"<b>{html.escape(home)} {home_score}–{away_score} {html.escape(away)}</b>", "",
-        f"1X2 previsto: {html.escape(predicted)} · {_mark(predicted == actual)}",
-        f"Más de 2.5 previsto: {_yes(row.prediction.get('probability_over_2_5'))} · "
-        f"{_mark((_value(row.prediction.get('probability_over_2_5')) >= 0.5) == (goals > 2))}",
-        f"Ambos marcan previsto: {_yes(row.prediction.get('probability_btts'))} · "
-        f"{_mark((_value(row.prediction.get('probability_btts')) >= 0.5) == btts)}", "",
+        f"1X2 previsto: {html.escape(verdicts['one_x_two']['predicted'])} · "
+        f"{_mark(verdicts['one_x_two']['hit'])}",
+        f"Más de 2.5 previsto: {verdicts['over_2_5']['predicted']} · "
+        f"{_mark(verdicts['over_2_5']['hit'])}",
+        f"Ambos marcan previsto: {verdicts['btts']['predicted']} · "
+        f"{_mark(verdicts['btts']['hit'])}", "",
         f"<i>Predicción congelada antes del kickoff · {row.prediction_hash[:10]}</i>",
     ])
+
+
+def _track_record_text(summary: dict[str, Any]) -> str:
+    """Redacta el acumulado semanal sin lenguaje de rentabilidad."""
+
+    labels = {
+        "one_x_two": "1X2", "over_2_5": "Más de 2.5", "btts": "Ambos marcan",
+    }
+    lines = [
+        "📊 <b>DESEMPEÑO VERIFICADO</b>",
+        f"Partidos liquidados: {int(summary['window']['available'])}", "",
+    ]
+    for market, label in labels.items():
+        row = summary["official"].get(market) or {}
+        hits, total = int(row.get("hits", 0)), int(row.get("total", 0))
+        if not row.get("sufficient_sample"):
+            missing = int(row.get("missing_for_rate", MINIMUM_SAMPLE))
+            lines.append(
+                f"{label}: {hits}/{total} · muestra insuficiente, "
+                f"faltan {missing}")
+            continue
+        low, high = row["interval_95"]
+        lines.append(
+            f"{label}: {hits}/{total} · {row['rate']:.0%} "
+            f"(entre {low:.0%} y {high:.0%}) · referencia "
+            f"{row['baseline_rate']:.0%}")
+    lines.extend([
+        "",
+        "<i>Todas las predicciones se congelaron y publicaron antes del "
+        "kickoff. Se cuentan aciertos y fallos del periodo completo.</i>",
+    ])
+    return "\n".join(lines)
 
 
 def _names(row: FrozenPrediction) -> tuple[str, str]:

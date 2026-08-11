@@ -33,6 +33,7 @@ export default function SettingsPage() {
           ) : <p className="muted">Marca ☆ en cualquier partido para guardarlo aquí.</p>}
         </article>
         <div className="settings-links">
+          <Link className="secondary-button" href="/subscriptions">Alertas</Link>
           <Link className="secondary-button" href="/status">Estado del sistema</Link>
           <Link className="secondary-button" href="/help">Ayuda</Link>
         </div>

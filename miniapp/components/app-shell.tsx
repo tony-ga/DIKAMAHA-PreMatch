@@ -11,7 +11,7 @@ const navigation = [
   { href: "/live", icon: "●", label: "En vivo" },
   { href: "/predictions", icon: "◫", label: "Predicciones" },
   { href: "/explore", icon: "⌘", label: "Explorar" },
-  { href: "/subscriptions", icon: "⌁", label: "Alertas" },
+  { href: "/historial", icon: "✓", label: "Aciertos" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

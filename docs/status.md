@@ -1,10 +1,40 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-10
-**Fase activa:** Fase 117 Mercados live adaptativos de equipo
-**Objetivo:** exponer corners y tiros restantes adaptativos por equipo, más
-próximo gol, como bloque shadow sobre `live_probability_engine_v1`, sin tocar
-la salida oficial ni la ruta pre-match.
+**Fase activa:** Fase 118 Historial de aciertos verificable
+**Objetivo:** persistir en Postgres el veredicto por mercado de cada predicción
+congelada ya liquidada y exponerlo agregado en la Mini App y el canal, con
+umbral de muestra, intervalo de confianza y baseline, sin tocar probabilidades,
+router ni promoción.
+
+## Fase 118 — Historial de aciertos verificable
+
+En curso. Ver `DEC-158`.
+
+- `prediction_settlements` en Postgres guarda por partido el marcador
+  reconciliado, el `prediction_hash` publicado antes del kickoff y el veredicto
+  por mercado, escrito append-only desde `_results`;
+- se liquidan 1X2, Más de 2.5 y Ambos marcan como oficiales, y en bloque
+  separado los mercados shadow del contrato `phase102_v4_direct_totals`
+  mediante los conteos por periodo y lado de `explorer_statistics`;
+- `GET /v1/track-record` devuelve la cola cronológica completa, con aciertos y
+  fallos, sin ningún parámetro que permita filtrar por acierto;
+- por debajo de 20 partidos liquidados no se publica porcentaje; a partir de
+  ahí se acompaña siempre de intervalo de confianza del 95% y del baseline
+  correspondiente;
+- el servicio de la API recibe `DATABASE_URL`, que hasta ahora no tenía.
+
+Estado: `implemented_pending_first_settlements`. El código está completo y los
+gates aprueban, pero la tabla arranca vacía por diseño: sólo suma partidos cuya
+predicción se congeló antes del kickoff a partir del despliegue. Gates: 592
+pruebas Python aprobadas/8 omitidas, 21 Vitest, 16 Playwright, typecheck y build
+Next aprobados.
+
+Riesgo abierto: el ledger del publicador sigue en SQLite sin volumen montado en
+el servicio de la API, de modo que `channel_predictions` y
+`channel_publications` probablemente se pierden en cada redeploy. Mientras eso
+siga así el historial no acumulará muestra de forma fiable y el canal puede
+republicar. Migrar ese ledger a PostgreSQL es el siguiente paso recomendado.
 
 ## Fase 117 — Mercados live adaptativos de equipo
 
