@@ -2196,22 +2196,35 @@ over/under de cada línea de la rejilla, variación de la línea entre snapshots
 con distinta presión reciente, normalización del próximo gol, fallback exacto
 cuando el motor falla, paridad sin cambios de `official_live_prediction`, y
 gates pytest, Vitest, Playwright, typecheck y build Next aprobados.
-Evidencia obtenida (2026-08-10): la auditoría inicial detectó que la tasa base
-constante producía corners idénticos para ambos equipos en el minuto cero, es
-decir una línea genérica. Se añadió `_territory_strength`, que escala el
-territorio por el cociente de lambdas causales pre-match con exponente `0.5`,
-contraído porque el territorio discrimina menos que el gol; el ritmo base de
-comparación usa el mismo factor. Con `lambda_base 1.55/1.08` y sin eventos, el
-local proyecta `3.73` córners restantes con líneas `2.5/3.5/4.5` y el visitante
-`3.11` con líneas `1.5/2.5/3.5`. Cinco eventos de presión visitante invierten
-la relación a `3.32` contra `3.57` y desplazan el próximo gol de `0.346` a
-`0.378`. Al minuto 80 las líneas se recentran solas en `1.5/2.5/3.5`. Diez
-pruebas Python nuevas cubren no negatividad, invariante `shots_commercial >=
-lambda_gol`, complementariedad, adaptación a la presión, distinción entre
-equipos sin eventos, normalización del próximo gol, colapso sin tiempo
-restante, presencia de los checks en el gate oficial y ausencia de campos
-nuevos en `official_live_prediction`. Gates: 577 Python aprobadas/8 omitidas,
-21 Vitest, 14 Playwright, typecheck y build Next aprobados.
+Evidencia obtenida (2026-08-10): la auditoría detectó dos defectos antes del
+cierre. Primero, la tasa base constante producía córners idénticos para ambos
+equipos en el minuto cero, es decir una línea genérica; se añadió
+`_territory_strength`, que escala el territorio por el cociente de lambdas
+causales pre-match con exponente `0.5`, contraído porque el territorio
+discrimina menos que el gol, y el ritmo base de comparación usa el mismo
+factor. Segundo, las tasas base provisionales estaban tomadas de
+`MarkovLiveV1.BASE_EVENT_RATES` y no del histórico: sobrestimaban los tiros en
+cerca del 60%, proyectando `13.06` tiros comerciales por equipo frente a los
+`8.67` observados. Se calibraron contra el corpus causal de Fase 74
+(`artifacts/phase_74_causal_sequence_corpus/micro_windows_15m.jsonl`), 9,465
+partidos y 18,930 unidades equipo-partido, cuyas medias por equipo y partido de
+90 minutos son `5.4175` córners, `7.3320` tiros sin gol y `1.3411` goles. Las
+constantes quedaron en `base_corner_rate_per_minute=0.060194` y
+`base_shot_event_rate_per_minute=0.081467`; el producto de multiplicadores en
+escenario neutro promedia exactamente `1.0`, de modo que reproducen la media
+observada por construcción y una prueba dedicada las ancla con tolerancia
+`0.05`. Con `lambda_base 1.55/1.08` y sin eventos, al minuto 30 el local
+proyecta `4.08` córners restantes con líneas `2.5/3.5/4.5` y el visitante
+`3.40` con las mismas líneas pero probabilidades distintas; cinco eventos de
+presión visitante invierten la relación a `3.63` contra `3.91` y desplazan el
+próximo gol de `0.346` a `0.378`; al minuto 80 con el local abajo las líneas se
+recentran solas en `1.5/2.5/3.5`. Once pruebas Python nuevas cubren no
+negatividad, invariante `shots_commercial >= lambda_gol`, complementariedad,
+adaptación a la presión, distinción entre equipos sin eventos, normalización
+del próximo gol, colapso sin tiempo restante, presencia de los checks en el
+gate oficial, anclaje de la calibración y ausencia de campos nuevos en
+`official_live_prediction`. Gates: 578 Python aprobadas/8 omitidas, 21 Vitest,
+14 Playwright, typecheck y build Next aprobados.
 
 ```text
 DEC-NNN
