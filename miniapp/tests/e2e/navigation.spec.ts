@@ -390,6 +390,91 @@ test("renders the real live score, source timestamp and next event", async ({ pa
   await expect.poll(() => liveRequests, { timeout: 18_000 }).toBeGreaterThanOrEqual(2);
 });
 
+const LIVE_MARKETS = { probability_home: 0.62, probability_draw: 0.24, probability_away: 0.14 };
+
+function livePayload(teamMarkets: unknown) {
+  return {
+    fixture: {
+      home_team_name: "Real Madrid", away_team_name: "Barcelona",
+      score_home: 1, score_away: 0, match_clock_seconds: 1800,
+      provider_status_detail: "30'", source_fetched_at: "2026-08-08T20:30:00Z",
+    },
+    official_source: "live_probability_engine_v1",
+    official_live_prediction: {
+      status: "official", markets: LIVE_MARKETS,
+      remaining_intensities: { home: 1.1, away: 0.5 },
+      next_event: { horizon_minutes: 5, probabilities: { "home:goal": 0.12 }, probability_no_event: 0.82 },
+      exact_score: [], periods: { first_half: { markets: LIVE_MARKETS }, second_half: { markets: LIVE_MARKETS }, full_time: { markets: LIVE_MARKETS } },
+      goal_horizons: { next_5m: { probability_any_goal: 0.14 }, next_10m: { probability_any_goal: 0.25 } },
+      confidence: { level: "medium" }, fallback: { applied: false },
+    },
+    live_probability_engine: { audit: { passed: true }, monte_carlo_diagnostic: { status: "scheduled", simulations: 20000 } },
+    ...(teamMarkets === undefined ? {} : { experimental_live_team_markets: teamMarkets }),
+  };
+}
+
+test("renders adaptive remaining corners, shots and next goal in live detail", async ({ page }) => {
+  const ladder = (line: number, over: number, base: number) => ({
+    line, over_probability: over, under_probability: 1 - over,
+    baseline_over_probability: base, baseline_under_probability: 1 - base,
+  });
+  await page.route("**/api/predict/live", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(livePayload({
+      status: "experimental_shadow_not_promoted",
+      remaining_seconds: 3600,
+      next_goal: {
+        remaining_minutes: 60, probability_home_next_goal: 0.5,
+        probability_away_next_goal: 0.35, probability_no_more_goals: 0.15,
+      },
+      bounded_market_grid_view: [
+        {
+          key: "home_corners_remaining", metric: "corners", team_side: "home",
+          expected_remaining: 3.73,
+          lines: [ladder(2.5, 0.72, 0.66), ladder(3.5, 0.51, 0.47), ladder(4.5, 0.32, 0.29)],
+        },
+        {
+          key: "away_corners_remaining", metric: "corners", team_side: "away",
+          expected_remaining: 3.11,
+          lines: [ladder(1.5, 0.82, 0.78), ladder(2.5, 0.6, 0.56), ladder(3.5, 0.38, 0.34)],
+        },
+        {
+          key: "home_shots_remaining", metric: "shots", team_side: "home",
+          expected_remaining: 9.89,
+          lines: [ladder(7.5, 0.77, 0.7), ladder(8.5, 0.66, 0.58), ladder(9.5, 0.53, 0.46)],
+        },
+      ],
+    })),
+  }));
+  await page.goto("/live/900001?league=esp.1");
+  const block = page.locator("article.model-card").filter({ hasText: "Córners, tiros y próximo gol" });
+  await expect(block).toBeVisible();
+  await expect(block.getByText("PRÓXIMO GOL · 60.0 MIN RESTANTES")).toBeVisible();
+  await expect(block.getByText("Sin más goles")).toBeVisible();
+  await expect(block.getByText("15%", { exact: true })).toBeVisible();
+  await expect(block.getByText("Real Madrid · Córners restantes")).toBeVisible();
+  await expect(block.getByText("Barcelona · Córners restantes")).toBeVisible();
+  await expect(block.getByText("Real Madrid · Tiros restantes")).toBeVisible();
+  await expect(block.getByText("Más de 4.5", { exact: false })).toBeVisible();
+  await expect(block.getByText("Más de 1.5", { exact: false })).toBeVisible();
+  await expect(block.getByText("vs ritmo base +6.0 pp", { exact: false })).toBeVisible();
+});
+
+test("hides the remaining market block when the live engine falls back", async ({ page }) => {
+  await page.route("**/api/predict/live", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(livePayload({
+      status: "unavailable_fallback_active", reason: "FloatingPointError",
+      bounded_market_grid_view: [], next_goal: {},
+    })),
+  }));
+  await page.goto("/live/900001?league=esp.1");
+  await expect(page.getByRole("heading", { name: "Motor probabilístico in-live v1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Córners, tiros y próximo gol" })).toHaveCount(0);
+});
+
 test("navigates the complete historical match flow", async ({ page }) => {
   await page.goto("/explore");
   await page.getByRole("link", { name: /Partidos históricos/ }).click();

@@ -36,6 +36,11 @@ CONTRACT_VERSION = "live_probability_engine_contract_v1"
 MODEL_VERSION = "live_probability_engine_v1"
 REGIME_NAMES = ("home_pressure", "balanced", "away_pressure")
 GOAL_TYPES = frozenset({"goal", "penalty_scored"})
+# Espejo de VISIBLE_LINE_MIN/MAX/GRID_SIZE en team_count_market_runtime.
+# Se replican aquí para que el motor live no importe artefactos ni joblib.
+GRID_VISIBLE_LINE_MIN = 1.5
+GRID_VISIBLE_LINE_MAX = 9.5
+GRID_VISIBLE_SIZE = 3
 
 
 def _stable_hash(value: Any) -> str:
@@ -140,6 +145,73 @@ def _market_bundle(
     }
 
 
+def _remaining_ladder_line(
+    threshold: int,
+    distribution: tuple[float, ...],
+    baseline: tuple[float, ...],
+) -> dict[str, float]:
+    """Deriva over/under complementarios de una media línea restante."""
+
+    over = math.fsum(distribution[threshold + 1:])
+    base_over = math.fsum(baseline[threshold + 1:])
+    return {
+        "line": float(threshold) + 0.5,
+        "over_probability": float(over),
+        "under_probability": float(1.0 - over),
+        "baseline_over_probability": float(base_over),
+        "baseline_under_probability": float(1.0 - base_over),
+    }
+
+
+def _centered_remaining_lines(
+    lines: list[dict[str, float]],
+) -> list[dict[str, float]]:
+    """Toma tres líneas consecutivas alrededor de P(over)≈50%."""
+
+    eligible = [
+        line for line in lines
+        if GRID_VISIBLE_LINE_MIN <= line["line"] <= GRID_VISIBLE_LINE_MAX
+    ]
+    if len(eligible) < GRID_VISIBLE_SIZE:
+        return []
+    center = min(range(len(eligible)), key=lambda index: (
+        abs(eligible[index]["over_probability"] - 0.5),
+        eligible[index]["line"],
+    ))
+    start = min(max(center - 1, 0), len(eligible) - GRID_VISIBLE_SIZE)
+    return [dict(line) for line in eligible[start:start + GRID_VISIBLE_SIZE]]
+
+
+def _remaining_count_row(
+    key: str,
+    metric: str,
+    side: str,
+    intensity: float,
+    baseline_intensity: float,
+    maximum: int,
+) -> dict[str, Any]:
+    """Construye la escalera restante de una métrica y un equipo."""
+
+    distribution = _poisson_pmf(intensity, maximum)
+    baseline = _poisson_pmf(baseline_intensity, maximum)
+    lines = _centered_remaining_lines([
+        _remaining_ladder_line(threshold, distribution, baseline)
+        for threshold in range(maximum)
+    ])
+    return {
+        "key": key,
+        "metric": metric,
+        "team_side": side,
+        "expected_remaining": float(intensity),
+        "baseline_expected_remaining": float(baseline_intensity),
+        "most_likely_remaining": max(
+            range(len(distribution)), key=lambda count: distribution[count],
+        ),
+        "lines": lines,
+        "status": "experimental_shadow_not_promoted",
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class LiveProbabilityEngineConfig:
     """Parámetros versionados y conservadores del motor analítico."""
@@ -159,6 +231,15 @@ class LiveProbabilityEngineConfig:
     )
     ctmc_goal_multipliers_home: tuple[float, ...] = (1.18, 1.0, 0.86)
     ctmc_goal_multipliers_away: tuple[float, ...] = (0.86, 1.0, 1.18)
+    ctmc_pressure_multipliers_home: tuple[float, ...] = (1.35, 1.0, 0.65)
+    ctmc_pressure_multipliers_away: tuple[float, ...] = (0.65, 1.0, 1.35)
+    base_corner_rate_per_minute: float = 0.055
+    base_shot_event_rate_per_minute: float = 0.130
+    territory_strength_exponent: float = 0.5
+    maximum_remaining_corner_intensity: float = 14.0
+    maximum_remaining_shots_intensity: float = 20.0
+    maximum_additional_corners: int = 13
+    maximum_additional_shots: int = 29
     red_card_log_penalty: float = 0.38
     red_card_opponent_log_gain: float = 0.20
     maximum_log_hazard: float = 0.45
@@ -300,8 +381,31 @@ class LiveProbabilityEngineV1:
                 "reason": None,
             },
         }
+        team_markets = {
+            "status": "experimental_shadow_not_promoted",
+            "model_version": "live_dynamic_poisson_team_markets_v1",
+            "remaining_seconds": dynamic["remaining_seconds"],
+            "remaining_intensities": {
+                "corners": {
+                    "home": float(dynamic["lambda_remaining_corners_home"]),
+                    "away": float(dynamic["lambda_remaining_corners_away"]),
+                },
+                "shots_commercial": {
+                    "home": float(dynamic["lambda_remaining_shots_home"]),
+                    "away": float(dynamic["lambda_remaining_shots_away"]),
+                },
+            },
+            "shots_semantics": (
+                "shots_commercial = shot_on_target + shot_off_target"
+                " + shot_blocked + goals (DEC-110)"
+            ),
+            "bounded_market_grid_view": dynamic["team_count_markets"],
+            "next_goal": self._next_goal(dynamic),
+            "provider_odds_used": False,
+        }
         checks = self._audit_checks(
-            request, official, ctmc, hazard, residual, events,
+            request, official, ctmc, hazard, residual, events, dynamic,
+            team_markets,
         )
         result = {
             "contract_version": self.config.contract_version,
@@ -309,6 +413,7 @@ class LiveProbabilityEngineV1:
             "status": "official",
             "official_source": self.config.model_version,
             "official_live_prediction": official,
+            "experimental_live_team_markets": team_markets,
             "live_probability_engine": {
                 "dynamic_poisson": dynamic,
                 "ctmc": ctmc,
@@ -530,6 +635,9 @@ class LiveProbabilityEngineV1:
         )
         segments: list[dict[str, Any]] = []
         total_home = total_away = 0.0
+        total_corner_home = total_corner_away = 0.0
+        total_shots_home = total_shots_away = 0.0
+        strength_home, strength_away = self._territory_strength(request)
         position = current
         while position < duration - 1e-12:
             end = min(duration, position + self.config.segment_minutes)
@@ -578,11 +686,53 @@ class LiveProbabilityEngineV1:
             )
             total_home += lambda_home
             total_away += lambda_away
+            pressure_home = float(np.dot(
+                posterior,
+                np.asarray(self.config.ctmc_pressure_multipliers_home),
+            ))
+            pressure_away = float(np.dot(
+                posterior,
+                np.asarray(self.config.ctmc_pressure_multipliers_away),
+            ))
+            territory_home = (
+                minutes * time_shape * pressure_home * score_home * red_home
+                * hazard_home * strength_home
+            )
+            territory_away = (
+                minutes * time_shape * pressure_away * score_away * red_away
+                * hazard_away * strength_away
+            )
+            lambda_corner_home = _clip(
+                self.config.base_corner_rate_per_minute * territory_home,
+                0.0, self.config.maximum_remaining_corner_intensity,
+            )
+            lambda_corner_away = _clip(
+                self.config.base_corner_rate_per_minute * territory_away,
+                0.0, self.config.maximum_remaining_corner_intensity,
+            )
+            lambda_shots_home = _clip(
+                self.config.base_shot_event_rate_per_minute * territory_home
+                + lambda_home,
+                0.0, self.config.maximum_remaining_shots_intensity,
+            )
+            lambda_shots_away = _clip(
+                self.config.base_shot_event_rate_per_minute * territory_away
+                + lambda_away,
+                0.0, self.config.maximum_remaining_shots_intensity,
+            )
+            total_corner_home += lambda_corner_home
+            total_corner_away += lambda_corner_away
+            total_shots_home += lambda_shots_home
+            total_shots_away += lambda_shots_away
             segments.append({
                 "start_minute": position,
                 "end_minute": end,
                 "lambda_home": lambda_home,
                 "lambda_away": lambda_away,
+                "lambda_corner_home": lambda_corner_home,
+                "lambda_corner_away": lambda_corner_away,
+                "lambda_shots_home": lambda_shots_home,
+                "lambda_shots_away": lambda_shots_away,
                 "state_posterior": {
                     REGIME_NAMES[index]: float(posterior[index])
                     for index in range(3)
@@ -603,6 +753,22 @@ class LiveProbabilityEngineV1:
         total_away = _clip(
             total_away, 0.0, self.config.maximum_remaining_intensity,
         )
+        total_corner_home = _clip(
+            total_corner_home, 0.0,
+            self.config.maximum_remaining_corner_intensity,
+        )
+        total_corner_away = _clip(
+            total_corner_away, 0.0,
+            self.config.maximum_remaining_corner_intensity,
+        )
+        total_shots_home = _clip(
+            total_shots_home, 0.0,
+            self.config.maximum_remaining_shots_intensity,
+        )
+        total_shots_away = _clip(
+            total_shots_away, 0.0,
+            self.config.maximum_remaining_shots_intensity,
+        )
         markets = _market_bundle(
             total_home, total_away, request.score_home, request.score_away,
             maximum=self.config.maximum_additional_goals,
@@ -616,11 +782,95 @@ class LiveProbabilityEngineV1:
             ),
             "lambda_remaining_home": total_home,
             "lambda_remaining_away": total_away,
+            "lambda_remaining_corners_home": total_corner_home,
+            "lambda_remaining_corners_away": total_corner_away,
+            "lambda_remaining_shots_home": total_shots_home,
+            "lambda_remaining_shots_away": total_shots_away,
+            "team_count_markets": self._remaining_team_count_markets(
+                request, max(0.0, duration - current),
+                total_corner_home, total_corner_away,
+                total_shots_home, total_shots_away,
+            ),
             "segments": segments,
             "markets": markets,
             "periods": self._period_markets(request, segments),
             "red_cards": red_cards,
         }
+
+    def _territory_strength(
+        self, request: MarkovLiveInput,
+    ) -> tuple[float, float]:
+        """Escala el territorio por la fuerza atacante causal pre-match.
+
+        Sin este factor la tasa base de corners y tiros sería idéntica para
+        ambos equipos hasta que ocurriera un evento, lo que produciría una
+        línea genérica en el minuto cero. El exponente contrae la señal porque
+        el territorio discrimina menos que el gol.
+        """
+
+        home = max(1e-6, float(request.lambda_base_home))
+        away = max(1e-6, float(request.lambda_base_away))
+        average = (home + away) / 2.0
+        exponent = self.config.territory_strength_exponent
+        return (
+            _clip((home / average) ** exponent, 0.25, 4.0),
+            _clip((away / average) ** exponent, 0.25, 4.0),
+        )
+
+    def _remaining_team_count_markets(
+        self,
+        request: MarkovLiveInput,
+        remaining_minutes: float,
+        corner_home: float,
+        corner_away: float,
+        shots_home: float,
+        shots_away: float,
+    ) -> list[dict[str, Any]]:
+        """Construye la rejilla restante contra un ritmo base plano."""
+
+        minutes = max(0.0, remaining_minutes)
+        strength_home, strength_away = self._territory_strength(request)
+        baseline_corner_home = (
+            self.config.base_corner_rate_per_minute * minutes * strength_home
+        )
+        baseline_corner_away = (
+            self.config.base_corner_rate_per_minute * minutes * strength_away
+        )
+        baseline_shots_home = (
+            self.config.base_shot_event_rate_per_minute * minutes
+            * strength_home
+            + request.lambda_base_home / self.config.regulation_minutes
+            * minutes
+        )
+        baseline_shots_away = (
+            self.config.base_shot_event_rate_per_minute * minutes
+            * strength_away
+            + request.lambda_base_away / self.config.regulation_minutes
+            * minutes
+        )
+        rows = (
+            _remaining_count_row(
+                "home_corners_remaining", "corners", "home",
+                corner_home, baseline_corner_home,
+                self.config.maximum_additional_corners,
+            ),
+            _remaining_count_row(
+                "away_corners_remaining", "corners", "away",
+                corner_away, baseline_corner_away,
+                self.config.maximum_additional_corners,
+            ),
+            _remaining_count_row(
+                "home_shots_remaining", "shots", "home",
+                shots_home, baseline_shots_home,
+                self.config.maximum_additional_shots,
+            ),
+            _remaining_count_row(
+                "away_shots_remaining", "shots", "away",
+                shots_away, baseline_shots_away,
+                self.config.maximum_additional_shots,
+            ),
+        )
+        return [row for row in rows if row["lines"]]
 
     @staticmethod
     def _score_factors(
@@ -758,6 +1008,34 @@ class LiveProbabilityEngineV1:
         )
 
     @staticmethod
+    def _next_goal(dynamic: dict[str, Any]) -> dict[str, Any]:
+        """Aísla el próximo gol desde las intensidades ya oficiales."""
+
+        horizon_minutes = max(
+            0.0, float(dynamic["remaining_seconds"]) / 60.0,
+        )
+        denominator = max(1e-9, horizon_minutes)
+        distribution = competing_event_distribution(
+            {
+                "home": float(dynamic["lambda_remaining_home"]) / denominator,
+                "away": float(dynamic["lambda_remaining_away"]) / denominator,
+            },
+            horizon_minutes,
+        )
+        probabilities = distribution["probabilities"]
+        return {
+            "status": "experimental_component",
+            "model": "next_goal_competing_risks_v1",
+            "remaining_minutes": horizon_minutes,
+            "probability_home_next_goal": float(probabilities.get("home", 0.0)),
+            "probability_away_next_goal": float(probabilities.get("away", 0.0)),
+            "probability_no_more_goals": float(
+                distribution["probability_no_event"]
+            ),
+            "normalization_error": float(distribution["normalization_error"]),
+        }
+
+    @staticmethod
     def _goal_horizons(
         lambda_home: float, lambda_away: float, remaining_minutes: float,
     ) -> dict[str, Any]:
@@ -810,6 +1088,8 @@ class LiveProbabilityEngineV1:
         hazard: dict[str, Any],
         residual: dict[str, Any],
         events: list[dict[str, Any]],
+        dynamic: dict[str, Any],
+        team_markets: dict[str, Any],
     ) -> dict[str, bool]:
         markets = official["markets"]
         probabilities = (
@@ -847,6 +1127,35 @@ class LiveProbabilityEngineV1:
             ),
             "hawkes_subcritical": bool(
                 residual.get("stability", {}).get("subcritical", False)
+            ),
+            "team_count_intensities_nonnegative": all(
+                math.isfinite(float(dynamic[key])) and float(dynamic[key]) >= 0.0
+                for key in (
+                    "lambda_remaining_corners_home",
+                    "lambda_remaining_corners_away",
+                    "lambda_remaining_shots_home",
+                    "lambda_remaining_shots_away",
+                )
+            ),
+            "shots_commercial_includes_goal_rate": (
+                float(dynamic["lambda_remaining_shots_home"]) + 1e-9
+                >= float(dynamic["lambda_remaining_home"])
+                and float(dynamic["lambda_remaining_shots_away"]) + 1e-9
+                >= float(dynamic["lambda_remaining_away"])
+            ),
+            "team_count_grid_complementary": all(
+                math.isfinite(float(line["over_probability"]))
+                and 0.0 <= float(line["over_probability"]) <= 1.0
+                and math.isclose(
+                    float(line["over_probability"])
+                    + float(line["under_probability"]),
+                    1.0, abs_tol=1e-9,
+                )
+                for row in team_markets["bounded_market_grid_view"]
+                for line in row["lines"]
+            ),
+            "next_goal_normalized": (
+                float(team_markets["next_goal"]["normalization_error"]) <= 1e-9
             ),
             "provider_probabilities_unused": True,
             "provider_odds_unused": True,

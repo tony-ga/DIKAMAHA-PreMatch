@@ -7,7 +7,7 @@ import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { useAuth } from "@/components/providers";
-import { api, percentage, queryString, record, type Catalog } from "@/lib/client-api";
+import { api, countLabel, edgeLabel, percentage, probabilityWidth, queryString, record, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
 import { PredictionAnalytics } from "@/components/prediction-analytics";
 import { ProviderPredictor } from "@/components/provider-predictor";
@@ -33,23 +33,6 @@ function catalogDate(kickoff: string): string {
   const date = new Date(kickoff);
   if (!Number.isFinite(date.getTime())) return "";
   return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
-}
-
-function probabilityWidth(value: unknown): string {
-  const numeric = Number(value);
-  return `${Math.max(0, Math.min(100, Number.isFinite(numeric) ? numeric * 100 : 0))}%`;
-}
-
-function edgeLabel(model: unknown, baseline: unknown): string {
-  const delta = Number(model) - Number(baseline);
-  if (!Number.isFinite(delta)) return "—";
-  const points = delta * 100;
-  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)} pp`;
-}
-
-function countLabel(value: unknown): string {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric.toFixed(1) : "—";
 }
 
 export function PredictionDetail(props: Props) {
