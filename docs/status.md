@@ -1,10 +1,62 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-11
-**Fase activa:** Fase 121 Resumen diario de aciertos
-**Objetivo Fase 121:** publicar un aviso diario del desempeño verificado, en la
-Mini App y en el avisador de canal, sin renunciar al principio de Fase 118 de
-no ocultar nunca los fallos.
+**Fase activa:** Fase 122 Menú de mayor probabilidad
+**Objetivo Fase 122:** medir dónde una probabilidad alta del modelo pre-match es
+realmente de fiar y exponer en la Mini App sólo los picks del día cuyo par
+(mercado, tramo de confianza) tenga fiabilidad histórica demostrada.
+
+## Fase 122 — Menú de mayor probabilidad
+
+Implementada. Ver `DEC-162`.
+
+La pregunta que resuelve no es qué mercado acierta más, sino en qué mercado y a
+qué nivel de confianza declarada el acierto observado justifica exponer el pick.
+Son distintas: `home_corners_over_4_5` acierta 76.1% con una tasa base de 72.0%.
+
+- backtest `scripts/run_phase_122_confidence_reliability.py` sobre los 1,270
+  partidos de Fase 110, 12 mercados, 22 ligas y 15,240 decisiones, con
+  probabilidades servidas (BTTS recalculado con el calibrador sellado de Fase
+  106 y `home_corners_second_half_over_2_5` con su fallback de liga);
+- **el gate congelado antes de puntuar rechazó las 21 celdas evaluables**. Dos
+  de sus cinco criterios penalizaban la infraconfianza igual que la
+  sobreconfianza y rechazaban un tramo que declara 68.3% y entrega 89.3%;
+- un gate v2, re-especificado de forma explícita y documentada como post-hoc,
+  aprueba 10 celdas y 9 sobreviven la confirmación contra los 270 partidos de
+  la cohorte que Fases 105/119 nunca publicaron;
+- comparador pareado contra la estrategia de tasa base con McNemar exacto,
+  IC95% bootstrap de 10,000 remuestreos y control Benjamini-Hochberg a q=0.05
+  sobre 21 hipótesis;
+- **sólo 3 de las 9 celdas reflejan discriminación del modelo**
+  (`model_edge`); las otras 6 aciertan porque la tasa base del mercado ya es
+  alta (`base_rate_driven`), y la interfaz lo declara;
+- **1X2, Más de 2.5 y Ambos marcan no clasifican en ningún tramo**. 1X2 llega a
+  declarar confianza 1.000, pero en 0.65–0.75 promete 69.4% y entrega 51.0%,
+  con 25% de ligas sin degradar. Ambos marcan nunca supera 0.561 de confianza
+  porque el shrinkage de Fase 106 lo contrae hacia 0.50 por diseño;
+- `src/high_probability_view.py` lee el artefacto sellado con verificación de
+  versión y cotas, publica la tasa observada del tramo en vez de la
+  probabilidad del modelo, ordena por esa cifra y aplica el `ExposurePolicy`
+  existente para que tres líneas del mismo equipo y métrica no ocupen el menú;
+- degradación segura real: artefacto ausente, corrupto o de versión distinta
+  devuelve lista vacía, nunca un pick inventado ni una heurística;
+- `GET /v1/high-probability?date=&limit=&leagues=` barre hasta 30 fixtures,
+  aísla los que no tienen historial causal y los cuenta sin abortar;
+- Mini App `/mayor-probabilidad` como sexta entrada de navegación, con estado
+  vacío honesto cuando ningún pick del día supera el gate.
+
+Estado: `implemented_historical_evidence_shadow`. La evidencia es histórica y
+no prospectiva; no hay cuotas, ROI, CLV, Kelly ni stakes, y ningún modelo
+queda promovido. Gates: 659 pruebas Python aprobadas/8 omitidas (22 nuevas),
+21 Vitest, 23 Playwright (6 nuevas), typecheck y build Next aprobados.
+Despliegue a Railway pendiente de aprobación del usuario.
+
+Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
+La confirmación sobre los 270 partidos nunca publicados controla que sus
+umbrales no se ajustaran a cifras ya conocidas, pero ese holdout es un
+subconjunto de la misma cohorte, no una muestra independiente. Una validación
+prospectiva con predicciones congeladas antes del kickoff es el siguiente paso
+recomendado.
 
 ## Fase 121 — Resumen diario de aciertos
 

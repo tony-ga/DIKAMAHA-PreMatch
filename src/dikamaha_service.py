@@ -60,6 +60,11 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from prematch_shadow_catalog import build_shadow_observation, load_shadow_catalog
 
 try:
+    from src.high_probability_view import HighProbabilityView
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from high_probability_view import HighProbabilityView
+
+try:
     from src.settlement_store import (
         DEFAULT_WINDOW,
         MAXIMUM_WINDOW,
@@ -96,8 +101,11 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from provider_match_context import ProviderMatchContextService
 
 LOGGER = logging.getLogger(__name__)
-SERVICE_VERSION = "dikamaha_local_service_v1.9_live_probability_engine"
+SERVICE_VERSION = "dikamaha_local_service_v2.0_high_probability"
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
+# Cota de fixtures que barre `/v1/high-probability`. Cada uno cuesta una
+# inferencia completa; la caché TTL absorbe las repeticiones dentro del día.
+HIGH_PROBABILITY_FIXTURES = 30
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -654,6 +662,48 @@ def _fixture_lookup(request: FixtureRequest) -> FixtureLookup:
     return FixtureLookup(**request.model_dump())
 
 
+async def _high_probability_prediction(
+    app: FastAPI, engine: Any, config: ServiceConfig,
+    fixture: dict[str, Any],
+) -> dict[str, Any]:
+    """Calcula la predicción de un fixture reutilizando la caché existente."""
+
+    request = UpcomingRequest(
+        league_slug=str(fixture["league_slug"]),
+        home_team_id=int(fixture["home_team_id"]),
+        away_team_id=int(fixture["away_team_id"]),
+        kickoff_ts=str(fixture["kickoff_ts"]),
+        match_id=int(fixture["match_id"]),
+    )
+    key = json.dumps(request.model_dump(), sort_keys=True)
+
+    async def calculate() -> dict[str, Any]:
+        """Ejecuta la inferencia universal sin bloques de presentación."""
+
+        result = await _infer_with_timeout(
+            engine.predict, _upcoming_input(request),
+            config.inference_timeout_seconds)
+        return asdict(result)
+
+    return await app.state.upcoming_cache.get_or_compute(key, calculate)
+
+
+def _high_probability_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
+    """Reduce el fixture a la identidad visible del menú."""
+
+    return {
+        "match_id": int(fixture["match_id"]),
+        "league_slug": str(fixture["league_slug"]),
+        "kickoff_ts": str(fixture["kickoff_ts"]),
+        "home_team_id": int(fixture["home_team_id"]),
+        "away_team_id": int(fixture["away_team_id"]),
+        "home_team_name": str(fixture.get("home_team_name") or ""),
+        "away_team_name": str(fixture.get("away_team_name") or ""),
+        "home_team_logo": fixture.get("home_team_logo"),
+        "away_team_logo": fixture.get("away_team_logo"),
+    }
+
+
 def _upcoming_catalog(
     payload: tuple[str, int, str | None],
 ) -> list[dict[str, Any]]:
@@ -848,6 +898,7 @@ def create_app(
         settlement_store if settlement_store is not None else _settlement_store())
     app.state.metrics = MetricsStore()
     app.state.upcoming_cache = AsyncPredictionCache()
+    app.state.high_probability_view = HighProbabilityView()
     app.state.request_gate = RequestGate(
         effective.max_concurrent_requests,
         effective.rate_limit_requests,
@@ -923,6 +974,71 @@ def create_app(
             "fixtures": fixtures, "count": len(fixtures), "status": "ok",
             "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
             "date_count": len(_upcoming_dates(datetime.now(timezone.utc), date)),
+        }
+
+    @app.get("/v1/high-probability", tags=["inference"])
+    async def high_probability(
+        date: str | None = None, limit: int = 10,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Publica los picks del día cuya fiabilidad histórica está probada.
+
+        Un pick sólo aparece si el par (mercado, tramo de confianza) al que
+        pertenece superó el gate de Fase 122. La cifra publicada es la tasa
+        observada de ese tramo, no la probabilidad del modelo: el backtest
+        encontró mercados que declaran 68% y entregan 89%, y otros que
+        declaran 84% y entregan 74%.
+        """
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        view = app.state.high_probability_view
+        if not view.available():
+            return {
+                "status": "unavailable",
+                "reason": "phase122_eligibility_unavailable",
+                "picks": [], "count": 0, "fixtures_scanned": 0,
+                "provenance": view.provenance(),
+            }
+        selected = leagues or ",".join(slug for slug, _ in LEAGUES)
+        bounded = min(max(int(limit), 1), 50)
+        try:
+            fixtures = await _infer_with_timeout(
+                _upcoming_catalog, (selected, HIGH_PROBABILITY_FIXTURES, date),
+                effective.inference_timeout_seconds * 5,
+            )
+        except (ValueError, TimeoutError, OSError) as exc:
+            LOGGER.warning("Rechazo catálogo mayor probabilidad: %s", exc)
+            raise _error("upcoming_catalog_unavailable") from exc
+
+        picks: list[dict[str, Any]] = []
+        skipped = 0
+        for fixture in fixtures:
+            try:
+                payload = await _high_probability_prediction(
+                    app, upcoming_engine, effective, fixture)
+            except (PrematchUnavailableError, ValueError, OverflowError,
+                    FloatingPointError, HTTPException) as error:
+                LOGGER.info(
+                    "Fixture sin predicción utilizable %s: %s",
+                    fixture.get("match_id"), error)
+                skipped += 1
+                continue
+            picks.extend(
+                {**pick, "fixture": _high_probability_fixture(fixture)}
+                for pick in view.picks(payload))
+        picks.sort(key=lambda pick: (
+            -pick["observed_rate"], -pick["model_probability"],
+            pick["fixture"]["kickoff_ts"], pick["market"]))
+        return {
+            "status": "ok",
+            "classification": "experimental_shadow_not_promoted",
+            "picks": picks[:bounded],
+            "count": min(len(picks), bounded),
+            "total_candidates": len(picks),
+            "fixtures_scanned": len(fixtures),
+            "fixtures_without_prediction": skipped,
+            "provenance": view.provenance(),
         }
 
     @app.get("/v1/live", tags=["inference"])
