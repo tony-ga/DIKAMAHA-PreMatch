@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 from src.espn_phase_7_15_r3 import _normalize
 from src.espn_prospective_connector import EspnConnectorConfig, EspnProspectiveConnector, scoreboard_references
 from src.event_windows_v1 import EventWindowsConfig, build_windows
-from src.prematch_snapshot_registry import activate_snapshot, publish_snapshot, resolve_active_snapshot
+from src.prematch_snapshot_registry import activate_snapshot, publish_snapshot, read_snapshot_rows, resolve_active_snapshot
 from scripts.run_phase_38_multileague_event_windows import _is_shootout, _mismatches
 
 OUTPUT = ROOT / "artifacts/phase_52_post2025_snapshot_refresh_v1"
@@ -118,7 +118,7 @@ def _materialize(batch: dict[str, Any], league: str) -> list[dict[str, Any]]:
 def _merge(old_path: Path, new_rows: list[dict[str, Any]]) -> tuple[Path, int, str]:
     """Combina ventanas sin duplicar partido, equipo ni ventana."""
 
-    old_rows = json.loads(old_path.read_text(encoding="utf-8"))
+    old_rows = read_snapshot_rows(old_path)
     rows = { (int(row["match_id"]), int(row["team_id"]), int(row["window_index"])): row for row in old_rows }
     for row in new_rows:
         rows[(int(row["match_id"]), int(row["team_id"]), int(row["window_index"]))] = row

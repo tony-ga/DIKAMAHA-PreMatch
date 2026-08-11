@@ -1,15 +1,78 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-10
-**Fase activa:** Fase 119 Backtest de calibración de 500 partidos
-**Objetivo:** diagnosticar sesgo de calibración en los 11 mercados pre-match
+**Actualizado:** 2026-08-11
+**Fase activa:** Fase 120 Expansión del catálogo a 63 ligas y torneos
+**Objetivo Fase 120:** cubrir competiciones que ESPN publica y el catálogo no
+tenía, empezando por el caso reportado de clasificación de Champions y Leagues
+Cup, y dejarlas con la misma funcionalidad que el resto del catálogo.
+
+## Fase 120 — Expansión del catálogo a 63 ligas y torneos
+
+Implementada y activada. Ver `DEC-160`.
+
+Causa raíz del reporte: ESPN separa la fase previa de UEFA en slugs propios
+(`uefa.champions_qual`, `uefa.europa_qual`, `uefa.europa.conf_qual`) distintos
+de `uefa.champions`/`uefa.europa`/`uefa.europa.conf`, y `concacaf.leagues.cup`
+nunca estuvo en el catálogo. `/v1/live` y `/v1/upcoming` iteran exactamente el
+catálogo, de modo que sin el slug ningún barrido podía encontrar esos partidos.
+No era un fallo de la ventana D-1/D/D+1 ni del catálogo live.
+
+- catálogo de 49 a 63 slugs, con `docs/league_catalog_v1.json` y
+  `src/espn_user_explorer.py::LEAGUES` sincronizados y una prueba que falla si
+  divergen;
+- 14 slugs añadidos, cada uno verificado con respuesta ESPN 200 antes de
+  entrar: `ned.1`, `por.1`, `tur.1`, `bel.1`, `sco.1`, `den.1`, `nor.1`,
+  `per.1`, `ksa.1`, `jpn.1`, `concacaf.leagues.cup`, `uefa.champions_qual`,
+  `uefa.europa_qual` y `uefa.europa.conf_qual`;
+- Liga MX Femenil y K League quedan fuera por no existir en el proveedor:
+  `mex.w.1` y `kor.*` responden HTTP 400 y el índice Core de 214 ligas de
+  fútbol no contiene ninguna referencia coreana ni liga femenil mexicana;
+- descubrimiento incremental de 3,311 referencias nuevas fusionadas sobre las
+  9,775 previas: 13,086 referencias y 56 ligas, con cero ligas perdidas;
+- ingesta de 2,337 partidos completos y 28,044 ventanas, más un refresco de
+  317 partidos recientes para `tur.1`, `ksa.1` y `jpn.1`;
+- snapshot activo `phase160_recent_topup_v1_20260811` con 12,281 partidos y
+  147,372 filas; historial de rollback de seis versiones intacto;
+- 117 fallos excluidos por el gate, dominados por `window_score_mismatch`: un
+  partido sólo entra si su play-by-play reconcilia el marcador.
+
+Dos defectos operativos preexistentes quedaron corregidos porque bloqueaban el
+flujo:
+
+- `run_multileague_discovery.py` reescribía `references.json` con sólo las
+  ligas de la corrida, de modo que cualquier descubrimiento incremental habría
+  borrado las 42 ligas ya descubiertas y roto el gate `_documented_leagues` de
+  Fase 53. Ahora fusiona por clave estable, conserva respaldo y expone
+  `--replace-references` para la reconstrucción deliberada;
+- `run_phase_52`/`run_phase_53` leían el snapshot activo con
+  `read_text(encoding="utf-8")`, pero Fase 108 lo dejó en gzip. El refresco
+  incremental fallaba con `invalid start byte` desde entonces. El registro
+  publica ahora `read_snapshot_rows()`, que acepta ambos formatos.
+
+Verificación real: predicción pre-match con `selective_dc_kalman_official` en
+las ligas nuevas; play-by-play, estadísticas por periodo, equipos, plantillas y
+perfiles de jugador operativos; apertura y cierre de mercado visibles como
+cinta financiera aislada. Predicción live oficial sobre NEC Nijmegen–Olympiacos
+(`uefa.champions_qual`, 1-1 a tres minutos del final) con P(empate) `0.8969` y
+marcador exacto 1-1 `0.8954`, prior causal con corte estrictamente anterior al
+kickoff.
+
+La allowlist Hawkes permanece en 17 ligas. Las 14 nuevas responden
+`admitted: false` con `rho_goal=0.0` y `fallback_exact_markov_live: true`, que
+es el comportamiento correcto de DEC-114: no hay evidencia de validación propia
+y esta fase no autoriza ampliarla.
+
+Estado: `implemented_and_activated`. Gates: 624 pruebas Python aprobadas/8
+omitidas, 21 Vitest y typecheck Next aprobados.
+
+## Fase 119 — Backtest de calibración de 500 partidos
+
+Objetivo: diagnosticar sesgo de calibración en los 11 mercados pre-match
 (oficiales y shadow) tal como se sirven hoy, sobre 500 partidos reales
 disjuntos de Fase 105/106, corregir con shrinkage bayesiano lo que pase el
 mismo gate de Fase 106, y comparar antes/después sobre el mismo conjunto.
 
-## Fase 119 — Backtest de calibración de 500 partidos
-
-En curso. Ver `DEC-159`.
+Cerrada sin promoción de mercados. Ver `DEC-159`.
 
 - cohorte de prueba: 500 partidos elegibles más recientes del split
   `confirmation`; cohorte de ajuste: los 500 elegibles inmediatamente

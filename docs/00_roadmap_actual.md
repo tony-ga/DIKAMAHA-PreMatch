@@ -234,6 +234,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
 | 115 | `telegram_mini_app` | paridad visual y analítica desplegada; DEC-154 en producción | Catálogo de 49 ligas/torneos, detalle live automático, predictor externo tolerante a ausencia, cinta open/close/live aislada, curva de presión, logos, acciones y Markov/Hawkes/combinado separados |
 | 116 | `live_probability_engine_v1` | implementada y evaluada; despliegue pendiente | Poisson dinámico + CTMC + Hazard/Cox + Elo live + residual Hawkes; 7,400 partidos/34 ligas, gates causales completos, MC diagnóstico asincrónico y fallback Markov |
+| 120 | `league_catalog_expansion_v1` | implementada y activada | Catálogo de 49 a 63 slugs con los 14 verificados contra ESPN; causa raíz del reporte aislada en los slugs propios de clasificación UEFA y en `concacaf.leagues.cup`; 13,086 referencias/56 ligas sin perder ninguna previa, 2,654 partidos completos ingeridos y snapshot `phase160_recent_topup_v1_20260811` con 12,281 partidos; corregidos el descubrimiento destructivo y la lectura gzip del snapshot activo; allowlist Hawkes intacta en 17 con fallback Markov exacto |
 | 119 | `bias_backtest_500_v1` | implementada, cero mercados promovidos | Diagnóstico real sobre 500 partidos: 4 mercados con sesgo (ECE 0.09-0.18), shrinkage bayesiano mejora ECE en los 4 pero ninguno alcanza estabilidad ≥70% por liga; mecanismo fail-open conectado y probado, sin calibradores publicados; reporte visual en `artifacts/phase_119_bias_backtest_500/dashboard.html` |
 | 118 | `verifiable_track_record` | implementada, pendiente de primeras liquidaciones | Historial de aciertos verificable en Postgres, agregado por `GET /v1/track-record`, vista `/historial` y resumen semanal en canal; umbral de muestra, intervalo de confianza y baseline obligatorios |
 | 117 | `live_team_markets_v1` | implementada, shadow sin gate histórico | Corners y tiros restantes adaptativos por equipo más próximo gol; `_dynamic_poisson` extendido con territorio escalado por fuerza causal, tasas base calibradas sobre 9,465 partidos de Fase 74, checks integrados al gate oficial y fallback exacto; 578 Python, 21 Vitest y 14 Playwright aprobados |
@@ -260,7 +261,10 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 
 ## Próximo hito
 
-Completar el smoke interactivo desde un usuario Telegram autorizado. Registrar
+Desplegar Fase 120 en Railway y confirmar con un smoke real que la Mini App
+lista los 63 slugs y muestra los partidos de clasificación UEFA y Leagues Cup
+que motivaron la ampliación. Después, completar el smoke interactivo desde un
+usuario Telegram autorizado. Registrar
 el short name de la Mini App en BotFather y validar una regla de alerta con
 dedupe real. Sólo después activar `MINIAPP_ALERTS_ENABLED=true`. PostgreSQL,
 Mini App con paridad completa y worker están desplegados; el menú global del

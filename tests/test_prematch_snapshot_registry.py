@@ -11,6 +11,7 @@ from src.prematch_snapshot_registry import (
     SnapshotRegistryError,
     activate_snapshot,
     publish_snapshot,
+    read_snapshot_rows,
     resolve_active_snapshot,
     rollback_snapshot,
 )
@@ -65,3 +66,26 @@ def test_compressed_snapshot_preserves_logical_integrity(tmp_path) -> None:
         target_stream.write(source_stream.read())
     event_path.unlink()
     assert resolve_active_snapshot("snapshot_a", registry) == compressed.resolve()
+
+
+def test_incremental_refresh_can_read_the_compressed_active_snapshot(tmp_path) -> None:
+    """El refresco incremental debe leer el snapshot activo aunque esté en gzip.
+
+    Fase 108 comprimió el snapshot activo, de modo que abrirlo como texto plano
+    aborta con ``invalid start byte`` y deja el refresco multi-liga inservible.
+    """
+
+    source = tmp_path / "source.json"
+    _source(source, 1)
+    registry = tmp_path / "registry"
+    publish_snapshot(source, "snapshot_a", registry)
+    event_path = registry / "snapshot_a" / "event_windows.json"
+    compressed = event_path.with_suffix(".json.gz")
+    with event_path.open("rb") as source_stream, gzip.open(compressed, "wb") as target_stream:
+        target_stream.write(source_stream.read())
+    event_path.unlink()
+
+    rows = read_snapshot_rows(resolve_active_snapshot("snapshot_a", registry))
+
+    assert [row["match_id"] for row in rows] == [1]
+    assert read_snapshot_rows(source) == rows
