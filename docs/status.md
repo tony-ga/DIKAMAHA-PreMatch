@@ -45,11 +45,34 @@ Son distintas: `home_corners_over_4_5` acierta 76.1% con una tasa base de 72.0%.
 - Mini App `/mayor-probabilidad` como sexta entrada de navegación, con estado
   vacío honesto cuando ningún pick del día supera el gate.
 
-Estado: `implemented_historical_evidence_shadow`. La evidencia es histórica y
-no prospectiva; no hay cuotas, ROI, CLV, Kelly ni stakes, y ningún modelo
-queda promovido. Gates: 662 pruebas Python aprobadas/8 omitidas (25 nuevas),
-21 Vitest, 23 Playwright (6 nuevas), typecheck y build Next aprobados.
-Despliegue a Railway pendiente de aprobación del usuario.
+Estado: `railway_deployed`. La evidencia es histórica y no prospectiva; no hay
+cuotas, ROI, CLV, Kelly ni stakes, y ningún modelo queda promovido. Gates: 662
+pruebas Python aprobadas/8 omitidas (25 nuevas), 21 Vitest, 23 Playwright (6
+nuevas), typecheck y build Next aprobados.
+
+Despliegue mediante PR #35, commit de merge `438b1db`. Los cinco servicios
+Railway reportan `SUCCESS`; la API sirve
+`dikamaha_local_service_v2.0_high_probability` y `/mayor-probabilidad` responde
+HTTP 200 en la Mini App.
+
+El despliegue destapó un defecto de topología preexistente: `telegram-miniapp`,
+`dikamaha-premium-telegram-bot` y `telegram-alert-worker` vigilaban la rama
+`agent/model-integrity-audit`, contenida en `main` pero nueve commits por
+detrás, de modo que llevaban sin recibir el hotfix `a7833a4` ni Fase 121. Los
+tres quedaron repuntados a `main`, igual que la API, y redesplegados. Con ello
+los cambios de Mini App de Fase 121 llegaron por fin a producción.
+
+Antes del despliegue se corrigió un fallo que habría dejado el menú
+**permanentemente vacío y en silencio**: `eligibility.json` no entraba en Git ni
+en la imagen Docker, y el fail-open lo habría ocultado. Es el mismo fallo que
+motivó el hotfix `a7833a4` para el snapshot de Fase 160. Ahora el artefacto se
+sella con `hashes.json`, se verifica en runtime con tolerancia LF/CRLF y se
+comprobó dentro del contenedor Linux que la vista carga las nueve celdas.
+
+Verificación pendiente: el smoke autenticado de `/v1/high-probability` en
+producción no se pudo ejecutar porque la conexión Railway sólo expone nombres de
+variables, no el valor de `DIKAMAHA_API_KEY`. La ruta está confirmada dentro de
+una imagen idéntica, pero no se ha observado su respuesta real en producción.
 
 Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
 La confirmación sobre los 270 partidos nunca publicados controla que sus
