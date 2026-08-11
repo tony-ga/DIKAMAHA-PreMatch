@@ -1,10 +1,47 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-11
-**Fase activa:** Fase 120 Expansión del catálogo a 63 ligas y torneos
-**Objetivo Fase 120:** cubrir competiciones que ESPN publica y el catálogo no
-tenía, empezando por el caso reportado de clasificación de Champions y Leagues
-Cup, y dejarlas con la misma funcionalidad que el resto del catálogo.
+**Fase activa:** Fase 121 Resumen diario de aciertos
+**Objetivo Fase 121:** publicar un aviso diario del desempeño verificado, en la
+Mini App y en el avisador de canal, sin renunciar al principio de Fase 118 de
+no ocultar nunca los fallos.
+
+## Fase 121 — Resumen diario de aciertos
+
+Implementada. Ver `DEC-161`.
+
+- `SettlementRepository.on_date(fecha, tz)` agrega `SqlAlchemySettlementRepository`
+  para leer un día calendario local completo, cronológico y sin filtrar por
+  acierto, distinto de `recent()` (ventana por conteo) que usa
+  `/v1/track-record`;
+- `GET /v1/track-record/daily?date=YYYYMMDD` expone el mismo agregado por
+  fecha local; `date` es obligatorio, sin valor por defecto de reloj de
+  pared en el servidor, y rechaza formato inválido con `422`;
+- el avisador (`TelegramChannelPublisher`) publica una vez al día, después de
+  las 09:00 América/Ciudad de México, el resumen íntegro del día calendario
+  local anterior completo — partido a partido, con ✅/❌ por los tres
+  mercados oficiales y el conteo agregado de 1X2 al inicio —, bajo la clave
+  de idempotencia `track_record_daily:{fecha}`, separada de
+  `track_record:{semana}` de Fase 118;
+- la Mini App muestra "Resultados de hoy" en `/historial`, por encima del
+  historial acumulado existente, calculando la fecha de hoy en el cliente
+  igual que ya hace `markets/page.tsx`;
+- corregido un defecto real de zona horaria detectado por las propias
+  pruebas: SQLite no normaliza a UTC un `datetime` con tzinfo al
+  persistirlo, de modo que sembrar un veredicto con un `kickoff_ts` que no
+  esté ya convertido a UTC lo agrupa en el día equivocado; las pruebas usan
+  ahora `.astimezone(timezone.utc)` explícito, igual que el resto del
+  sistema ya exige;
+- corregido un defecto de superposición de rutas en Playwright: `/api/track-record**`
+  interceptaba también `/api/track-record/daily` por ser un patrón más
+  amplio, de modo que la Mini App recibía el agregado semanal en vez del
+  diario en la prueba E2E; la ruta más específica debe registrarse después
+  para ganar la coincidencia — no es un defecto de producción, sólo del
+  arnés de pruebas, pero quedó documentado con una prueba dedicada.
+
+Estado: `implemented`. Gates: 637 pruebas Python aprobadas/8 omitidas (13
+nuevas), 21 Vitest, 17 Playwright (1 nueva) y typecheck/build Next aprobados.
+Despliegue a Railway pendiente de aprobación del usuario.
 
 ## Fase 120 — Expansión del catálogo a 63 ligas y torneos
 

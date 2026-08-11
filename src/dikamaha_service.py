@@ -27,10 +27,11 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field as dataclass_field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from statistics import quantiles
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 from fastapi import FastAPI, HTTPException, Request
@@ -96,6 +97,7 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
 
 LOGGER = logging.getLogger(__name__)
 SERVICE_VERSION = "dikamaha_local_service_v1.9_live_probability_engine"
+MEXICO_TZ = ZoneInfo("America/Mexico_City")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -676,6 +678,17 @@ def _upcoming_catalog(
     return sorted(unique.values(), key=lambda row: row["kickoff_ts"])[:limit]
 
 
+def _daily_track_record_date(value: str) -> date:
+    """Valida la fecha `YYYYMMDD` del resumen diario de aciertos."""
+
+    if not value:
+        raise _error("track_record_date_required")
+    try:
+        return datetime.strptime(value, "%Y%m%d").date()
+    except ValueError as error:
+        raise _error("track_record_date_invalid") from error
+
+
 def _upcoming_dates(
     now: datetime, selected_date: str | None,
 ) -> tuple[str, ...]:
@@ -962,6 +975,30 @@ def create_app(
         payload = track_record(store.recent(requested))
         payload["status"] = "available"
         payload["window"]["requested"] = requested
+        return payload
+
+    @app.get("/v1/track-record/daily", tags=["inference"])
+    def track_record_daily_view(date: str) -> dict[str, Any]:
+        """Publica el desempeño verificado de un día calendario completo.
+
+        Mismo principio que `/v1/track-record`: no hay parámetro para pedir
+        sólo aciertos. Agrupa por fecha local (Ciudad de México) del kickoff
+        en vez de por ventana de conteo. `date` es obligatorio en formato
+        `YYYYMMDD` para no depender del reloj del servidor.
+        """
+
+        target = _daily_track_record_date(date)
+        store = getattr(app.state, "settlement_store", None)
+        if store is None:
+            return {
+                "status": "unavailable",
+                "reason": "settlement_store_not_configured",
+                "date": target.isoformat(),
+                "official": {}, "shadow": {"markets": {}}, "matches": [],
+            }
+        payload = track_record(store.on_date(target, MEXICO_TZ))
+        payload["status"] = "available"
+        payload["date"] = target.isoformat()
         return payload
 
     @app.get("/v1/media/image", tags=["explorer"])

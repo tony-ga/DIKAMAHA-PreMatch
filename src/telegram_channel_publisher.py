@@ -5,7 +5,7 @@
 #   sqlalchemy>=2
 #   tenacity>=8.2
 
-Version: 1.9.0
+Version: 1.10.0
 Created: 2026-07-29
 """
 
@@ -383,6 +383,7 @@ class TelegramChannelPublisher:
         counts = {
             "frozen": 0, "summaries": 0, "cards": 0,
             "markets": 0, "results": 0, "track_record": 0,
+            "track_record_daily": 0,
         }
         local = current.astimezone(MEXICO_TZ)
         if local.timetz().replace(tzinfo=None) >= SUMMARY_TIME:
@@ -393,6 +394,7 @@ class TelegramChannelPublisher:
                 cards=cards, markets=markets)
         counts["results"] = self._results(current)
         counts["track_record"] = self._weekly_track_record(current)
+        counts["track_record_daily"] = self._daily_track_record(current)
         return counts
 
     def _weekly_track_record(self, now: datetime) -> int:
@@ -413,6 +415,38 @@ class TelegramChannelPublisher:
             return 0
         return self._publish(
             key, "track_record", _track_record_text(track_record(records)), now)
+
+    def _daily_track_record(self, now: datetime) -> int:
+        """Publica el resumen íntegro del día calendario anterior.
+
+        Se ejecuta a partir de las 09:00, cuando cualquier partido del día
+        anterior ya superó por horas el `kickoff + 3h` de liquidación. Lista
+        acierto y fallo por partido: DEC-161 prohíbe un aviso que sólo muestre
+        aciertos, igual que DEC-158 lo prohíbe para el historial acumulado.
+        """
+
+        if self._settlements is None:
+            return 0
+        local = now.astimezone(MEXICO_TZ)
+        if local.timetz().replace(tzinfo=None) < SUMMARY_TIME:
+            return 0
+        target = local.date() - timedelta(days=1)
+        target_text = target.isoformat()
+        complete_key = f"track_record_daily:{target_text}:complete"
+        if self._repository.publication_exists(complete_key):
+            return 0
+        records = self._settlements.on_date(target, MEXICO_TZ)
+        if not records:
+            return 0
+        chunks = _daily_track_record_chunks(target, records)
+        published = sum(self._publish(
+            f"track_record_daily:{target_text}:{index}",
+            "track_record_daily", text, now)
+            for index, text in enumerate(chunks))
+        self._repository.record_publication(
+            complete_key, "track_record_daily_complete", "internal",
+            f"track_record_daily_complete:{target_text}:{len(chunks)}", now)
+        return published
 
     def _daily(
         self, target: date, now: datetime,
@@ -1235,6 +1269,51 @@ def _track_record_text(summary: dict[str, Any]) -> str:
         "kickoff. Se cuentan aciertos y fallos del periodo completo.</i>",
     ])
     return "\n".join(lines)
+
+
+def _daily_track_record_chunks(
+    target: date, records: list[SettlementRecord],
+) -> list[str]:
+    """Redacta el resumen diario partido a partido, sin ocultar fallos."""
+
+    header = "\n".join([
+        "📅 <b>DIKAMAHA · RESULTADOS DEL DÍA</b>",
+        f"🗓️ {target.strftime('%d/%m/%Y')} · Ciudad de México",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ])
+    ordered = sorted(records, key=lambda row: row.kickoff_ts)
+    lines = [_daily_match_line(row) for row in ordered]
+    hits = sum(
+        1 for row in ordered
+        if bool((row.official_verdicts.get("one_x_two") or {}).get("hit")))
+    footer = (
+        f"\n\n<b>{hits}/{len(ordered)}</b> resultados 1X2 acertados este "
+        "día.\n<i>Se listan todos los partidos liquidados, acertados y no "
+        "acertados.</i>")
+    chunks = _chunk_lines(header, lines, 3700)
+    chunks[-1] += footer
+    return chunks
+
+
+def _daily_match_line(row: SettlementRecord) -> str:
+    """Resume horario, marcador y los tres veredictos oficiales."""
+
+    local = row.kickoff_ts.astimezone(MEXICO_TZ).strftime("%H:%M")
+    home = _mobile_label(row.home_team_name, 24)
+    away = _mobile_label(row.away_team_name, 24)
+    marks = " · ".join(
+        f"{label} {_short_mark(row.official_verdicts.get(key))}"
+        for key, label in (
+            ("one_x_two", "1X2"), ("over_2_5", "+2.5"), ("btts", "BM")))
+    return (
+        f"\n\n🕘 {local} · {html.escape(home)} {row.score_home}"
+        f"–{row.score_away} {html.escape(away)}\n└ {marks}")
+
+
+def _short_mark(verdict: Any) -> str:
+    """Etiqueta compacta de acierto para listas densas."""
+
+    return "✅" if isinstance(verdict, dict) and verdict.get("hit") else "❌"
 
 
 def _names(row: FrozenPrediction) -> tuple[str, str]:

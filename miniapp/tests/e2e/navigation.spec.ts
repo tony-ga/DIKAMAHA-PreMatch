@@ -579,3 +579,75 @@ test("withholds the percentage until the sample is large enough", async ({ page 
   await expect(page.getByText(/Faltan 14 partidos verificados/).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Mercados experimentales" })).toHaveCount(0);
 });
+
+function dailySettlement(index: number, hit: boolean) {
+  return {
+    fixture_key: `mex.1:80000${index}`,
+    league_slug: "mex.1",
+    match_id: 800000 + index,
+    kickoff_ts: `2026-08-11T2${index}:00:00Z`,
+    home_team_name: "Puebla",
+    away_team_name: "Guadalajara",
+    score_home: hit ? 2 : 0,
+    score_away: hit ? 0 : 2,
+    prediction_hash: `daily${index}`,
+    official_verdicts: {
+      one_x_two: { predicted: "Puebla", actual: hit ? "Puebla" : "Guadalajara", hit },
+      over_2_5: { predicted: "No", actual: "No", hit: true },
+      btts: { predicted: "No", actual: "No", hit: true },
+    },
+    shadow_verdicts: {},
+  };
+}
+
+test("shows today's daily digest above the accumulated historial, hits and misses both visible", async ({ page }) => {
+  // DEC-161 / Fase 121: el resumen diario nunca oculta un fallo.
+  // Playwright resuelve por el patrón registrado más recientemente, así que
+  // el genérico "/track-record" debe registrarse ANTES que el específico
+  // "/track-record/daily" para que éste último gane la coincidencia.
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      window: { requested: 60, available: 24 },
+      official: {
+        one_x_two: { hits: 14, total: 24, rate: 0.5833, sufficient_sample: true, interval_95: [0.3866, 0.7541], baseline_rate: 0.5 },
+        over_2_5: { hits: 15, total: 24, rate: 0.625, sufficient_sample: true, interval_95: [0.4239, 0.7943], baseline_rate: 0.5417 },
+        btts: { hits: 13, total: 24, rate: 0.5417, sufficient_sample: true, interval_95: [0.3495, 0.7203], baseline_rate: 0.5 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: {} },
+      matches: [settlement(0, true), settlement(1, false)],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+    }),
+  }));
+  await page.route("**/api/track-record/daily**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      date: "2026-08-11",
+      official: {
+        one_x_two: { hits: 1, total: 2, sufficient_sample: false, missing_for_rate: 18 },
+        over_2_5: { hits: 2, total: 2, sufficient_sample: false, missing_for_rate: 18 },
+        btts: { hits: 2, total: 2, sufficient_sample: false, missing_for_rate: 18 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: {} },
+      matches: [dailySettlement(0, true), dailySettlement(1, false)],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+    }),
+  }));
+
+  await page.goto("/historial");
+
+  await expect(page.getByRole("heading", { name: "Resultados de hoy" })).toBeVisible();
+  await expect(page.getByText("1/2 resultados 1X2 acertados hoy")).toBeVisible();
+  await expect(page.getByText("Puebla").first()).toBeVisible();
+  await expect(page.getByText("Guadalajara").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Historial de aciertos" })).toBeVisible();
+  await expect(page.getByText("Real Madrid").first()).toBeVisible();
+  const checks = await page.getByText("✅").count();
+  const crosses = await page.getByText("❌").count();
+  expect(checks).toBeGreaterThan(0);
+  expect(crosses).toBeGreaterThan(0);
+});

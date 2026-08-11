@@ -43,6 +43,10 @@ function MarketSummary({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10).replaceAll("-", "");
+}
+
 function MatchRow({ value }: { value: unknown }) {
   const row = record(value);
   const verdicts = record(row.official_verdicts);
@@ -67,6 +71,48 @@ function MatchRow({ value }: { value: unknown }) {
       })}
       <small className="ladder-edge">Predicción congelada · {String(row.prediction_hash ?? "")}</small>
     </div>
+  );
+}
+
+export function DailyTrackRecord() {
+  const dateParam = today();
+  const query = useQuery({
+    queryKey: ["track-record-daily", dateParam],
+    queryFn: () =>
+      api<Record<string, unknown>>(`/api/track-record/daily?date=${dateParam}`),
+    staleTime: 60_000,
+  });
+  if (query.isLoading) {
+    return <StatePanel title="Cargando resultados de hoy">Leyendo los partidos liquidados hoy.</StatePanel>;
+  }
+  const payload = record(query.data);
+  if (query.isError || payload.status !== "available") {
+    return null;
+  }
+  const matches = Array.isArray(payload.matches) ? payload.matches : [];
+  if (!matches.length) {
+    return (
+      <article className="model-card">
+        <div className="model-card-header"><h3>Resultados de hoy</h3></div>
+        <p className="ladder-caption">Todavía no se liquidó ningún partido de hoy.</p>
+      </article>
+    );
+  }
+  const oneXTwo = record(record(payload.official).one_x_two);
+  const hits = Number(oneXTwo.hits ?? 0);
+  return (
+    <article className="model-card">
+      <div className="model-card-header"><h3>Resultados de hoy</h3></div>
+      <p className="ladder-caption">
+        {hits}/{matches.length} resultados 1X2 acertados hoy. Se muestran todos los partidos
+        liquidados, acertados y no acertados.
+      </p>
+      <div className="stack" style={{ marginTop: 14 }}>
+        {matches.map((match, index) => (
+          <MatchRow key={String(record(match).fixture_key ?? index)} value={match} />
+        ))}
+      </div>
+    </article>
   );
 }
 
