@@ -59,6 +59,21 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from prematch_shadow_catalog import build_shadow_observation, load_shadow_catalog
 
 try:
+    from src.settlement_store import (
+        DEFAULT_WINDOW,
+        MAXIMUM_WINDOW,
+        build_repository as build_settlement_repository,
+        track_record,
+    )
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from settlement_store import (
+        DEFAULT_WINDOW,
+        MAXIMUM_WINDOW,
+        build_repository as build_settlement_repository,
+        track_record,
+    )
+
+try:
     from src.universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
     from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
     from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
@@ -734,11 +749,32 @@ def _error(detail: str) -> HTTPException:
     return HTTPException(status_code=422, detail={"code": code, "message": detail}, headers={"X-Error-Code": code})
 
 
+def _settlement_store() -> Any | None:
+    """Conecta el historial verificado sólo si hay base de datos configurada.
+
+    La API operó sin base de datos hasta Fase 118; su ausencia degrada el
+    endpoint a `unavailable` en vez de impedir el arranque del servicio.
+    """
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        return build_settlement_repository(database_url)
+    except Exception as exc:  # noqa: BLE001 - la API no debe caer por el historial
+        LOGGER.warning(json.dumps({
+            "event": "settlement_store_unavailable",
+            "error_type": type(exc).__name__,
+        }, sort_keys=True))
+        return None
+
+
 def create_app(
     config: ServiceConfig | None = None,
     fixture_resolver: Any | None = None,
     live_runtime: Any | None = None,
     provider_context: Any | None = None,
+    settlement_store: Any | None = None,
 ) -> FastAPI:
     """Crea la aplicación local con dependencias inyectadas.
 
@@ -795,6 +831,8 @@ def create_app(
     app.state.provider_context = provider_context or ProviderMatchContextService()
     app.state.live_runtime = live_engine
     app.state.shadow_catalog = shadow_catalog
+    app.state.settlement_store = (
+        settlement_store if settlement_store is not None else _settlement_store())
     app.state.metrics = MetricsStore()
     app.state.upcoming_cache = AsyncPredictionCache()
     app.state.request_gate = RequestGate(
@@ -902,6 +940,29 @@ def create_app(
         """Lista sólo modelos realmente ejecutados y su clasificación."""
 
         return model_inventory(app.state.live_runtime.policy)
+
+    @app.get("/v1/track-record", tags=["inference"])
+    def track_record_view(window: int = DEFAULT_WINDOW) -> dict[str, Any]:
+        """Publica el desempeño verificado sobre la cola cronológica completa.
+
+        DEC-101 prohíbe seleccionar partidos por desempeño, de modo que no hay
+        ningún parámetro que permita pedir sólo aciertos: la ventana es
+        estrictamente cronológica e incluye los fallos.
+        """
+
+        store = getattr(app.state, "settlement_store", None)
+        if store is None:
+            return {
+                "status": "unavailable",
+                "reason": "settlement_store_not_configured",
+                "window": {"requested": int(window), "available": 0},
+                "official": {}, "shadow": {"markets": {}}, "matches": [],
+            }
+        requested = max(1, min(int(window), MAXIMUM_WINDOW))
+        payload = track_record(store.recent(requested))
+        payload["status"] = "available"
+        payload["window"]["requested"] = requested
+        return payload
 
     @app.get("/v1/media/image", tags=["explorer"])
     async def provider_media(url: str) -> Response:

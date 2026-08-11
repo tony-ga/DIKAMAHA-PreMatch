@@ -2226,6 +2226,66 @@ gate oficial, anclaje de la calibración y ausencia de campos nuevos en
 `official_live_prediction`. Gates: 578 Python aprobadas/8 omitidas, 21 Vitest,
 14 Playwright, typecheck y build Next aprobados.
 
+DEC-158
+Fecha: 2026-08-10
+Problema: la evidencia de acierto existe pero es efímera. El publicador de
+canal compara por partido la predicción congelada contra el resultado
+reconciliado y emite `RESULTADO FINAL VERIFICADO`, pero `channel_publications`
+sólo guarda `payload_hash`, es decir el hash del texto enviado, y no un
+veredicto estructurado por mercado. No hay agregado, no hay historial y la
+Mini App no muestra ningún resultado pasado, de modo que un usuario no puede
+comprobar el desempeño acumulado sin releer el canal mensaje por mensaje.
+Opciones: derivar el historial al vuelo releyendo el canal; persistir el
+veredicto en el ledger SQLite del publicador; o persistirlo en el Postgres
+compartido y exponer un agregado de sólo lectura.
+Decisión: persistir el veredicto en Postgres en una tabla nueva
+`prediction_settlements`, escrita append-only por el publicador dentro del
+mismo `_results` que ya publica el resultado por partido, y exponerla mediante
+`GET /v1/track-record` y una vista `/historial` en la Mini App bajo sesión
+privada. Se liquidan los tres mercados oficiales y, en bloque separado y
+rotulado como experimental, los mercados shadow del contrato
+`phase102_v4_direct_totals` usando los conteos por periodo y lado que
+`explorer_statistics` ya publica. La muestra arranca vacía y sólo admite
+predicciones congeladas antes del kickoff con `prediction_hash` verificable; no
+se hace backfill retrospectivo con Fases 105 y 106. En la Mini App el acceso a
+Alertas pasa a Ajustes y su lugar en la navegación principal lo toma el
+historial, porque el worker sigue con `MINIAPP_ALERTS_ENABLED=false`.
+Motivo: el ledger del publicador es SQLite local sin volumen montado en Railway
+y el servicio de la Mini App no lo ve, de modo que no puede sostener un
+historial. Postgres ya es servicio compartido. Excluir el backfill mantiene la
+promesa verificable: cada fila corresponde a un mensaje publicado antes de
+conocerse el resultado.
+Estado: congelada e implementada
+Impacto en contratos/fases: abre Fase 118. Añade `DATABASE_URL` al servicio de
+la API, que hasta ahora no tenía acceso a base de datos. Es puramente lectura y
+agregación posterior: no modifica probabilidades, router, snapshots, settlement
+existente ni promoción, y no altera el texto de `_result_text`. Los mercados
+shadow no cambian de clasificación por aparecer en el historial.
+Evidencia requerida: ningún settlement antes de `kickoff + 3h`, ninguno sin
+`reconciled` y `score_reconciled`, veredictos correctos en los tres mercados
+oficiales incluido el empate, veredictos shadow correctos contra conteos por
+periodo y lado, idempotencia ante doble ejecución, cola estrictamente
+cronológica que incluye fallos, umbral de muestra mínima antes de publicar un
+porcentaje, intervalo de confianza y baseline visibles, ausencia total de ROI,
+cuotas, stakes o lenguaje de rentabilidad, y gates pytest, Vitest, Playwright,
+typecheck y build Next aprobados.
+Evidencia obtenida (2026-08-10): `official_verdicts` extrae la comparación que
+ya rendía `_result_text`, de modo que el texto publicado en el canal no cambia y
+los 13 casos de Fase 101 siguen aprobando. `_shadow_verdicts` liquida las líneas
+congeladas contra `periods[side][period][metric]`, donde `COUNT_TYPES["shots"]`
+ya suma goles y cumple DEC-110 sin trabajo adicional. La persistencia falla
+cerrado: `_seal_settlement` captura cualquier error para no impedir que el canal
+publique un resultado ya verificado. El intervalo usa Wilson, que a 24 partidos
+con 14 aciertos entrega `58%` entre `39%` y `75%`, ancho suficiente para que la
+cifra no se lea como precisión establecida. Dos defectos propios se corrigieron
+durante la implementación: el aviso de almacén no disponible se emitía en texto
+plano sobre un logger cuyo contrato es JSON, lo que rompía
+`test_request_id_is_propagated_and_logs_are_metadata_only` en la suite completa,
+y `create_app` dependía del entorno ambiental; el almacén pasó a ser un puerto
+inyectable con respaldo en variable de entorno. Gates: 592 pruebas Python
+aprobadas/8 omitidas, 21 Vitest, 16 Playwright, typecheck y build Next
+aprobados.
+
 ```text
 DEC-NNN
 Fecha:

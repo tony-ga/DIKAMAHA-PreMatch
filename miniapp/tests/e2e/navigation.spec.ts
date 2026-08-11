@@ -505,3 +505,77 @@ test("shows BFF to DIKAMAHA connection status", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Conectada" })).toBeVisible();
   await expect(page.getByText(/navegador → BFF → API DIKAMAHA/)).toBeVisible();
 });
+
+function settlement(index: number, hit: boolean) {
+  return {
+    fixture_key: `esp.1:90000${index}`,
+    league_slug: "esp.1",
+    match_id: 900000 + index,
+    kickoff_ts: `2026-08-0${index + 1}T20:00:00Z`,
+    home_team_name: "Real Madrid",
+    away_team_name: "Barcelona",
+    score_home: hit ? 2 : 0,
+    score_away: hit ? 0 : 2,
+    prediction_hash: `abc123def${index}`,
+    official_verdicts: {
+      one_x_two: { predicted: "Real Madrid", actual: hit ? "Real Madrid" : "Barcelona", hit },
+      over_2_5: { predicted: "No", actual: "No", hit: true },
+      btts: { predicted: "No", actual: "No", hit: true },
+    },
+    shadow_verdicts: {},
+  };
+}
+
+test("shows verified hits with confidence interval and baseline", async ({ page }) => {
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      window: { requested: 60, available: 24 },
+      official: {
+        one_x_two: {
+          hits: 14, total: 24, rate: 0.5833, sufficient_sample: true,
+          interval_95: [0.3866, 0.7541], baseline_rate: 0.5,
+        },
+        over_2_5: { hits: 15, total: 24, rate: 0.625, sufficient_sample: true, interval_95: [0.4239, 0.7943], baseline_rate: 0.5417 },
+        btts: { hits: 13, total: 24, rate: 0.5417, sufficient_sample: true, interval_95: [0.3495, 0.7203], baseline_rate: 0.5 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: { home_corners_remaining_over_4_5: { hits: 3, total: 5 } } },
+      matches: [settlement(0, true), settlement(1, false)],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+    }),
+  }));
+  await page.goto("/historial");
+  await expect(page.getByRole("heading", { name: "Historial de aciertos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mercados oficiales" })).toBeVisible();
+  await expect(page.getByText("14/24")).toBeVisible();
+  await expect(page.getByText(/Entre 39% y 75% · referencia 50%/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mercados experimentales" })).toBeVisible();
+  await expect(page.getByText(/Sin validación confirmatoria/)).toBeVisible();
+  await expect(page.getByText("✅").first()).toBeVisible();
+  await expect(page.getByText("❌").first()).toBeVisible();
+  await expect(page.getByText(/congeló y publicó antes del kickoff/)).toBeVisible();
+});
+
+test("withholds the percentage until the sample is large enough", async ({ page }) => {
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      window: { requested: 60, available: 6 },
+      official: {
+        one_x_two: { hits: 4, total: 6, sufficient_sample: false, missing_for_rate: 14 },
+        over_2_5: { hits: 3, total: 6, sufficient_sample: false, missing_for_rate: 14 },
+        btts: { hits: 2, total: 6, sufficient_sample: false, missing_for_rate: 14 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: {} },
+      matches: [settlement(0, true)],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+    }),
+  }));
+  await page.goto("/historial");
+  await expect(page.getByText(/Faltan 14 partidos verificados/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mercados experimentales" })).toHaveCount(0);
+});
