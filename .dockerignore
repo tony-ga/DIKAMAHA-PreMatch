@@ -22,6 +22,9 @@ artifacts/*
 !artifacts/prematch_snapshots/phase57_incremental_v1_20260727/
 !artifacts/prematch_snapshots/phase57_incremental_v1_20260727/manifest.json
 !artifacts/prematch_snapshots/phase57_incremental_v1_20260727/event_windows.json.gz
+!artifacts/prematch_snapshots/phase160_recent_topup_v1_20260811/
+!artifacts/prematch_snapshots/phase160_recent_topup_v1_20260811/manifest.json
+!artifacts/prematch_snapshots/phase160_recent_topup_v1_20260811/event_windows.json.gz
 !artifacts/phase_84a_team_count_markets/
 !artifacts/phase_84a_team_count_markets/audit.json
 !artifacts/phase_84a_team_count_markets/config.json
