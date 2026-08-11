@@ -1,0 +1,13 @@
+{
+  "audit.json": "d27a25f0ca66a0e3b9ee707e4a18ca89c10ef50309281df8b20c7fe49a63777a",
+  "cells.json": "058a56bf786aa6e12876dd9dc7f038c2fb323ff3513640519532e84243c6952c",
+  "config.json": "fe551893ee5fcead079fc85f2c6b3815cd48ba2de36cced9d9953bb870dfa5f5",
+  "coverage.json": "ff0e7aa2ce67a1d9fb02ebc4e347cdd36f409ac4c7e0762c8f958d163b7e59ef",
+  "eligibility.json": "1a7bfe6e3d5c764a7535b7923d11ce482c873468dddfcd87ca0e693890cee7e6",
+  "final_report.md": "7fa6b1f9a00786ac5636b4fdd87bce0cfe7dba54c816ca36d251950af822cc32",
+  "holdout_cells.json": "3baa29cfdc1df1baac6b4d3bab5356f1d988c85c120bc17f1b4378294f0ddf74",
+  "holdout_market_summary.json": "a6064da3d81bcf0af40d090d76b732395d67201ba4a54c0fc45633b7e41d5962",
+  "input_manifest.json": "c8cc3c5b231a7c4755564c89ed08f0d236ee85122b106c4471c54d935d7a9249",
+  "market_summary.json": "ad9dea290dedded8a3c8a2d9e1becbf81584dda4abb3d39f904d930ef436294f",
+  "served_btts_cache.json": "c33b98364b5bba3573dfa10616ba945cdbacbf1cf3b24e805c63a6542d9bad06"
+}

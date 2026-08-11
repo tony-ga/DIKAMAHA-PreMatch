@@ -2460,6 +2460,56 @@ inválido y nunca acepta filtrar por acierto; la Mini App muestra "Resultados
 de hoy" sin ocultar partidos fallidos; suite Python, Vitest y typecheck
 aprobados.
 
+DEC-162
+Fecha: 2026-08-11
+Problema: el usuario pide un menú "Mayor probabilidad" que exponga, entre todos
+los mercados de los partidos del día, los picks más probables, con el criterio
+explícito de que un pick sólo se exponga si es un mercado donde el modelo tiene
+alta probabilidad de acertar. Eso obliga a decidir dos cosas que ninguna fase
+anterior había resuelto: qué evidencia autoriza exponer un pick, y si los ocho
+mercados de conteo por equipo — congelados como
+`experimental_shadow_not_promoted` por DEC-104 y DEC-112 — pueden aparecer en
+un menú destacado. La cadena oficial de goles no resuelve el problema: Fase 105
+la midió en 50.65% de acierto, muy por debajo de los mercados shadow.
+Opciones: (a) restringir el menú a 1X2, Más de 2.5 y Ambos marcan, únicos
+mercados oficiales, aceptando que el menú quede casi vacío y con los mercados
+peor calibrados; (b) rankear los once mercados servidos, admitiendo sólo los
+pares (mercado, tramo de confianza) que superen un gate de fiabilidad propio,
+tratándolo como decisión de exposición de producto y no como promoción de
+modelo; (c) añadir además las líneas de la rejilla adaptativa de Fase 102, que
+nunca han pasado evaluación walk-forward por familia.
+Decisión: opción (b), elegida explícitamente por el usuario. Fase 122 mide
+fiabilidad condicional al nivel de confianza declarado, no acierto global, y
+sólo un par (mercado, tramo) que supere el gate puede aparecer en el menú. Los
+mercados shadow conservan íntegra su etiqueta y su badge visible; el router
+oficial, los modelos y las promociones no se tocan. El menú publica la tasa
+observada histórica del tramo y su intervalo, no la probabilidad del modelo, y
+declara si la ventaja viene del modelo (`model_edge`) o de la tasa base del
+mercado (`base_rate_driven`).
+Motivo: la pregunta del producto no es qué mercado acierta más sino dónde una
+probabilidad alta es de fiar, y son distintas: `home_corners_over_4_5` acierta
+76.1% con una tasa base de 72.0%. Publicar la cifra del modelo sería engañoso
+en ambos sentidos, porque el backtest encontró mercados que declaran 68% y
+entregan 89%, y otros que declaran 84% y entregan 74%. Exponer un pick es una
+decisión de interfaz sobre una probabilidad que el sistema ya calcula y ya
+muestra en el detalle pre-match; no altera ninguna salida ni ningún modelo, de
+modo que no requiere ni implica promoción.
+Estado: congelada
+Impacto en contratos/fases: abre Fase 122. Añade `src/high_probability_view.py`,
+`GET /v1/high-probability`, la ruta BFF y la página `/mayor-probabilidad` con
+una sexta entrada de navegación. No modifica el router oficial, los artefactos
+sellados de Fases 84A/88/104/106/119, `user_market_view`, ni el estatus de
+ningún modelo. Prohíbe expresamente comunicar ventaja predictiva incremental de
+1X2, Más de 2.5 o Ambos marcan, que no superaron el gate en ningún tramo.
+Evidencia requerida: gate congelado antes de puntuar y su resultado reportado
+aunque sea de rechazo total; cohorte causal sin uso en ajuste ni selección de
+los modelos servidos; probabilidades servidas y no crudas; comparador pareado
+contra la estrategia de tasa base con McNemar exacto y control Benjamini-
+Hochberg; confirmación de las celdas aptas sobre los partidos de la cohorte
+nunca publicados; degradación segura a menú vacío ante artefacto ausente,
+corrupto o de versión distinta; suite Python, Vitest, Playwright, typecheck y
+build Next aprobados.
+
 ```text
 DEC-NNN
 Fecha:

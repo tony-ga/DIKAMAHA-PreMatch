@@ -55,6 +55,10 @@ artifacts/phase_88_team_market_markov/*
 artifacts/phase_106_probability_repair/*
 !artifacts/phase_106_probability_repair/calibrator.json
 !artifacts/phase_106_probability_repair/hashes.json
+!artifacts/phase_122_confidence_reliability/
+artifacts/phase_122_confidence_reliability/*
+!artifacts/phase_122_confidence_reliability/eligibility.json
+!artifacts/phase_122_confidence_reliability/hashes.json
 !artifacts/phase_114_live_markov_hawkes_v1/
 artifacts/phase_114_live_markov_hawkes_v1/*
 !artifacts/phase_114_live_markov_hawkes_v1/audit.json

@@ -10,6 +10,7 @@ const navigation = [
   { href: "/", icon: "⌂", label: "Inicio" },
   { href: "/live", icon: "●", label: "En vivo" },
   { href: "/predictions", icon: "◫", label: "Predicciones" },
+  { href: "/mayor-probabilidad", icon: "▲", label: "Mayor prob." },
   { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/historial", icon: "✓", label: "Aciertos" },
 ];

@@ -1,0 +1,193 @@
+{
+  "buckets": [
+    [
+      0.55,
+      0.65
+    ],
+    [
+      0.65,
+      0.75
+    ],
+    [
+      0.75,
+      1.0001
+    ]
+  ],
+  "eligible_cells": [
+    {
+      "bucket_high": 0.75,
+      "bucket_low": 0.65,
+      "calibration_gap": 0.20915802006636885,
+      "edge_source": "model_edge",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.9583333333333334,
+      "holdout_picks": 24,
+      "market": "home_corners_over_4_5",
+      "mean_predicted": 0.6834594295980607,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.8326848812989442,
+        0.9328142241319879
+      ],
+      "observed_rate": 0.8926174496644296,
+      "picks": 149,
+      "skill_vs_naive": 0.2483221476510068
+    },
+    {
+      "bucket_high": 1.0,
+      "bucket_low": 0.75,
+      "calibration_gap": 0.041784769829389945,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.8076923076923077,
+      "holdout_picks": 26,
+      "market": "home_shots_second_half_over_5_5",
+      "mean_predicted": 0.7695359848875912,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.7434365256634087,
+        0.8645167604159651
+      ],
+      "observed_rate": 0.8113207547169812,
+      "picks": 159,
+      "skill_vs_naive": 0.0
+    },
+    {
+      "bucket_high": 0.75,
+      "bucket_low": 0.65,
+      "calibration_gap": 0.09454753964785434,
+      "edge_source": "model_edge",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.7959183673469388,
+      "holdout_picks": 49,
+      "market": "away_shots_over_10_5",
+      "mean_predicted": 0.673664380881947,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.6947609816426483,
+        0.8283547304987475
+      ],
+      "observed_rate": 0.7682119205298014,
+      "picks": 151,
+      "skill_vs_naive": 0.039735099337748436
+    },
+    {
+      "bucket_high": 0.65,
+      "bucket_low": 0.55,
+      "calibration_gap": 0.17099093204586746,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.831858407079646,
+      "holdout_picks": 113,
+      "market": "home_shots_over_10_5",
+      "mean_predicted": 0.5846060828795057,
+      "non_degraded_rate": 0.9411764705882353,
+      "observed_ci95": [
+        0.7174821675812314,
+        0.7900742557408386
+      ],
+      "observed_rate": 0.7555970149253731,
+      "picks": 536,
+      "skill_vs_naive": 0.02985074626865669
+    },
+    {
+      "bucket_high": 0.65,
+      "bucket_low": 0.55,
+      "calibration_gap": 0.16710003449626598,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.8125,
+      "holdout_picks": 96,
+      "market": "away_corners_over_4_5",
+      "mean_predicted": 0.579506300345363,
+      "non_degraded_rate": 0.8666666666666667,
+      "observed_ci95": [
+        0.7040516704839012,
+        0.7849113805895387
+      ],
+      "observed_rate": 0.746606334841629,
+      "picks": 442,
+      "skill_vs_naive": 0.015837104072398245
+    },
+    {
+      "bucket_high": 0.75,
+      "bucket_low": 0.65,
+      "calibration_gap": -0.010409122412965655,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.6938775510204082,
+      "holdout_picks": 196,
+      "market": "home_corners_second_half_over_2_5",
+      "mean_predicted": 0.6981523130744443,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.6587600737861298,
+        0.7153284033731081
+      ],
+      "observed_rate": 0.6877431906614786,
+      "picks": 1028,
+      "skill_vs_naive": 0.006809338521400754
+    },
+    {
+      "bucket_high": 0.75,
+      "bucket_low": 0.65,
+      "calibration_gap": -0.002341801864593096,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.6538461538461539,
+      "holdout_picks": 26,
+      "market": "away_shots_second_half_over_5_5",
+      "mean_predicted": 0.6855716155291893,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.6078132584324228,
+        0.7501064082709462
+      ],
+      "observed_rate": 0.6832298136645962,
+      "picks": 161,
+      "skill_vs_naive": 0.012422360248447117
+    },
+    {
+      "bucket_high": 0.65,
+      "bucket_low": 0.55,
+      "calibration_gap": 0.06954740097533263,
+      "edge_source": "model_edge",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.6486486486486487,
+      "holdout_picks": 74,
+      "market": "home_corners_second_half_over_2_5",
+      "mean_predicted": 0.6106327792048476,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.6162092049252144,
+        0.7380215922798093
+      ],
+      "observed_rate": 0.6801801801801802,
+      "picks": 222,
+      "skill_vs_naive": 0.13063063063063063
+    },
+    {
+      "bucket_high": 0.75,
+      "bucket_low": 0.65,
+      "calibration_gap": -0.01908386165113385,
+      "edge_source": "base_rate_driven",
+      "holdout_consistent": true,
+      "holdout_observed_rate": 0.703030303030303,
+      "holdout_picks": 165,
+      "market": "home_shots_second_half_over_5_5",
+      "mean_predicted": 0.6989355303779571,
+      "non_degraded_rate": 1.0,
+      "observed_ci95": [
+        0.6469183002797372,
+        0.7110850924386848
+      ],
+      "observed_rate": 0.6798516687268232,
+      "picks": 809,
+      "skill_vs_naive": 0.0
+    }
+  ],
+  "gate": "v2_post_hoc_holdout_confirmed",
+  "primary_result_frozen_gate_v1_eligible_cells": 0,
+  "status": "experimental_shadow_not_promoted",
+  "version": "phase122_confidence_reliability_v1"
+}
