@@ -110,10 +110,30 @@ Fase 122; los tres son anteriores.
    de la API, por encima del límite del servidor. No se alteró la atomicidad del
    resumen.
 
+4. **Un fixture no predecible abortaba el ciclo entero del canal.** Corregido el
+   timeout, el error cambió a `dikamaha_prediction_rejected`, que destapó la
+   causa de fondo: `/v1/predict/upcoming` devuelve 422 legítimo para ligas cuyo
+   historial causal no alcanza el mínimo del snapshot, y la comprensión de lista
+   de `_daily` propagaba esa excepción hasta `run_cycle`. Desde que Fase 120
+   amplió el catálogo a 63 ligas ese caso es frecuente, de modo que un solo
+   partido impedía publicar todos los demás. `_freeze_all` aísla el fallo por
+   fixture, publica el resumen con los que sí congelaron y registra los omitidos
+   en `daily_partial_failure`; sin ningún fixture predecible no se publica nada.
+   Ver `DEC-163`.
+
+Medición que descartó la hipótesis inicial: dentro del contenedor, la carga del
+snapshot son `1.89 s` y una predicción en frío `3.41 s` (`0.12 s` en caliente),
+muy por debajo del tope de 30 s del servidor. El problema nunca fue el coste de
+la inferencia.
+
 `tests/test_docker_runtime_requirements.py` añade cuatro guardas de regresión
 sobre el manifiesto de la imagen: driver de PostgreSQL presente, dependencias de
 arranque declaradas, artefacto de Fase 122 copiado y ledger apuntando a `/data`.
 La suite normal no detectaba nada de esto porque en local sí existe el driver.
+`tests/test_phase_101_partial_fixture_failure.py` cubre el aislamiento por
+fixture, el log auditable, el caso sin ningún fixture predecible y el replay.
+
+Gates tras la corrección: 671 pruebas Python aprobadas/8 omitidas.
 
 Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
 La confirmación sobre los 270 partidos nunca publicados controla que sus

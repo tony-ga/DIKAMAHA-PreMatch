@@ -31,7 +31,7 @@ from src.settlement_store import (
     SettlementRepository,
     track_record,
 )
-from src.telegram_bot import PredictionGateway
+from src.telegram_bot import PredictionGateway, PredictionGatewayError
 
 LOGGER = logging.getLogger(__name__)
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
@@ -463,7 +463,12 @@ class TelegramChannelPublisher:
             return 0, 0, cards, markets
         fixtures = self._select_fixtures(self._tomorrow_fixtures(target))
         fixtures = self._with_logos(fixtures)
-        predictions = [self._freeze(row, target_text, now) for row in fixtures]
+        predictions = self._freeze_all(fixtures, target_text, now)
+        if not predictions:
+            LOGGER.warning(
+                "daily_summary_skipped_no_predictable_fixture target=%s "
+                "fixtures=%d", target_text, len(fixtures))
+            return 0, 0, 0, 0
         chunks = _summary_chunks(target, predictions, self._mode)
         published = sum(self._publish(
             f"daily:{target_text}:{index}", "daily_summary", text, now,
@@ -533,6 +538,36 @@ class TelegramChannelPublisher:
                 str(team.get("id")): str(team.get("logo") or "")
                 for team in teams if isinstance(team, dict)}
         return [_attach_logos(row, catalogs) for row in fixtures]
+
+    def _freeze_all(
+        self, fixtures: list[dict[str, Any]], target: str, now: datetime,
+    ) -> list[FrozenPrediction]:
+        """Congela cada fixture y aísla los que el modelo no puede predecir.
+
+        Un fixture cuya liga o cuyos equipos no alcanzan el mínimo causal del
+        snapshot recibe un 422 legítimo de `/v1/predict/upcoming`. Antes ese
+        rechazo abortaba el ciclo completo por la comprensión de lista, de modo
+        que un solo partido no predecible impedía publicar los demás. Desde
+        Fase 120 el catálogo tiene 63 ligas y ese caso es frecuente, no
+        excepcional.
+
+        La causalidad no cambia: se publica exactamente lo que el modelo sí
+        pudo congelar, y lo omitido queda en el log como fallo parcial
+        auditable, misma convención que `_league_upcoming`.
+        """
+
+        predictions: list[FrozenPrediction] = []
+        skipped: list[str] = []
+        for fixture in fixtures:
+            try:
+                predictions.append(self._freeze(fixture, target, now))
+            except PredictionGatewayError as error:
+                skipped.append(f"{_fixture_key(fixture)}:{error}")
+        if skipped:
+            LOGGER.warning(
+                "daily_partial_failure target=%s frozen=%d skipped=%d detail=%s",
+                target, len(predictions), len(skipped), ",".join(skipped))
+        return predictions
 
     def _freeze(
         self, fixture: dict[str, Any], target: str, now: datetime,

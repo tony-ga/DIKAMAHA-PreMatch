@@ -2510,6 +2510,45 @@ nunca publicados; degradación segura a menú vacío ante artefacto ausente,
 corrupto o de versión distinta; suite Python, Vitest, Playwright, typecheck y
 build Next aprobados.
 
+DEC-163
+Fecha: 2026-08-11
+Problema: desde que Fase 120 amplió el catálogo a 63 ligas, la lista de partidos
+de mañana incluye con frecuencia competiciones cuyo historial causal no alcanza
+el mínimo del snapshot. `/v1/predict/upcoming` devuelve para ellas un 422
+legítimo (`league_history_below_minimum`), el gateway lo traduce a
+`PredictionGatewayError` y la comprensión de lista de `_daily` propagaba esa
+excepción hasta `run_cycle`. El resultado observado en producción es que un solo
+partido no predecible abortaba el ciclo completo y no se publicaba ninguno de los
+demás, con `channel_cycle_failed error=dikamaha_prediction_rejected`.
+Opciones: (a) filtrar por liga antes de predecir, manteniendo una allowlist de
+competiciones con historial suficiente, que habría que sincronizar a mano con
+cada snapshot nuevo; (b) aislar el fallo por fixture y publicar el resumen con
+los que sí congelaron, registrando los omitidos como fallo parcial auditable;
+(c) dejarlo como está y aceptar que el canal no publique cuando aparezca una
+liga nueva.
+Decisión: opción (b). `_daily` delega en `_freeze_all`, que captura
+`PredictionGatewayError` por fixture, acumula los omitidos y los registra en
+`daily_partial_failure` con detalle por clave de fixture. Si ningún fixture
+resulta predecible no se publica nada, y esa condición se registra como
+`daily_summary_skipped_no_predictable_fixture`: no existe resumen vacío.
+Motivo: publicar diez predicciones de once es estrictamente mejor que no
+publicar ninguna, y omitir el partido que el modelo no puede predecir es más
+honesto que inventarle una probabilidad. La alternativa (a) reintroduce una
+lista manual que se desincroniza con cada snapshot, que es justamente el tipo de
+acoplamiento que Fase 120 acaba de eliminar del catálogo. Se conserva la
+convención de fallos parciales auditables que ya usa `_league_upcoming`.
+Estado: congelada
+Impacto en contratos/fases: modifica el alcance del resumen diario de Fase 101,
+que ahora enumera sólo los fixtures realmente congelados. No cambia
+probabilidades, causalidad, claves de idempotencia ni el orden de publicación.
+Las predicciones ya congeladas siguen persistiendo por fixture, de modo que un
+partido omitido puede congelarse en un ciclo posterior si su liga gana historial.
+No toca el router, los modelos ni ninguna promoción.
+Evidencia requerida: un fixture rechazado no aborta el ciclo ni queda congelado;
+el resumen se publica con el resto; el fallo parcial aparece en el log con
+conteos de congelados y omitidos; sin ningún fixture predecible no se publica
+resumen alguno; el replay permanece idempotente y no vuelve a llamar al modelo.
+
 ```text
 DEC-NNN
 Fecha:
