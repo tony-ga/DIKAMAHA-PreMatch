@@ -51,6 +51,20 @@
     {"slug": "eng.fa", "name": "FA Cup", "region": "ENG", "kind": "domestic_cup", "enabled": true},
     {"slug": "eng.league_cup", "name": "League Cup", "region": "ENG", "kind": "domestic_cup", "enabled": true},
     {"slug": "esp.copa_del_rey", "name": "Copa del Rey", "region": "ESP", "kind": "domestic_cup", "enabled": true},
-    {"slug": "esp.super_cup", "name": "Spanish Super Cup", "region": "ESP", "kind": "domestic_cup", "enabled": true}
+    {"slug": "esp.super_cup", "name": "Spanish Super Cup", "region": "ESP", "kind": "domestic_cup", "enabled": true},
+    {"slug": "ned.1", "name": "Eredivisie", "region": "NED", "kind": "league", "enabled": true},
+    {"slug": "por.1", "name": "Primeira Liga", "region": "POR", "kind": "league", "enabled": true},
+    {"slug": "tur.1", "name": "Super Lig", "region": "TUR", "kind": "league", "enabled": true},
+    {"slug": "bel.1", "name": "Belgian Pro League", "region": "BEL", "kind": "league", "enabled": true},
+    {"slug": "sco.1", "name": "Scottish Premiership", "region": "SCO", "kind": "league", "enabled": true},
+    {"slug": "den.1", "name": "Danish Superliga", "region": "DEN", "kind": "league", "enabled": true},
+    {"slug": "nor.1", "name": "Eliteserien", "region": "NOR", "kind": "league", "enabled": true},
+    {"slug": "per.1", "name": "Liga 1 Peru", "region": "PER", "kind": "league", "enabled": true},
+    {"slug": "ksa.1", "name": "Saudi Pro League", "region": "KSA", "kind": "league", "enabled": true},
+    {"slug": "jpn.1", "name": "J1 League", "region": "JPN", "kind": "league", "enabled": true},
+    {"slug": "concacaf.leagues.cup", "name": "Leagues Cup", "region": "CONCACAF", "kind": "international_club", "enabled": true},
+    {"slug": "uefa.champions_qual", "name": "Champions League Qualifying", "region": "UEFA", "kind": "qualification", "enabled": true},
+    {"slug": "uefa.europa_qual", "name": "Europa League Qualifying", "region": "UEFA", "kind": "qualification", "enabled": true},
+    {"slug": "uefa.europa.conf_qual", "name": "Conference League Qualifying", "region": "UEFA", "kind": "qualification", "enabled": true}
   ]
 }
