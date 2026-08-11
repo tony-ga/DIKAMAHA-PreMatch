@@ -74,6 +74,47 @@ producción no se pudo ejecutar porque la conexión Railway sólo expone nombres
 variables, no el valor de `DIKAMAHA_API_KEY`. La ruta está confirmada dentro de
 una imagen idéntica, pero no se ha observado su respuesta real en producción.
 
+## Corrección operativa — tres defectos de producción preexistentes
+
+Los logs del despliegue de Fase 122 destaparon tres defectos que impedían que el
+historial verificado de Fases 118/121 acumulara nada. Ninguno fue introducido por
+Fase 122; los tres son anteriores.
+
+1. **`requirements.docker.txt` declaraba SQLAlchemy sin driver DBAPI.** Dentro del
+   contenedor, `build_repository("postgresql://...")` fallaba con
+   `ModuleNotFoundError: No module named 'psycopg2'`. Como `_settlement_store()`
+   captura la excepción para que la API no caiga, el efecto era
+   `phase118_settlement_store_unavailable` en cada arranque y `/v1/track-record`
+   degradado a `unavailable` de forma permanente y silenciosa. Se añadió
+   `psycopg2-binary>=2.9,<3`, el mismo pin que ya usaba
+   `requirements.staging.txt`. Reproducido y verificado dentro del contenedor.
+
+2. **El ledger SQLite vivía en disco efímero.** El Dockerfile fija
+   `TELEGRAM_CHANNEL_LEDGER_PATH=/data/telegram_channel.sqlite`, pero el servicio
+   no tenía volumen montado en `/data`, de modo que `channel_predictions` y
+   `channel_publications` se destruían en cada redeploy. Eso permitía que el canal
+   republicara y, sobre todo, impedía sellar settlements: `_seal_settlement`
+   recorre `self._repository.predictions()`, así que sin ledger no hay veredictos
+   que escribir en `prediction_settlements`. Era el riesgo abierto ya documentado
+   en Fase 118. Se montó el volumen `dikamaha-prematch-ledger` en `/data`.
+
+3. **El publicador era más impaciente que el servidor.** `TELEGRAM_REQUEST_TIMEOUT`
+   usaba su valor por defecto de 15 s mientras la API opera con
+   `inference_timeout_seconds: 30.0`, de modo que el cliente abandonaba
+   `/v1/predict/upcoming` antes de que el servidor tuviera permitido responder.
+   En cada redeploy el primer ciclo fallaba con `channel_cycle_failed` a los ~18 s
+   del arranque, con la ruta de inferencia todavía fría. `_daily` publica el
+   resumen sólo cuando congelan todos los fixtures, así que un solo timeout
+   abortaba el ciclo completo; las predicciones ya congeladas sí persistían y el
+   ciclo siguiente reanudaba. Se fijó `TELEGRAM_REQUEST_TIMEOUT=45` en el servicio
+   de la API, por encima del límite del servidor. No se alteró la atomicidad del
+   resumen.
+
+`tests/test_docker_runtime_requirements.py` añade cuatro guardas de regresión
+sobre el manifiesto de la imagen: driver de PostgreSQL presente, dependencias de
+arranque declaradas, artefacto de Fase 122 copiado y ledger apuntando a `/data`.
+La suite normal no detectaba nada de esto porque en local sí existe el driver.
+
 Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
 La confirmación sobre los 270 partidos nunca publicados controla que sus
 umbrales no se ajustaran a cifras ya conocidas, pero ese holdout es un

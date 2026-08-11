@@ -11,5 +11,10 @@ tenacity>=8.2,<10
 python-dotenv>=1.0,<2
 python-json-logger>=2.0,<4
 SQLAlchemy>=2.0,<3
+# Driver DBAPI de PostgreSQL. Sin él, `create_engine("postgresql://...")` de
+# Fase 118 falla con ModuleNotFoundError y el historial de aciertos degrada a
+# `unavailable` de forma permanente y silenciosa. Mismo pin que
+# requirements.staging.txt.
+psycopg2-binary>=2.9,<3
 joblib>=1.3,<2
 scikit-learn>=1.4,<2
