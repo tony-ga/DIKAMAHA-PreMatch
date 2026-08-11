@@ -2286,6 +2286,82 @@ inyectable con respaldo en variable de entorno. Gates: 592 pruebas Python
 aprobadas/8 omitidas, 21 Vitest, 16 Playwright, typecheck y build Next
 aprobados.
 
+DEC-159
+Fecha: 2026-08-10
+Problema: Fase 105 diagnosticó una sola vez, sobre 1,000 partidos, que BTTS
+llegaba sobreconfiado y una línea Markov degradaba; Fase 106 lo corrigió con
+un mecanismo específico a BTTS. Desde entonces el sistema añadió mercados y
+capas nuevas (Fases 108-118) sin repetir un diagnóstico de calibración
+integral, y no hay evidencia reciente de si los 11 mercados pre-match
+(oficiales y shadow) siguen bien calibrados frente a lo realmente servido hoy,
+ni un mecanismo reutilizable para corregir sesgos futuros sin duplicar la
+clase completa de `src/btts_probability.py` por cada mercado nuevo.
+Opciones: repetir el patrón Fase 105/106 sólo para BTTS de nuevo; construir un
+calibrador específico por mercado cada vez que aparezca sesgo, uno por
+archivo; o diagnosticar los 11 mercados sobre una cohorte de 500 partidos
+disjunta de la ya usada por Fase 105/106, con un mecanismo de corrección
+genérico de shrinkage bayesiano por liga, ajustado sólo en un bloque externo
+cronológicamente anterior y disjunto, con el mismo gate de Fase 106.
+Decisión: la tercera opción. Fase 119 selecciona 500 partidos elegibles más
+recientes del split `confirmation` (mismo criterio causal de Fase 105,
+reutilizando `official_goal_rows.json` cuando `OFFICIAL_CACHE_VERSION`
+coincide) y los 500 elegibles inmediatamente anteriores como bloque externo de
+ajuste, sin solape. El diagnóstico mide lo que el sistema sirve hoy (BTTS vía
+el calibrador ya sellado de Fase 106, Markov con el fallback de liga ya
+aplicado), no las salidas crudas de Fase 105. Entra a corrección todo mercado
+binario con ECE > 0.05 y tasa positiva entre 5% y 95% sobre los 500 de prueba;
+1X2 queda excluido del mecanismo binario y sólo se diagnostica.
+`src/market_calibration.py` define un puerto único de calibración por
+shrinkage bayesiano; el gate final reutiliza sin modificar `_bootstrap`,
+`_stability`, `_passed` y `_metrics` de Fase 106 sobre los 500 de prueba con
+el hiperparámetro ya congelado en el bloque externo. Un mercado que no pasa el
+gate se reporta diagnosticado y no corregido; Fase 119 no aborta por el fallo
+de un único mercado.
+Motivo: reutilizar el gate y el patrón warm-up/medición ya validados en Fase
+106 evita reinventar el criterio de promoción; separar el bloque de ajuste de
+la cohorte de comparación antes/después evita que la mejora reportada esté
+inflada por sobreajuste sobre los mismos 500 partidos usados como evidencia.
+Un mecanismo genérico evita duplicar `btts_probability.py` por cada mercado
+nuevo sin forzar Platt scaling, ya descartado por DEC-135 porque invertía el
+ranking de la señal estructural.
+Estado: congelada e implementada
+Impacto en contratos/fases: abre Fase 119. No modifica `src/btts_probability.py`
+ni el calibrador sellado de Fase 106; un sesgo residual en BTTS se corregiría
+como segunda capa documentada, sin reabrir DEC-134/135. Añade un punto de
+integración fail-open en `src/team_count_market_runtime.py` (mercados Fase
+84A y 88), con caída exacta a la probabilidad no corregida si el artefacto
+falla o el hash no coincide. No toca 1X2 más allá de diagnóstico. No autoriza
+ROI, cuotas ni Kelly.
+Evidencia requerida: cohortes de prueba y ajuste disjuntas y deterministas;
+diagnóstico con ECE, log-loss, Brier y curva de calibración de 10 bins por
+mercado sobre los 500 de prueba; para cada mercado corregido, hiperparámetro
+elegido únicamente en el bloque externo, gate de Fase 106 aprobado sobre los
+500 de prueba con el hiperparámetro ya congelado; replay de los mismos 500
+partidos tras aplicar sólo las correcciones que pasaron, con reporte visual
+antes/después; proveedores de producción que validan hash y caen de forma
+segura al valor no corregido si el artefacto falla; suite completa aprobada.
+Evidencia obtenida (2026-08-10): sobre 500 partidos de prueba (2025-12-14 a
+2026-07-26, 21 ligas) se diagnosticaron los 11 mercados tal como se sirven
+hoy. Cuatro mostraron sesgo real: `home_corners_over_4_5` (ECE 0.180),
+`away_shots_over_10_5` (0.130), `away_corners_over_4_5` (0.114) y `over_2_5`
+(0.088, el mercado oficial de goles, nunca antes recalibrado). El resto,
+incluido `btts` (0.034), opera dentro del margen sano gracias a Fase 106.
+Se probaron dos criterios de selección de hiperparámetro en el bloque
+externo (minimizar log-loss; priorizar `non_degradation_rate`) para los
+cuatro candidatos. El shrinkage bayesiano redujo el ECE de forma sustancial
+en los cuatro (hasta -0.16 en `home_corners_over_4_5`) y mejoró log-loss y
+Brier en tres de cuatro, con IC95% bootstrap enteramente positivo en
+`home_corners_over_4_5` (`[0.002, 0.065]`). Ninguno alcanzó
+`non_degradation_rate >= 0.70` sobre los 500 de prueba (0.52-0.62 según
+mercado); los cuatro quedan diagnosticados y no corregidos, sin publicar
+calibrador. `PHASE119_CORRECTED_MARKETS` en
+`src/team_count_market_runtime.py` queda vacío por diseño, con el mecanismo
+de aplicación fail-open conectado y probado para que una fase futura, con
+más partidos por liga o un método de dos niveles, sólo tenga que añadir
+nombres. Reporte visual en
+`artifacts/phase_119_bias_backtest_500/dashboard.html`. Gates: 616 pruebas
+Python aprobadas/8 omitidas.
+
 ```text
 DEC-NNN
 Fecha:
