@@ -44,6 +44,10 @@ from src.telegram_channel_publisher import (  # noqa: E402
     TelegramChannelPublisher,
     TelegramChannelTransport,
 )
+from src.settlement_store import (  # noqa: E402
+    SettlementRepository,
+    build_repository as build_settlement_repository,
+)
 from src.runtime_logging import configure_runtime_logging  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
@@ -107,6 +111,29 @@ def _transport(dry_run: bool) -> ChannelTransport:
     return TelegramChannelTransport(token, channel)
 
 
+def _settlements(dry_run: bool) -> SettlementRepository | None:
+    """Conecta el historial verificado sólo si hay base de datos configurada.
+
+    Ausencia de `DATABASE_URL` degrada a `None` (Fase 118 no persiste
+    veredictos, pero el resto del canal sigue publicando) en vez de impedir
+    que arranque el worker.
+    """
+
+    if dry_run:
+        return None
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        LOGGER.warning("phase118_settlement_store_unconfigured")
+        return None
+    try:
+        return build_settlement_repository(database_url)
+    except Exception as error:  # noqa: BLE001 - el canal no debe caer por esto
+        LOGGER.warning(
+            "phase118_settlement_store_unavailable error=%s",
+            type(error).__name__)
+        return None
+
+
 def _publisher(
     dry_run: bool, mode: str | None, ledger_path: Path | None,
 ) -> TelegramChannelPublisher:
@@ -116,7 +143,8 @@ def _publisher(
     gateway = DikamahaHttpGateway(config)
     return TelegramChannelPublisher(
         gateway, _repository(dry_run, ledger_path), _transport(dry_run),
-        mode or os.getenv("TELEGRAM_CHANNEL_MODE", "full"))
+        mode or os.getenv("TELEGRAM_CHANNEL_MODE", "full"),
+        settlements=_settlements(dry_run))
 
 
 def _cycle(publisher: TelegramChannelPublisher) -> dict[str, int]:
