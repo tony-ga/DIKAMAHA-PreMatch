@@ -82,6 +82,43 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _ledger_engine(ledger_path: Path | None) -> Any:
+    """Elige PostgreSQL cuando existe, y SQLite sólo como respaldo local.
+
+    El ledger vivía siempre en SQLite sobre el disco del contenedor, que es
+    efímero: cada redeploy destruía `channel_predictions` y
+    `channel_publications`. Eso permitía republicar en el canal y, sobre todo,
+    impedía sellar settlements, porque `_seal_settlement` recorre las
+    predicciones congeladas. Montar un volumen para persistirlo provocó una
+    caída de producción por permisos del punto de montaje.
+
+    PostgreSQL ya está conectado al servicio mediante `DATABASE_URL`, es
+    persistente por definición y no depende de la propiedad de ningún
+    directorio. Un `--ledger-path` explícito sigue forzando SQLite para
+    ejecuciones locales y auditorías.
+    """
+
+    if ledger_path is not None:
+        return _sqlite_engine(ledger_path)
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        LOGGER.info("channel_ledger_backend backend=postgresql")
+        return create_engine(database_url, future=True, pool_pre_ping=True)
+    configured = os.getenv("TELEGRAM_CHANNEL_LEDGER_PATH")
+    target = Path(configured) if configured else DATABASE
+    LOGGER.warning(
+        "channel_ledger_backend backend=sqlite_ephemeral path=%s "
+        "reason=DATABASE_URL_missing", target)
+    return _sqlite_engine(target)
+
+
+def _sqlite_engine(target: Path) -> Any:
+    """Crea el motor SQLite y garantiza su directorio."""
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return create_engine(f"sqlite+pysqlite:///{target}", future=True)
+
+
 def _repository(
     dry_run: bool, ledger_path: Path | None = None,
 ) -> SqlAlchemyChannelRepository:
@@ -92,10 +129,7 @@ def _repository(
             "sqlite+pysqlite://", future=True,
             connect_args={"check_same_thread": False}, poolclass=StaticPool)
     else:
-        configured = os.getenv("TELEGRAM_CHANNEL_LEDGER_PATH")
-        target = ledger_path or (Path(configured) if configured else DATABASE)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        engine = create_engine(f"sqlite+pysqlite:///{target}", future=True)
+        engine = _ledger_engine(ledger_path)
     ChannelBroadcastBase.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
     return SqlAlchemyChannelRepository(factory)

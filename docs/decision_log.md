@@ -2549,6 +2549,48 @@ el resumen se publica con el resto; el fallo parcial aparece en el log con
 conteos de congelados y omitidos; sin ningún fixture predecible no se publica
 resumen alguno; el replay permanece idempotente y no vuelve a llamar al modelo.
 
+DEC-164
+Fecha: 2026-08-11
+Problema: el ledger del publicador de canal vivía en SQLite sobre el disco del
+contenedor, que Railway destruye en cada redeploy. Con `channel_predictions` y
+`channel_publications` vacías, el canal podía republicar lo ya publicado y,
+sobre todo, `_seal_settlement` no tenía predicciones que recorrer, de modo que
+`prediction_settlements` de Fase 118 nunca podía acumular y `/v1/track-record`
+quedaba permanentemente vacío. El riesgo estaba documentado desde Fase 118 sin
+resolver. El intento de persistirlo montando un volumen Railway en `/data`
+provocó una caída de producción: el punto de montaje llega propiedad de root y
+el contenedor corre como el usuario `app`, así que `create_all` falló con
+`unable to open database file` y arrastró a la API entera.
+Opciones: (a) montar el volumen y añadir un entrypoint que arranque como root,
+ceda `/data` al usuario `app` y baje privilegios con `gosu`; (b) migrar el
+ledger a la base PostgreSQL que el servicio ya tiene conectada mediante
+`DATABASE_URL`; (c) dejarlo efímero y aceptar que Fase 118 nunca acumule.
+Decisión: opción (b). `_ledger_engine` elige PostgreSQL cuando `DATABASE_URL`
+existe y conserva SQLite sólo como respaldo local declarado en el log. Un
+`--ledger-path` explícito sigue forzando SQLite para auditorías. Las tres
+columnas JSON pasan a `JSONB().with_variant(JSON(), "sqlite")`, misma
+convención que `prediction_settlements`. El esquema se crea con `create_all`,
+igual que Fase 118, sin migración numerada.
+Motivo: la opción (a) resuelve el síntoma y conserva la causa —un proceso no
+root escribiendo en un punto de montaje ajeno—, además de exigir un entrypoint
+privilegiado que hoy no existe y que ampliaría la superficie del contenedor.
+PostgreSQL ya está conectado, es persistente por definición, no depende de la
+propiedad de ningún directorio y es el mismo almacén donde Fase 118 escribe los
+settlements que este ledger alimenta.
+Estado: congelada
+Impacto en contratos/fases: cambia el almacenamiento del ledger de Fase 101. No
+altera probabilidades, causalidad, claves de idempotencia, orden de publicación
+ni el contrato de ningún endpoint. Desbloquea la acumulación de
+`prediction_settlements` y por tanto `/v1/track-record` y
+`/v1/track-record/daily`. No hay datos que migrar: el ledger anterior era
+efímero y estaba vacío tras los redeploys.
+Evidencia requerida: con `DATABASE_URL` el motor es PostgreSQL con
+`pool_pre_ping`; sin ella cae a SQLite con aviso explícito de efimeridad;
+`--ledger-path` gana a `DATABASE_URL`; dry-run permanece en memoria; las tres
+tablas se crean solas; las columnas compilan a JSONB en PostgreSQL y JSON en
+SQLite; y contra un PostgreSQL real el congelado es idempotente y los registros
+sobreviven a la reconstrucción del repositorio en un proceso nuevo.
+
 ```text
 DEC-NNN
 Fecha:

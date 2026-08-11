@@ -170,11 +170,34 @@ Correcciones para que no se repita:
   la recuperación en el ciclo siguiente, que un fallo de ciclo no reconstruya
   el publicador, y la propiedad del directorio en la imagen.
 
-Consecuencia asumida: **el ledger vuelve a ser efímero**. El riesgo original de
-Fase 118 sigue abierto y ahora con causa entendida: persistirlo exige un volumen
-cuya propiedad se ceda al usuario `app` mediante un entrypoint que arranque como
-root y baje privilegios, o migrarlo a PostgreSQL. La segunda opción es la
-recomendada y sigue siendo el siguiente paso.
+## Ledger del canal migrado a PostgreSQL
+
+El riesgo abierto desde Fase 118 queda cerrado. Ver `DEC-164`.
+
+`_ledger_engine` elige PostgreSQL cuando existe `DATABASE_URL` —que el servicio
+ya tenía conectada— y conserva SQLite sólo como respaldo local, declarado en el
+log como efímero. Un `--ledger-path` explícito sigue forzando SQLite para
+auditorías, y dry-run permanece en memoria. Las tres columnas JSON usan
+`JSONB().with_variant(JSON(), "sqlite")`, misma convención que
+`prediction_settlements`; el esquema se crea con `create_all`, igual que Fase
+118, sin migración numerada.
+
+Se descartó montar un volumen con un entrypoint privilegiado: resolvía el
+síntoma conservando la causa —un proceso no root escribiendo en un punto de
+montaje ajeno— y exigía ampliar la superficie del contenedor. PostgreSQL no
+depende de la propiedad de ningún directorio y es el mismo almacén donde Fase
+118 escribe los settlements que este ledger alimenta.
+
+Verificado contra un PostgreSQL 17 real, no sólo con dobles: congelado
+idempotente, publicación registrada, y **los registros sobreviven a la
+reconstrucción del repositorio en un proceso nuevo**, que es exactamente lo que
+el redeploy destruía. Las columnas quedan como `jsonb` en el esquema real.
+
+No hubo datos que migrar: el ledger anterior era efímero y estaba vacío tras los
+redeploys. Con esto `prediction_settlements` puede acumular por primera vez, y
+`/v1/track-record` deja de estar condenado a responder vacío.
+
+Gates: 683 pruebas Python aprobadas/8 omitidas.
 
 Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
 La confirmación sobre los 270 partidos nunca publicados controla que sus

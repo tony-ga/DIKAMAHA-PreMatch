@@ -20,7 +20,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import requests
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, select
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint, select
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -65,8 +67,10 @@ class FrozenChannelPrediction(ChannelBroadcastBase):
     match_id: Mapped[int] = mapped_column(Integer, nullable=False)
     competition_id: Mapped[str] = mapped_column(String(100), nullable=False)
     kickoff_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    fixture_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
-    prediction_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    fixture_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    prediction_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False)
     prediction_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -96,7 +100,8 @@ class FrozenChannelMarketSnapshot(ChannelBroadcastBase):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     fixture_key: Mapped[str] = mapped_column(String(160), nullable=False)
     contract_version: Mapped[str] = mapped_column(String(40), nullable=False)
-    prediction_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    prediction_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB().with_variant(JSON(), "sqlite"), nullable=False)
     prediction_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
