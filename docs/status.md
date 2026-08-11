@@ -133,7 +133,48 @@ La suite normal no detectaba nada de esto porque en local sí existe el driver.
 `tests/test_phase_101_partial_fixture_failure.py` cubre el aislamiento por
 fixture, el log auditable, el caso sin ningún fixture predecible y el replay.
 
-Gates tras la corrección: 671 pruebas Python aprobadas/8 omitidas.
+Gates tras la corrección: 675 pruebas Python aprobadas/8 omitidas.
+
+## Incidencia de producción — caída de API y bot por el volumen del ledger
+
+El punto 2 de arriba se implementó montando un volumen Railway en `/data` y
+**provocó una caída de dos servicios**. Queda documentado como error propio.
+
+Causa: el contenedor corre como el usuario `app` (UID 100). El Dockerfile hace
+`chown` de `/data` en build, pero el montaje del volumen ocurre en runtime y
+tapa ese directorio con uno nuevo propiedad de root. `create_all` del ledger
+falló con `sqlite3.OperationalError: unable to open database file`.
+
+Amplificación: el publicador construía su ledger **antes** del `try` del bucle,
+de modo que la excepción mató el proceso hijo; el supervisor termina el
+contenedor cuando ese hijo muere, así que cayó también la API. El bot premium
+cayó a continuación porque su readiness de arranque contra la API dejó de
+responder. `DIKAMAHA-PreMatch` y `dikamaha-premium-telegram-bot` quedaron en
+`CRASHED`; Mini App, worker y PostgreSQL no se vieron afectados.
+
+Restauración: retirar el volumen no bastó, porque el cambio queda `staged` y no
+se aplica hasta el despliegue siguiente, lo que produjo dos intentos fallidos
+más. Lo que restauró el servicio fue apuntar
+`TELEGRAM_CHANNEL_LEDGER_PATH` a `/app/data/telegram_channel.sqlite`, un
+directorio propiedad de `app` que no es punto de montaje. Después se redesplegó
+el bot. Los cinco servicios volvieron a `SUCCESS`.
+
+Correcciones para que no se repita:
+
+- el publicador construye su ledger **dentro** del bucle protegido y lo
+  reintenta en el ciclo siguiente; un ledger inaccesible degrada la difusión y
+  ya no puede tumbar la inferencia;
+- el Dockerfile fija la ruta por defecto bajo `/app/data`, con un comentario
+  que explica por qué `/data` es peligroso mientras el proceso no sea root;
+- `tests/test_phase_101_publisher_resilience.py` cubre el ledger inaccesible,
+  la recuperación en el ciclo siguiente, que un fallo de ciclo no reconstruya
+  el publicador, y la propiedad del directorio en la imagen.
+
+Consecuencia asumida: **el ledger vuelve a ser efímero**. El riesgo original de
+Fase 118 sigue abierto y ahora con causa entendida: persistirlo exige un volumen
+cuya propiedad se ceda al usuario `app` mediante un entrypoint que arranque como
+root y baje privilegios, o migrarlo a PostgreSQL. La segunda opción es la
+recomendada y sigue siendo el siguiente paso.
 
 Limitación abierta: el gate v2 se especificó después de ver el resultado de v1.
 La confirmación sobre los 270 partidos nunca publicados controla que sus

@@ -16,7 +16,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DIKAMAHA_MAX_CONCURRENT_REQUESTS=16 \
     DIKAMAHA_ALLOWED_ORIGINS= \
     DIKAMAHA_BIND_HOST=0.0.0.0 \
-    TELEGRAM_CHANNEL_LEDGER_PATH=/data/telegram_channel.sqlite
+    # `/app/data` pertenece al usuario `app` y no es punto de montaje, de modo
+    # que siempre es escribible. `/data` sí lo es: al montar ahí un volumen
+    # Railway, el punto de montaje llega propiedad de root, el usuario `app` no
+    # puede crear el fichero y el worker moría arrastrando a la API entera.
+    # Persistir este ledger exige un volumen cuya propiedad se ceda a `app`, o
+    # migrarlo a PostgreSQL; hasta entonces es efímero por diseño explícito.
+    TELEGRAM_CHANNEL_LEDGER_PATH=/app/data/telegram_channel.sqlite
 
 WORKDIR /app
 

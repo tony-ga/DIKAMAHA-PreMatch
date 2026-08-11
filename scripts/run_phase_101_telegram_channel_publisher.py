@@ -156,18 +156,35 @@ def _cycle(publisher: TelegramChannelPublisher) -> dict[str, int]:
 
 
 def _run(args: argparse.Namespace) -> int:
-    """Mantiene el worker vivo o ejecuta una sola iteración."""
+    """Mantiene el worker vivo o ejecuta una sola iteración.
 
-    publisher = _publisher(args.dry_run, args.mode, args.ledger_path)
+    La construcción del publicador queda dentro del bucle protegido a
+    propósito. Este proceso es hijo del supervisor que también levanta la API,
+    y su muerte termina el contenedor completo: una incidencia real dejó la API
+    en crash-loop porque el ledger SQLite apuntaba a un directorio no
+    escribible y `create_all` fallaba antes de llegar al `try`. Un ledger
+    inaccesible debe degradar la difusión, nunca tumbar la inferencia.
+    """
+
     interval = max(60, int(os.getenv("TELEGRAM_CHANNEL_POLL_SECONDS", "300")))
+    publisher: TelegramChannelPublisher | None = None
     while True:
         try:
+            if publisher is None:
+                publisher = _publisher(
+                    args.dry_run, args.mode, args.ledger_path)
             _cycle(publisher)
         except (
             ChannelPublisherError, PredictionGatewayError, SQLAlchemyError,
             ValueError, OSError,
         ) as error:
-            LOGGER.exception("channel_cycle_failed error=%s", error)
+            if publisher is None:
+                LOGGER.exception(
+                    "channel_publisher_unavailable error=%s", error)
+                if args.once:
+                    return 1
+            else:
+                LOGGER.exception("channel_cycle_failed error=%s", error)
         if args.once:
             return 0
         time.sleep(interval)

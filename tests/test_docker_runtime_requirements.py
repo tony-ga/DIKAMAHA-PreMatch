@@ -75,13 +75,16 @@ def test_dockerfile_copies_the_phase_122_eligibility_artifact() -> None:
             f"el Dockerfile no copia {name} de Fase 122")
 
 
-def test_ledger_path_points_at_the_persistent_mount() -> None:
-    """El ledger del publicador debe vivir en `/data`, no en el disco efímero.
+def test_ledger_path_is_writable_by_the_runtime_user() -> None:
+    """El ledger no puede apuntar a un punto de montaje ajeno al usuario `app`.
 
-    `/data` sólo persiste si el servicio Railway tiene un volumen montado ahí.
-    Esta prueba fija el contrato del lado de la imagen; el montaje es
-    configuración de infraestructura y se verifica aparte.
+    Montar un volumen Railway en `/data` dejó el punto de montaje propiedad de
+    root; el usuario `app` no pudo crear el fichero SQLite y el worker murió
+    arrastrando a la API a un crash-loop. La ruta por defecto debe vivir bajo
+    `/app`, que la imagen crea y cede explícitamente.
     """
 
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-    assert "TELEGRAM_CHANNEL_LEDGER_PATH=/data/" in dockerfile
+    assert "TELEGRAM_CHANNEL_LEDGER_PATH=/app/data/" in dockerfile
+    assert "mkdir -p /app/data" in dockerfile
+    assert "chown -R app:app" in dockerfile
