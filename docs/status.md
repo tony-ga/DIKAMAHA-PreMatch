@@ -1,13 +1,50 @@
 # Estado operativo DIKAMAHA
 
 **Actualizado:** 2026-08-10
-**Fase activa:** Fase 118 Historial de aciertos verificable
-**Objetivo:** persistir en Postgres el veredicto por mercado de cada predicción
-congelada ya liquidada y exponerlo agregado en la Mini App y el canal, con
-umbral de muestra, intervalo de confianza y baseline, sin tocar probabilidades,
-router ni promoción.
+**Fase activa:** Fase 119 Backtest de calibración de 500 partidos
+**Objetivo:** diagnosticar sesgo de calibración en los 11 mercados pre-match
+(oficiales y shadow) tal como se sirven hoy, sobre 500 partidos reales
+disjuntos de Fase 105/106, corregir con shrinkage bayesiano lo que pase el
+mismo gate de Fase 106, y comparar antes/después sobre el mismo conjunto.
 
-## Fase 118 — Historial de aciertos verificable
+## Fase 119 — Backtest de calibración de 500 partidos
+
+En curso. Ver `DEC-159`.
+
+- cohorte de prueba: 500 partidos elegibles más recientes del split
+  `confirmation`; cohorte de ajuste: los 500 elegibles inmediatamente
+  anteriores, sin solape — el hiperparámetro de cualquier corrección se fija
+  sólo con la cohorte de ajuste, nunca con la de prueba;
+- diagnóstico mide lo que el sistema sirve hoy (BTTS ya calibrado por Fase
+  106, Markov con el fallback de liga ya aplicado), no las salidas crudas de
+  Fase 105;
+- entra a corrección todo mercado binario con ECE > 0.05 y tasa positiva entre
+  5% y 95% sobre los 500 de prueba; 1X2 sólo se diagnostica;
+- `src/market_calibration.py` generaliza el shrinkage bayesiano de Fase 106 a
+  cualquier mercado, sin duplicar `btts_probability.py` por mercado nuevo;
+- el gate final reutiliza sin modificar `_bootstrap`/`_stability`/`_passed`/
+  `_metrics` de Fase 106; un mercado que no pasa se reporta diagnosticado y no
+  corregido, sin abortar el resto;
+- conexión fail-open en `src/team_count_market_runtime.py`: cae exacto a la
+  probabilidad no corregida si el artefacto falla o el hash no coincide.
+
+Resultado real sobre 500 partidos de prueba (2025-12-14 a 2026-07-26,
+21 ligas): cuatro mercados con sesgo real —
+`home_corners_over_4_5` (ECE 0.180), `away_shots_over_10_5` (0.130),
+`away_corners_over_4_5` (0.114), `over_2_5` (0.088, nunca antes
+recalibrado)—. El shrinkage bayesiano redujo el ECE de forma sustancial en
+los cuatro y mejoró log-loss/Brier en tres, pero ninguno alcanzó
+`non_degradation_rate >= 0.70` en la cohorte de prueba (probados dos
+criterios de selección de hiperparámetro, ambos sobre el bloque externo).
+Los cuatro quedan diagnosticados y no corregidos; `PHASE119_CORRECTED_MARKETS`
+queda vacío por diseño. El resto de mercados, incluido BTTS (ECE 0.034), ya
+opera dentro del margen sano. Reporte visual en
+`artifacts/phase_119_bias_backtest_500/dashboard.html`.
+
+Estado: `implemented_no_market_promoted`. Gates: 616 pruebas Python
+aprobadas/8 omitidas. Ver `DEC-159`.
+
+## Fase 118 — Historial de aciertos verificable (previa)
 
 En curso. Ver `DEC-158`.
 

@@ -22,6 +22,7 @@ import joblib
 import numpy as np
 
 from src.artifact_integrity import artifact_hash_matches
+from src.market_calibration import ArtifactMarketCalibrationProvider
 from src.team_count_markets import (
     negative_binomial_distribution,
     negative_binomial_over_probability,
@@ -46,6 +47,16 @@ MARKOV_APPROVED_MARKETS = frozenset({
 MARKOV_BASELINE_FALLBACKS = frozenset({
     "home_corners_second_half_over_2_5",
 })
+# Fase 119: mercados con calibrador de shrinkage bayesiano sellado. Vacío por
+# diseño en su primera corrida — los cuatro candidatos con ECE > 0.05
+# (away_corners_over_4_5, away_shots_over_10_5, home_corners_over_4_5,
+# over_2_5) redujeron el ECE de forma sustancial, pero ninguno alcanzó
+# `non_degradation_rate >= 0.70` en la cohorte de prueba disjunta (ver
+# artifacts/phase_119_bias_backtest_500/dashboard_summary.json y DEC-159).
+# Se deja el mecanismo conectado y probado para que una fase futura, con más
+# datos por liga o un método de dos niveles, sólo tenga que añadir nombres
+# aquí sin tocar el runtime.
+PHASE119_CORRECTED_MARKETS: frozenset[str] = frozenset()
 MARKET_METADATA: dict[str, tuple[str, str, str, float, str]] = {
     "home_corners_over_4_5": ("corners", "home", "full_match", 4.5, "phase84a"),
     "away_corners_over_4_5": ("corners", "away", "full_match", 4.5, "phase84a"),
@@ -363,6 +374,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
     def __init__(
         self, artifact_path: Path | None = None,
         markov_artifact_path: Path | None = None,
+        calibration_provider: ArtifactMarketCalibrationProvider | None = None,
     ) -> None:
         """Carga y valida configuración y modelos locales."""
 
@@ -373,6 +385,8 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
             dict[str, Any], TeamMarketMarkov, list[str],
         ] | None = None
         self._matches_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        self._calibration_provider = (
+            calibration_provider or ArtifactMarketCalibrationProvider())
 
     def _load(self) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
         """Carga artefactos únicamente tras verificar su integridad."""
@@ -525,12 +539,39 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
             expected, baseline_expected, config["dispersions"]))
         probabilities.update(markov)
         baselines.update(markov_baselines)
+        calibrated = self._apply_market_calibration(
+            request, matches, probabilities)
         combined_enabled = sorted(set(enabled) | set(markov))
         return self._payload(
             request, source, matches, expected, baseline_expected,
             probabilities, baselines,
             combined_enabled, markov_expected, ladders, config["dispersions"],
-            markov_meta)
+            markov_meta, calibrated)
+
+    def _apply_market_calibration(
+        self, request: Any, matches: list[dict[str, Any]],
+        probabilities: dict[str, float],
+    ) -> list[str]:
+        """Sustituye por la probabilidad calibrada, cae exacto si algo falla.
+
+        Nunca deja el partido sin predicción: un artefacto ausente, un hash
+        que no coincide, o un dato causal insuficiente conservan el valor no
+        corregido, igual que ya hace el fallback Markov de Fase 88.
+        """
+
+        applied = []
+        for key in sorted(PHASE119_CORRECTED_MARKETS & set(probabilities)):
+            try:
+                positives, totals = _market_calibration_counts(key, matches)
+                probabilities[key] = self._calibration_provider.predict(
+                    key, str(request.league_slug), positives, totals)[0]
+                applied.append(key)
+            except (OSError, KeyError, ValueError, TypeError,
+                    FloatingPointError) as error:
+                LOGGER.warning(
+                    "phase119_market_calibration_fallback market=%s: %s",
+                    key, error)
+        return applied
 
     def _payload(
         self, request: Any, source: Path, matches: list[dict[str, Any]],
@@ -541,12 +582,14 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         markov_expected: dict[str, Any], ladders: list[dict[str, Any]],
         dispersions: dict[str, float],
         markov_meta: dict[str, Any],
+        calibrated_markets: list[str],
     ) -> dict[str, Any]:
         """Compone el bloque público de inferencia shadow."""
 
         payload = {
             "status": "experimental_shadow_not_promoted",
             "enabled_markets": enabled,
+            "phase119_calibrated_markets": calibrated_markets,
             "probabilities": probabilities,
             "baseline_probabilities": baselines,
             "expected_counts": expected,
@@ -588,6 +631,20 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
             "audit": {"official_output_unchanged": True,
                       "target_match_data_used": False},
         }
+
+
+def _market_calibration_counts(
+    key: str, matches: list[dict[str, Any]],
+) -> tuple[float, float]:
+    """Cuenta positivos/totales causales de una línea de partido completo."""
+
+    metric, side, period, line, _ = MARKET_METADATA[key]
+    if period != "full_match":
+        raise ValueError("phase119_calibration_period_unsupported")
+    values = [float(match[side][metric]) for match in matches]
+    totals = float(len(values))
+    positives = float(sum(1 for value in values if value > line))
+    return positives, totals
 
 
 def _user_market_view(
