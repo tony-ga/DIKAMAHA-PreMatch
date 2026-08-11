@@ -205,6 +205,30 @@ def snapshot_path(snapshot_id: str, root: Path | None = None) -> Path:
     return path
 
 
+def read_snapshot_rows(path: Path) -> list[dict[str, Any]]:
+    """Lee las filas de un snapshot publicado, esté o no comprimido.
+
+    Fase 108 dejó el snapshot activo en gzip para reducirlo de 122.0 MB a
+    3.1 MB conservando el hash lógico, de modo que cualquier consumidor que
+    abra la ruta activa como texto plano falla con un error de decodificación.
+    Este acceso es el único punto que deben usar los refrescos incrementales.
+    """
+
+    if not path.exists() or not path.is_file():
+        raise SnapshotRegistryError("snapshot_source_missing")
+    try:
+        with _open_snapshot(path, "rt") as stream:
+            payload = json.load(stream)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
+        raise SnapshotRegistryError("snapshot_source_invalid_json") from error
+    if not isinstance(payload, list) or not payload:
+        raise SnapshotRegistryError("snapshot_source_empty")
+    rows = [row for row in payload if isinstance(row, dict)]
+    if len(rows) != len(payload):
+        raise SnapshotRegistryError("snapshot_schema_invalid")
+    return rows
+
+
 def _active_payload(registry: Path) -> dict[str, Any]:
     """Lee el puntero activo o devuelve un estado vacío."""
 

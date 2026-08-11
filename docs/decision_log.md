@@ -2362,6 +2362,60 @@ nombres. Reporte visual en
 `artifacts/phase_119_bias_backtest_500/dashboard.html`. Gates: 616 pruebas
 Python aprobadas/8 omitidas.
 
+DEC-160
+Fecha: 2026-08-11
+Problema: el catálogo congelado en Fase 36 tiene 49 slugs y no incluye
+competiciones que ESPN sí publica y que el usuario ve activas. El caso
+reportado son tres partidos en vivo de clasificación de Champions y fixtures
+próximos de Leagues Cup que no aparecen en la Mini App. La causa raíz no es un
+fallo del catálogo live ni de la ventana D-1/D/D+1: ESPN separa la fase previa
+de UEFA en slugs propios (`uefa.champions_qual`, `uefa.europa_qual`,
+`uefa.europa.conf_qual`) distintos de `uefa.champions`/`uefa.europa`/
+`uefa.europa.conf`, y `concacaf.leagues.cup` nunca estuvo en el catálogo. Al no
+existir el slug, ningún barrido de `/v1/live` o `/v1/upcoming` puede
+encontrarlos, porque ambos iteran exactamente el catálogo.
+Opciones: (a) dejar el catálogo en 49 y aceptar la ausencia; (b) añadir sólo
+Leagues Cup; (c) añadir las once ligas solicitadas más los tres clasificatorios
+UEFA verificados uno a uno contra ESPN, rechazando los slugs que la API no
+publica.
+Decisión: se adopta (c). El catálogo pasa de 49 a 63 slugs con
+`concacaf.leagues.cup`, `ned.1`, `por.1`, `tur.1`, `bel.1`, `sco.1`, `den.1`,
+`nor.1`, `per.1`, `ksa.1`, `jpn.1`, `uefa.champions_qual`, `uefa.europa_qual`
+y `uefa.europa.conf_qual`. Se rechazan explícitamente Liga MX Femenil y K
+League: ESPN responde HTTP 400 para `mex.w.1` y para cualquier `kor.*`, y el
+índice Core de 214 ligas de fútbol no contiene ninguna referencia coreana ni
+una liga femenil mexicana. `docs/league_catalog_v1.json` y
+`src/espn_user_explorer.py::LEAGUES` siguen siendo dos vistas obligatoriamente
+sincronizadas del mismo catálogo; una prueba nueva falla si divergen.
+Motivo: la Mini App, `/v1/live`, `/v1/upcoming`, el bot y el worker derivan su
+cobertura del catálogo, de modo que añadir el slug es condición necesaria y
+suficiente para que el fixture aparezca y para que play-by-play, estadísticas
+por periodo, plantillas, perfiles de jugador y la cinta de apertura/cierre de
+mercado funcionen, porque todos ellos pasan `league` al proveedor sin lista
+blanca propia. Verificar cada slug contra ESPN antes de añadirlo evita
+introducir entradas muertas que sólo generan fallos parciales en el barrido.
+Estado: congelada
+Impacto en contratos/fases: no modifica `match_features v1`, el router
+oficial, la cadena Dixon-Coles/Kalman ni ningún gate de promoción. Las ligas
+nuevas quedan fuera de la allowlist Hawkes de Fase 114, que conserva sus 17
+ligas admitidas; por diseño reciben fallback Markov exacto hasta que exista
+evidencia de validación propia, y esta decisión no autoriza ampliarla. La
+predicción pre-match exige historia causal en el snapshot activo: una liga sin
+al menos ocho partidos anteriores al kickoff responde
+`league_history_below_minimum`, que es el comportamiento correcto y no un
+fallo. Corrige además un defecto operativo de Fase 36:
+`run_multileague_discovery.py` reescribía `references.json` con sólo las ligas
+solicitadas, de modo que un descubrimiento incremental habría borrado las 42
+ligas ya descubiertas y roto el gate `_documented_leagues` de Fase 53; el
+script pasa a fusionar por clave estable y conserva un respaldo.
+Evidencia requerida: respuesta ESPN 200 con `leagues[0].name` para cada slug
+añadido y 400 para cada slug rechazado; catálogo y explorador con los mismos
+63 slugs; `references.json` que conserve las 42 ligas previas y sume las
+nuevas; snapshot versionado publicado con historial de rollback intacto y
+recuento de partidos por liga nueva; predicción pre-match real para al menos
+una liga nueva; verificación de que las ligas nuevas caen a fallback Markov y
+no a Hawkes; suite Python completa aprobada.
+
 ```text
 DEC-NNN
 Fecha:

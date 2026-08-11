@@ -83,13 +83,41 @@ def _probe(task: DiscoveryTask, sleep_seconds: float) -> dict[str, Any]:
         return {"league_slug": task.league, "date": task.date, "status": "failed", "scoreboard_events": 0, "reference_count": 0, "references": [], "error_type": type(error).__name__}
 
 
+def _reference_key(reference: dict[str, Any]) -> tuple[str, str, str]:
+    """Construye la clave estable que identifica una referencia ESPN."""
+
+    return (str(reference["league_slug"]), str(reference["provider_match_id"]), str(reference["competition_id"]))
+
+
+def _merge_references(discovered: list[dict[str, Any]], replace: bool) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Fusiona lo descubierto con el archivo acumulado sin perder ligas previas.
+
+    Un descubrimiento incremental sólo consulta las ligas solicitadas. Escribir
+    su resultado tal cual borraría las ligas descubiertas antes y rompería el
+    gate ``_documented_leagues`` de Fase 53, que valida contra este archivo.
+    """
+
+    target = OUTPUT / "references.json"
+    previous: list[dict[str, Any]] = []
+    if target.exists() and not replace:
+        loaded = _load(target)
+        previous = [row for row in loaded if isinstance(row, dict) and row.get("league_slug")] if isinstance(loaded, list) else []
+    merged = {_reference_key(row): row for row in previous}
+    retained = len(merged)
+    for reference in discovered: merged[_reference_key(reference)] = reference
+    rows = [merged[key] for key in sorted(merged)]
+    return rows, {"mode": "replace" if replace else "merge", "previous_reference_count": retained, "discovered_reference_count": len(discovered), "merged_reference_count": len(rows), "previous_leagues": sorted({str(row["league_slug"]) for row in previous}), "merged_leagues": sorted({str(row["league_slug"]) for row in rows})}
+
+
 def _write(result: dict[str, Any]) -> None:
     """Publica discovery, cobertura, reporte y hashes."""
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for name in ("config", "coverage", "date_results", "references", "audit"):
+    target = OUTPUT / "references.json"
+    if target.exists() and result["merge"]["mode"] == "merge": (OUTPUT / "references_previous.json").write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+    for name in ("config", "coverage", "date_results", "references", "audit", "merge"):
         (OUTPUT / f"{name}.json").write_text(json.dumps(result[name], indent=2, sort_keys=True, default=str), encoding="utf-8")
-    report = ["# Fase 36 — descubrimiento multi-liga ESPN", "", f"**Clasificación:** `{result['classification']}`", "", f"- ligas consultadas: `{result['coverage']['league_count']}`", f"- fechas consultadas: `{result['coverage']['date_count']}`", f"- referencias únicas: `{result['coverage']['unique_reference_count']}`", f"- ligas con partidos: `{result['coverage']['leagues_with_references']}`", "- PostgreSQL escrito: `False`", "- eventos/play-by-play descargados: `False`"]
+    report = ["# Fase 36 — descubrimiento multi-liga ESPN", "", f"**Clasificación:** `{result['classification']}`", "", f"- ligas consultadas: `{result['coverage']['league_count']}`", f"- fechas consultadas: `{result['coverage']['date_count']}`", f"- referencias descubiertas en esta corrida: `{result['coverage']['unique_reference_count']}`", f"- ligas con partidos: `{result['coverage']['leagues_with_references']}`", f"- modo de escritura: `{result['merge']['mode']}`", f"- referencias acumuladas: `{result['merge']['merged_reference_count']}`", f"- ligas acumuladas: `{len(result['merge']['merged_leagues'])}`", "- PostgreSQL escrito: `False`", "- eventos/play-by-play descargados: `False`"]
     (OUTPUT / "final_report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
     hashes = {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()
@@ -99,7 +127,7 @@ def _write(result: dict[str, Any]) -> None:
     (OUTPUT / "hashes.json").write_text(json.dumps(hashes, indent=2, sort_keys=True), encoding="utf-8")
 
 
-def discover(start: str, end: str, leagues: list[str], workers: int = 8, sleep_seconds: float = 0.15) -> dict[str, Any]:
+def discover(start: str, end: str, leagues: list[str], workers: int = 8, sleep_seconds: float = 0.15, replace_references: bool = False) -> dict[str, Any]:
     """Descubre referencias en todas las ligas solicitadas sin persistencia."""
 
     tasks = [DiscoveryTask(league, value) for league in leagues for value in _dates(start, end)]
@@ -113,17 +141,18 @@ def discover(start: str, end: str, leagues: list[str], workers: int = 8, sleep_s
     references = list(unique.values()); leagues_with_refs = sorted({row["league_slug"] for row in references}); coverage = {"league_count": len(leagues), "date_count": len(_dates(start, end)), "task_count": len(tasks), "failed_tasks": sum(row["status"] == "failed" for row in results), "unique_reference_count": len(references), "leagues_with_references": leagues_with_refs, "references_by_league": {league: sum(row["league_slug"] == league for row in references) for league in leagues}}
     raw_reference_count = sum(len(row["references"]) for row in results)
     audit = {"select_only": True, "postgres_write_statements": 0, "event_payloads_downloaded": False, "duplicate_references_removed": raw_reference_count - len(references), "raw_reference_count": raw_reference_count, "league_catalog_hash": hashlib.sha256(CATALOG.read_bytes()).hexdigest()}
-    result = {"classification": "references_discovered" if references else "no_references_discovered", "config": {"version": "phase_36_multileague_discovery_v1", "start_date": start, "end_date": end, "leagues": leagues, "workers": workers, "sleep_seconds": sleep_seconds, "scoreboard_endpoint": "site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"}, "coverage": coverage, "date_results": results, "references": references, "audit": audit}
-    _write(result); LOGGER.info("Discovery multi-liga: %s referencias=%d", result["classification"], len(references)); return result
+    merged, merge_audit = _merge_references(references, replace_references)
+    result = {"classification": "references_discovered" if references else "no_references_discovered", "config": {"version": "phase_36_multileague_discovery_v1", "start_date": start, "end_date": end, "leagues": leagues, "workers": workers, "sleep_seconds": sleep_seconds, "replace_references": replace_references, "scoreboard_endpoint": "site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"}, "coverage": coverage, "date_results": results, "references": merged, "merge": merge_audit, "audit": audit}
+    _write(result); LOGGER.info("Discovery multi-liga: %s descubiertas=%d acumuladas=%d", result["classification"], len(references), len(merged)); return result
 
 
 def main() -> int:
     """Ejecuta discovery multi-liga según argumentos CLI."""
 
-    parser = argparse.ArgumentParser(description="Discovery ESPN multi-liga read-only"); parser.add_argument("--start-date", default="20250101"); parser.add_argument("--end-date", default="20251231"); parser.add_argument("--leagues", help="slugs separados por coma"); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--sleep-seconds", type=float, default=0.15); args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Discovery ESPN multi-liga read-only"); parser.add_argument("--start-date", default="20250101"); parser.add_argument("--end-date", default="20251231"); parser.add_argument("--leagues", help="slugs separados por coma"); parser.add_argument("--workers", type=int, default=8); parser.add_argument("--sleep-seconds", type=float, default=0.15); parser.add_argument("--replace-references", action="store_true", help="Reconstruye references.json desde cero; por defecto se fusiona."); args = parser.parse_args()
     if args.workers < 1 or args.sleep_seconds < 0: raise ValueError("invalid_workers_or_sleep")
     requested = [item.strip() for item in args.leagues.split(",")] if args.leagues else None
-    discover(args.start_date, args.end_date, _leagues(CATALOG, requested), args.workers, args.sleep_seconds)
+    discover(args.start_date, args.end_date, _leagues(CATALOG, requested), args.workers, args.sleep_seconds, args.replace_references)
     return 0
 
 

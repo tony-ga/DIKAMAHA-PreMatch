@@ -34,7 +34,7 @@ from src.espn_prospective_connector import (
     EspnProspectiveConnector,
     scoreboard_references,
 )
-from src.prematch_snapshot_registry import activate_snapshot, publish_snapshot, resolve_active_snapshot
+from src.prematch_snapshot_registry import activate_snapshot, publish_snapshot, read_snapshot_rows, resolve_active_snapshot
 from scripts.run_phase_52_post2025_snapshot_refresh import _materialize
 
 OUTPUT = ROOT / "artifacts/phase_53_multileague_post2025_refresh_v1"
@@ -139,7 +139,7 @@ def _merge(new_rows: list[dict[str, Any]]) -> tuple[Path, int, int, str]:
     """Combina filas nuevas con el snapshot activo usando una clave estable."""
 
     current = resolve_active_snapshot()
-    old = json.loads(current.read_text(encoding="utf-8"))
+    old = read_snapshot_rows(current)
     rows = {(int(row["match_id"]), int(row["team_id"]), int(row["window_index"])): row for row in old}
     for row in new_rows:
         rows[(int(row["match_id"]), int(row["team_id"]), int(row["window_index"]))] = row

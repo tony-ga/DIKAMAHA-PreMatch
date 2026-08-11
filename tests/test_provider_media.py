@@ -36,14 +36,25 @@ def test_global_team_search_preserves_league_identity() -> None:
             return [{"id": "1", "name": query, "league_slug": league}]
 
     rows = _global_team_search(Explorer(), "Barnet")  # type: ignore[arg-type]
-    assert len(rows) == 49
+    assert len(rows) == len(LEAGUES)
     assert {row["league_slug"] for row in rows} >= {"eng.4", "eng.5"}
 
 
-def test_visual_catalog_matches_the_49_phase_36_competitions() -> None:
-    config = json.loads((
-        ROOT / "artifacts" / "phase_36_multileague_discovery" / "config.json"
-    ).read_text(encoding="utf-8"))
+def test_visual_catalog_stays_synchronized_with_the_league_catalog() -> None:
+    """El catálogo maestro y la vista del explorador son la misma cobertura.
 
-    assert len(LEAGUES) == 49
-    assert {slug for slug, _ in LEAGUES} == set(config["leagues"])
+    DEC-160 mantiene ``docs/league_catalog_v1.json`` y ``LEAGUES`` como dos
+    representaciones del mismo catálogo. Si divergen, la Mini App ofrece ligas
+    que la ingesta nunca descubre, o al revés, de modo que la sincronía es la
+    invariante real y no el conteo de una corrida concreta de descubrimiento.
+    """
+
+    catalog = json.loads((
+        ROOT / "docs" / "league_catalog_v1.json"
+    ).read_text(encoding="utf-8"))["leagues"]
+    enabled = {str(row["slug"]) for row in catalog if row.get("enabled")}
+    slugs = [slug for slug, _ in LEAGUES]
+
+    assert len(slugs) == len(set(slugs))
+    assert set(slugs) == enabled
+    assert {"concacaf.leagues.cup", "uefa.champions_qual"} <= enabled
