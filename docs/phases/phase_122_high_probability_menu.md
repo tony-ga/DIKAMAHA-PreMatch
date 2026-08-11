@@ -119,7 +119,7 @@ no. Las aptas se confirman contra los 270 partidos nunca publicados por Fases
 - [x] Comparador pareado con McNemar exacto y control Benjamini-Hochberg
 - [x] Confirmación de las celdas aptas sobre los partidos nunca publicados
 - [x] Degradación segura verificada por prueba
-- [x] 659 pruebas Python aprobadas/8 omitidas, 21 Vitest, 23 Playwright,
+- [x] 662 pruebas Python aprobadas/8 omitidas, 21 Vitest, 23 Playwright,
       typecheck y build Next aprobados
 - [x] Reproducción determinista verificada por hash en dos corridas
 

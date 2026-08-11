@@ -47,7 +47,7 @@ Son distintas: `home_corners_over_4_5` acierta 76.1% con una tasa base de 72.0%.
 
 Estado: `implemented_historical_evidence_shadow`. La evidencia es histórica y
 no prospectiva; no hay cuotas, ROI, CLV, Kelly ni stakes, y ningún modelo
-queda promovido. Gates: 659 pruebas Python aprobadas/8 omitidas (22 nuevas),
+queda promovido. Gates: 662 pruebas Python aprobadas/8 omitidas (25 nuevas),
 21 Vitest, 23 Playwright (6 nuevas), typecheck y build Next aprobados.
 Despliegue a Railway pendiente de aprobación del usuario.
 
