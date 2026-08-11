@@ -17,7 +17,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Sin `maximumScale`: fijarlo en 1 impedía ampliar con los dedos, que es un
+  // requisito de accesibilidad y además el recurso natural del usuario cuando
+  // una tabla no cabe. iOS lo ignora desde iOS 10, así que sólo perjudicaba.
   viewportFit: "cover",
   themeColor: "#091413",
 };

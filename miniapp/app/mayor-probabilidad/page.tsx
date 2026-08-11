@@ -19,32 +19,36 @@ const METRICS: Record<string, string> = {
   result: "Resultado",
 };
 
-const SIDES: Record<string, string> = {
-  home: "local",
-  away: "visitante",
-  total: "totales",
-  match: "",
-};
-
 const PERIODS: Record<string, string> = {
   first_half: "1T",
   second_half: "2T",
   full_match: "",
 };
 
-function pickLabel(pick: Record<string, unknown>): string {
+// El lado se nombra con el equipo al que pertenece: "Córners de Betis" dice
+// bastante más que "Córners local", sobre todo en un menú que mezcla partidos.
+function subjectLabel(
+  pick: Record<string, unknown>, homeName: string, awayName: string,
+): string {
   const metric = METRICS[String(pick.metric)] ?? String(pick.market);
-  const side = SIDES[String(pick.team_side)] ?? "";
+  const side = String(pick.team_side);
+  if (side === "home") return `${metric} de ${homeName}`;
+  if (side === "away") return `${metric} de ${awayName}`;
+  if (side === "total") return `${metric} de ambos equipos`;
+  return metric;
+}
+
+function pickLabel(
+  pick: Record<string, unknown>, homeName: string, awayName: string,
+): string {
+  const subject = subjectLabel(pick, homeName, awayName);
   const period = PERIODS[String(pick.period)] ?? "";
   const line = pick.line;
-  const direction = String(pick.direction);
   if (typeof line !== "number") {
-    return [metric, side, period].filter(Boolean).join(" ");
+    return [subject, period].filter(Boolean).join(" · ");
   }
-  const sense = direction === "under" ? "Menos de" : "Más de";
-  return [`${metric} ${side}`.trim(), period, `${sense} ${line}`]
-    .filter(Boolean)
-    .join(" · ");
+  const sense = String(pick.direction) === "under" ? "Menos de" : "Más de";
+  return [subject, period, `${sense} ${line}`].filter(Boolean).join(" · ");
 }
 
 function PickCard({ value }: { value: Record<string, unknown> }) {
@@ -67,9 +71,9 @@ function PickCard({ value }: { value: Record<string, unknown> }) {
         <span>VS</span>
         <div><EntityImage source={String(fixture.away_team_logo || "")} label={awayName} size={34} /><strong>{awayName}</strong></div>
       </div>
-      <div className="ladder-group">
+      <div className="ladder-group high-prob-pick">
         <div className="ladder-head">
-          <span>{pickLabel(value)}</span>
+          <span>{pickLabel(value, homeName, awayName)}</span>
           <strong>{percentage(value.observed_rate)}</strong>
         </div>
         <small className="ladder-edge">

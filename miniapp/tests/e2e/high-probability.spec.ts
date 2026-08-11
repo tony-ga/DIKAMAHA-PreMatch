@@ -72,7 +72,7 @@ test("shows the observed hit rate and flags a model edge", async ({ page }) => {
 
   await page.goto("/mayor-probabilidad");
   await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
-  await expect(page.getByText("Córners local · Más de 4.5")).toBeVisible();
+  await expect(page.getByText("Córners de Real Betis · Más de 4.5")).toBeVisible();
   // La cifra grande es la tasa observada (89%), no la del modelo (68%).
   await expect(page.getByText("89%", { exact: true })).toBeVisible();
   await expect(page.getByText("149 picks")).toBeVisible();
@@ -102,7 +102,7 @@ test("says plainly when the edge comes from the base rate", async ({ page }) => 
   }));
 
   await page.goto("/mayor-probabilidad");
-  await expect(page.getByText("Tiros local · 2T · Más de 5.5")).toBeVisible();
+  await expect(page.getByText("Tiros de Real Betis · 2T · Más de 5.5")).toBeVisible();
   await expect(page.getByText("Ventaja de la tasa base")).toBeVisible();
   await expect(page.getByText(/el modelo no añade ventaja demostrada/)).toBeVisible();
 });

@@ -16,6 +16,12 @@
 }
 
 * { box-sizing: border-box; }
+/* Red de seguridad de anchura. Un solo elemento más ancho que la pantalla hace
+   que iOS presente la página encogida y obligue a alejar el zoom, algo que no
+   se aprecia en iPad ni escritorio porque allí el contenido sí cabe. Esto
+   garantiza que ningún desbordamiento futuro rompa el encuadre completo; los
+   contenedores con `overflow-x:auto` siguen desplazándose por dentro. */
+html, body { max-width: 100%; overflow-x: hidden; }
 html { background: var(--void); color-scheme: dark; }
 [data-tg-theme="light"] {
   --void: #edf9f4;
@@ -186,7 +192,7 @@ button { color: inherit; }
 .market-provider-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .market-provider-title strong { font-size:.75rem; }
 .market-provider-title span { overflow:hidden; color:var(--muted); font-size:.62rem; text-overflow:ellipsis; white-space:nowrap; }
-.market-table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:13px; }
+.market-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; min-width:0; max-width:100%; border:1px solid var(--line); border-radius:13px; }
 .market-tape-table { width:100%; min-width:440px; border-collapse:collapse; font-size:.68rem; }
 .market-tape-table caption { padding:10px 11px; color:var(--mint); background:color-mix(in srgb,var(--mint) 6%,var(--panel)); font-size:.61rem; font-weight:800; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
 .market-tape-table th,.market-tape-table td { padding:9px 10px; border-top:1px solid var(--line); text-align:right; white-space:nowrap; }
@@ -338,10 +344,15 @@ button { color: inherit; }
 .xg-row b,.market-probability b { display:block; min-width:2px; height:100%; border-radius:inherit; }
 .xg-row b.home,.market-probability b.home { background:var(--mint); box-shadow:0 0 12px color-mix(in srgb,var(--mint) 45%,transparent); }
 .xg-row b.away,.market-probability b.away { background:var(--signal); box-shadow:0 0 12px color-mix(in srgb,var(--signal) 52%,transparent); }
-.prediction-table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:14px; }
+.prediction-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; min-width:0; max-width:100%; border:1px solid var(--line); border-radius:14px; }
 .prediction-table { width:100%; border-collapse:collapse; font-size:.7rem; }
 .prediction-table caption { padding:13px 12px; color:var(--mint); background:color-mix(in srgb,var(--mint) 6%,var(--panel)); font-weight:800; text-align:left; text-transform:uppercase; letter-spacing:.08em; }
 .prediction-table th,.prediction-table td { padding:11px 12px; border-top:1px solid var(--line); text-align:right; white-space:nowrap; }
+/* Los nombres de equipo son el único contenido de longitud libre de esta
+   tabla: con `nowrap` fijaban un ancho mínimo de ~451 px que desbordaba un
+   iPhone de 390 px. Las celdas numéricas conservan `nowrap`. */
+.prediction-table thead th:not(:first-child) { white-space:normal; overflow-wrap:anywhere; }
+.prediction-table tbody th { white-space:normal; overflow-wrap:anywhere; }
 .prediction-table th:first-child { text-align:left; }
 .prediction-table thead th { color:var(--muted); font-size:.62rem; }
 .prediction-table tbody th { color:var(--muted); font-weight:500; }
@@ -353,6 +364,11 @@ button { color: inherit; }
 .ladder-group + .ladder-group { margin-top:2px; }
 .ladder-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .ladder-head span { min-width:0; overflow:hidden; color:var(--text); font-size:.72rem; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+/* El menú de mayor probabilidad nombra el mercado con el equipo real, no con
+   "local"/"visitante", así que la etiqueta es larga por diseño: truncarla con
+   puntos suspensivos escondería justo el dato que la hace útil. */
+.high-prob-pick .ladder-head { align-items:flex-start; }
+.high-prob-pick .ladder-head span { overflow:visible; white-space:normal; text-overflow:clip; line-height:1.3; }
 .ladder-head strong { flex:0 0 auto; color:var(--mint); font-size:.7rem; }
 .ladder-edge { color:var(--muted); font-size:.63rem; letter-spacing:.02em; }
 .form-grid { display: grid; gap: 12px; }
