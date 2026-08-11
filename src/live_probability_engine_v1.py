@@ -233,8 +233,11 @@ class LiveProbabilityEngineConfig:
     ctmc_goal_multipliers_away: tuple[float, ...] = (0.86, 1.0, 1.18)
     ctmc_pressure_multipliers_home: tuple[float, ...] = (1.35, 1.0, 0.65)
     ctmc_pressure_multipliers_away: tuple[float, ...] = (0.65, 1.0, 1.35)
-    base_corner_rate_per_minute: float = 0.055
-    base_shot_event_rate_per_minute: float = 0.130
+    # Calibradas sobre el corpus causal de Fase 74 (9,465 partidos, 18,930
+    # unidades equipo-partido): 5.4175 corners y 7.3320 tiros sin gol por
+    # equipo y partido de 90 minutos. Los tiros comerciales añaden el gol.
+    base_corner_rate_per_minute: float = 0.060194
+    base_shot_event_rate_per_minute: float = 0.081467
     territory_strength_exponent: float = 0.5
     maximum_remaining_corner_intensity: float = 14.0
     maximum_remaining_shots_intensity: float = 20.0

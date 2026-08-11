@@ -302,6 +302,30 @@ def test_team_market_audit_checks_are_part_of_the_official_gate() -> None:
     assert checks["next_goal_normalized"] is True
 
 
+def test_neutral_match_reproduces_the_historical_team_averages() -> None:
+    """Ancla las tasas base al corpus causal de Fase 74.
+
+    Medias observadas en 9,465 partidos y 18,930 unidades equipo-partido:
+    5.4175 corners, 7.3320 tiros sin gol y 1.3411 goles por equipo. Un partido
+    neutro desde el minuto cero debe reproducirlas, de modo que un cambio de
+    constantes que desplace el nivel absoluto falle aquí.
+    """
+
+    goals = 1.3411
+    result = _predict(_request(
+        match_clock_seconds=0.0, score_home=0, score_away=0,
+        lambda_base_home=goals, lambda_base_away=goals, events=(),
+    ))
+    dynamic = result["live_probability_engine"]["dynamic_poisson"]
+    corners = dynamic["lambda_remaining_corners_home"]
+    shots = dynamic["lambda_remaining_shots_home"]
+    goal_intensity = dynamic["lambda_remaining_home"]
+
+    assert abs(corners - 5.4175) < 0.05
+    assert abs((shots - goal_intensity) - 7.3320) < 0.05
+    assert abs(shots - 8.6731) < 0.10
+
+
 def test_official_live_prediction_is_unchanged_by_the_new_block() -> None:
     """Fase 116 debe conservar su salida oficial byte a byte."""
 

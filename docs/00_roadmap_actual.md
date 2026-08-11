@@ -234,7 +234,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
 | 115 | `telegram_mini_app` | paridad visual y analítica desplegada; DEC-154 en producción | Catálogo de 49 ligas/torneos, detalle live automático, predictor externo tolerante a ausencia, cinta open/close/live aislada, curva de presión, logos, acciones y Markov/Hawkes/combinado separados |
 | 116 | `live_probability_engine_v1` | implementada y evaluada; despliegue pendiente | Poisson dinámico + CTMC + Hazard/Cox + Elo live + residual Hawkes; 7,400 partidos/34 ligas, gates causales completos, MC diagnóstico asincrónico y fallback Markov |
-| 117 | `live_team_markets_v1` | implementada, shadow sin gate histórico | Corners y tiros restantes adaptativos por equipo más próximo gol; `_dynamic_poisson` extendido con territorio escalado por fuerza causal, checks integrados al gate oficial y fallback exacto; 577 Python, 21 Vitest y 14 Playwright aprobados |
+| 117 | `live_team_markets_v1` | implementada, shadow sin gate histórico | Corners y tiros restantes adaptativos por equipo más próximo gol; `_dynamic_poisson` extendido con territorio escalado por fuerza causal, tasas base calibradas sobre 9,465 partidos de Fase 74, checks integrados al gate oficial y fallback exacto; 578 Python, 21 Vitest y 14 Playwright aprobados |
 
 ## Componentes heredados
 

@@ -33,16 +33,22 @@ reemplazar ninguna capa existente.
 - la Mini App muestra el bloque con badge shadow y lo oculta por completo
   cuando el motor cae a fallback.
 
-Comportamiento verificado con `lambda_base 1.55/1.08`: sin eventos el local
-proyecta `3.73` córners restantes con líneas `2.5/3.5/4.5` y el visitante
-`3.11` con `1.5/2.5/3.5`; cinco eventos de presión visitante invierten la
-relación y desplazan el próximo gol de `0.346` a `0.378`; al minuto 80 las
-líneas se recentran solas en `1.5/2.5/3.5`.
+- las tasas base están calibradas contra el corpus causal de Fase 74, 9,465
+  partidos y 18,930 unidades equipo-partido, cuyas medias por equipo son
+  `5.4175` córners, `7.3320` tiros sin gol y `1.3411` goles; una prueba ancla
+  esas medias con tolerancia `0.05`.
 
-Estado: `implemented_shadow_no_historical_gate`. No hay replay histórico de
-corners ni tiros por segmento, de modo que ninguna línea está promovida ni
-comunica ventaja predictiva. Gates: 577 Python aprobadas/8 omitidas, 21 Vitest,
-14 Playwright, typecheck y build Next aprobados. Ver `DEC-157`.
+Comportamiento verificado con `lambda_base 1.55/1.08`: al minuto 30 sin eventos
+el local proyecta `4.08` córners restantes y el visitante `3.40`; cinco eventos
+de presión visitante invierten la relación a `3.63` contra `3.91` y desplazan
+el próximo gol de `0.346` a `0.378`; al minuto 80 con el local abajo las líneas
+se recentran solas en `1.5/2.5/3.5`.
+
+Estado: `implemented_shadow_no_historical_gate`. Las tasas base reproducen la
+media histórica, pero no existe replay walk-forward de córners ni tiros por
+segmento, de modo que ninguna línea está promovida ni comunica ventaja
+predictiva. Gates: 578 Python aprobadas/8 omitidas, 21 Vitest, 14 Playwright,
+typecheck y build Next aprobados. Ver `DEC-157`.
 
 ## Fase 116 — Motor matemático de probabilidades in-live
 
