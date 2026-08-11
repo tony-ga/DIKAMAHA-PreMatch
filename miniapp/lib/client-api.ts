@@ -81,6 +81,23 @@ export function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export function probabilityWidth(value: unknown): string {
+  const numeric = Number(value);
+  return `${Math.max(0, Math.min(100, Number.isFinite(numeric) ? numeric * 100 : 0))}%`;
+}
+
+export function edgeLabel(model: unknown, baseline: unknown): string {
+  const delta = Number(model) - Number(baseline);
+  if (!Number.isFinite(delta)) return "—";
+  const points = delta * 100;
+  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)} pp`;
+}
+
+export function countLabel(value: unknown): string {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(1) : "—";
+}
+
 export function layerMarkets(value: unknown): Record<string, unknown> {
   const layer = record(value);
   const markets = record(layer.markets);

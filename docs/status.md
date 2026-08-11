@@ -1,9 +1,48 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-09
-**Fase activa:** Fase 116 Motor matemático de probabilidades in-live
-**Objetivo:** operar `live_probability_engine_v1` como salida live oficial,
-con fallback automático a Markov Live y sin modificar la ruta pre-match.
+**Actualizado:** 2026-08-10
+**Fase activa:** Fase 117 Mercados live adaptativos de equipo
+**Objetivo:** exponer corners y tiros restantes adaptativos por equipo, más
+próximo gol, como bloque shadow sobre `live_probability_engine_v1`, sin tocar
+la salida oficial ni la ruta pre-match.
+
+## Fase 117 — Mercados live adaptativos de equipo
+
+Implementada en modo shadow. Extiende el motor de Fase 116 por analogía, sin
+reemplazar ninguna capa existente.
+
+- `_dynamic_poisson` acumula además `lambda_remaining_corners_home/away` y
+  `lambda_remaining_shots_home/away` en el mismo bucle de segmentos de cinco
+  minutos, reutilizando `time_shape`, `_score_factors`, penalización por rojas
+  y decaimiento del hazard;
+- corners y tiros usan `ctmc_pressure_multipliers_home/away` propios y no
+  aplican el multiplicador Elo;
+- `lambda_remaining_shots_side = lambda_shot_event_side + lambda_side` cumple
+  por construcción la semántica comercial de DEC-110;
+- `_next_goal` deriva próximo gol con `competing_event_distribution` sobre las
+  intensidades de gol ya oficiales, con horizonte igual al tiempo restante;
+- la rejilla adaptativa publica tres líneas centradas en P(over)≈50% por lado y
+  métrica, con under complementario y comparación contra ritmo base;
+- todo se publica en `experimental_live_team_markets`, hermano de
+  `official_live_prediction`, que permanece sin cambios;
+- `_territory_strength` escala el territorio por el cociente de lambdas
+  causales pre-match con exponente `0.5`, de modo que la línea es específica de
+  cada equipo desde el minuto cero y no un umbral genérico;
+- los checks nuevos entran en `_audit_checks`, de modo que un fallo degrada el
+  snapshot completo al fallback Markov existente;
+- la Mini App muestra el bloque con badge shadow y lo oculta por completo
+  cuando el motor cae a fallback.
+
+Comportamiento verificado con `lambda_base 1.55/1.08`: sin eventos el local
+proyecta `3.73` córners restantes con líneas `2.5/3.5/4.5` y el visitante
+`3.11` con `1.5/2.5/3.5`; cinco eventos de presión visitante invierten la
+relación y desplazan el próximo gol de `0.346` a `0.378`; al minuto 80 las
+líneas se recentran solas en `1.5/2.5/3.5`.
+
+Estado: `implemented_shadow_no_historical_gate`. No hay replay histórico de
+corners ni tiros por segmento, de modo que ninguna línea está promovida ni
+comunica ventaja predictiva. Gates: 577 Python aprobadas/8 omitidas, 21 Vitest,
+14 Playwright, typecheck y build Next aprobados. Ver `DEC-157`.
 
 ## Fase 116 — Motor matemático de probabilidades in-live
 

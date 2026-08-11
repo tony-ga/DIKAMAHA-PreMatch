@@ -206,6 +206,7 @@ def compose_official_live_output(
         return {
             "official_source": output.official_source,
             "official_live_prediction": None,
+            "experimental_live_team_markets": None,
             "live_probability_engine": {
                 "status": "disabled" if not enabled else "snapshot_incomplete",
                 "fallback": output.official_source,
@@ -311,6 +312,16 @@ def _official_markov_fallback(
                 "source": "markov_live_v1",
                 "reason": reason,
             },
+        },
+        "experimental_live_team_markets": {
+            "status": "unavailable_fallback_active",
+            "reason": reason,
+            "remaining_intensities": {
+                "corners": {"home": 0.0, "away": 0.0},
+                "shots_commercial": {"home": 0.0, "away": 0.0},
+            },
+            "bounded_market_grid_view": [],
+            "next_goal": {},
         },
         "live_probability_engine": {
             "status": "fallback_applied",

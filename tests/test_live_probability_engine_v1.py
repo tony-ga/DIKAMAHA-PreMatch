@@ -178,5 +178,147 @@ def test_monte_carlo_is_non_blocking_and_deterministic() -> None:
     assert completed["maximum_absolute_error"] < 0.03
 
 
-# Version: 1.0.0
+def _team_markets(request: MarkovLiveInput) -> dict[str, object]:
+    return _predict(request)["experimental_live_team_markets"]
+
+
+def _grid_row(markets: dict[str, object], key: str) -> dict[str, object]:
+    return next(
+        row for row in markets["bounded_market_grid_view"]
+        if row["key"] == key
+    )
+
+
+def test_team_markets_intensities_are_finite_and_nonnegative() -> None:
+    markets = _team_markets(_request())
+    intensities = markets["remaining_intensities"]
+
+    assert markets["status"] == "experimental_shadow_not_promoted"
+    for metric in ("corners", "shots_commercial"):
+        for side in ("home", "away"):
+            value = intensities[metric][side]
+            assert math.isfinite(value)
+            assert value >= 0.0
+
+
+def test_shots_commercial_never_falls_below_the_goal_intensity() -> None:
+    """DEC-110: shots comerciales incluyen el gol como tiro."""
+
+    result = _predict(_request())
+    dynamic = result["live_probability_engine"]["dynamic_poisson"]
+
+    assert (
+        dynamic["lambda_remaining_shots_home"]
+        >= dynamic["lambda_remaining_home"]
+    )
+    assert (
+        dynamic["lambda_remaining_shots_away"]
+        >= dynamic["lambda_remaining_away"]
+    )
+
+
+def test_remaining_grid_lines_are_complementary() -> None:
+    markets = _team_markets(_request())
+
+    assert markets["bounded_market_grid_view"]
+    for row in markets["bounded_market_grid_view"]:
+        assert len(row["lines"]) == 3
+        for line in row["lines"]:
+            assert math.isclose(
+                line["over_probability"] + line["under_probability"],
+                1.0, abs_tol=1e-9,
+            )
+            assert math.isclose(
+                line["baseline_over_probability"]
+                + line["baseline_under_probability"],
+                1.0, abs_tol=1e-9,
+            )
+
+
+def test_remaining_lines_adapt_to_recent_pressure() -> None:
+    """La línea debe moverse con el partido, no ser un umbral fijo."""
+
+    pressure = tuple(
+        {
+            "event_id": str(index), "event_type": event_type,
+            "team_id": 20, "match_clock_seconds": 1700.0 + index * 5.0,
+            "period": 1,
+        }
+        for index, event_type in enumerate(
+            ("corner", "corner", "shot_on_target", "corner", "shot_on_target")
+        )
+    )
+    neutral = _team_markets(_request())
+    pressed = _team_markets(_request(events=pressure))
+
+    neutral_away = _grid_row(neutral, "away_corners_remaining")
+    pressed_away = _grid_row(pressed, "away_corners_remaining")
+    neutral_home = _grid_row(neutral, "home_corners_remaining")
+    pressed_home = _grid_row(pressed, "home_corners_remaining")
+
+    assert pressed_away["expected_remaining"] > neutral_away["expected_remaining"]
+    assert pressed_home["expected_remaining"] < neutral_home["expected_remaining"]
+
+
+def test_remaining_lines_differ_between_teams_without_events() -> None:
+    """Sin eventos la línea sigue siendo específica de cada equipo."""
+
+    markets = _team_markets(_request())
+    home = _grid_row(markets, "home_corners_remaining")
+    away = _grid_row(markets, "away_corners_remaining")
+
+    assert home["expected_remaining"] != away["expected_remaining"]
+
+
+def test_next_goal_probabilities_are_normalized() -> None:
+    next_goal = _team_markets(_request())["next_goal"]
+    total = (
+        next_goal["probability_home_next_goal"]
+        + next_goal["probability_away_next_goal"]
+        + next_goal["probability_no_more_goals"]
+    )
+
+    assert math.isclose(total, 1.0, abs_tol=1e-10)
+    assert next_goal["normalization_error"] <= 1e-9
+    assert next_goal["remaining_minutes"] == 60.0
+
+
+def test_next_goal_collapses_when_no_time_remains() -> None:
+    next_goal = _team_markets(_request(match_clock_seconds=5400.0))["next_goal"]
+
+    assert next_goal["probability_no_more_goals"] == 1.0
+    assert next_goal["probability_home_next_goal"] == 0.0
+    assert next_goal["probability_away_next_goal"] == 0.0
+
+
+def test_team_market_audit_checks_are_part_of_the_official_gate() -> None:
+    """Un fallo de la capa nueva debe degradar el snapshot completo."""
+
+    checks = _predict(_request())["live_probability_engine"]["audit"]["checks"]
+
+    assert checks["team_count_intensities_nonnegative"] is True
+    assert checks["shots_commercial_includes_goal_rate"] is True
+    assert checks["team_count_grid_complementary"] is True
+    assert checks["next_goal_normalized"] is True
+
+
+def test_official_live_prediction_is_unchanged_by_the_new_block() -> None:
+    """Fase 116 debe conservar su salida oficial byte a byte."""
+
+    result = _predict(_request())
+    official = result["official_live_prediction"]
+
+    assert "bounded_market_grid_view" not in official
+    assert "next_goal" not in official
+    assert set(official) == {
+        "status", "model_version", "markets", "periods",
+        "remaining_intensities", "next_event", "exact_score",
+        "remaining_goals_distribution", "goal_horizons", "confidence",
+        "updated_at", "fallback",
+    }
+    assert set(official["remaining_intensities"]) == {"home", "away"}
+
+
+# Version: 1.1.0
 # Created: 2026-08-09
+# Updated: 2026-08-10 (Fase 117)

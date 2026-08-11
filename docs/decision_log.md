@@ -2148,6 +2148,71 @@ frente a 2.5/3.5/4.5 en segundo tiempo sobre la misma métrica y equipo, más el
 delta contra baseline. Gates: 18 Vitest, 12 Playwright, typecheck y build Next
 aprobados. La suite Python no se ejecutó porque el cambio no toca `src/`.
 
+DEC-157
+Fecha: 2026-08-10
+Problema: `live_probability_engine_v1` sólo modela goles restantes. Corners y
+tiros existen únicamente como señales dentro de `EVENT_WEIGHTS` que alimentan
+la presión de gol, nunca como mercados con distribución de conteo propia, y
+`next_event` mezcla gol con corner, tiro y tarjeta en una sola carrera de
+riesgos competitivos de cinco minutos. La Mini App no puede mostrar corners ni
+tiros restantes por equipo, ni una probabilidad aislada de próximo gol, pese a
+que el motor ya calcula CTMC de régimen, hazard reciente, factor de marcador y
+penalización por rojas reutilizables por analogía.
+Opciones: esperar un replay histórico de corners y tiros por segmento de cinco
+minutos antes de exponer nada; añadir los mercados dentro de
+`official_live_prediction`; o extender `_dynamic_poisson` por analogía y
+publicarlos en un bloque `experimental_live_team_markets` nuevo, sin gate
+walk-forward previo, igual que el lanzamiento inicial de Fases 88, 102 y 114.
+Decisión: extender `_dynamic_poisson` con `lambda_remaining_corners_home/away`
+y `lambda_remaining_shots_home/away`, calculadas en el mismo bucle de segmentos
+que ya produce las intensidades de gol y reutilizando `time_shape`,
+`_score_factors`, la penalización por rojas y el decaimiento del hazard. Los
+corners y tiros usan multiplicadores de régimen propios
+`ctmc_pressure_multipliers_home/away`, distintos de los de gol, y no aplican el
+multiplicador Elo. La semántica comercial de DEC-110 se cumple por
+construcción: `lambda_remaining_shots_side = lambda_shot_event_side +
+lambda_side`. El próximo gol se deriva con `_next_goal(dynamic)` mediante
+`competing_event_distribution` sobre las intensidades de gol ya oficiales, con
+horizonte igual al tiempo restante. Los tres mercados se publican en
+`experimental_live_team_markets`, hermano de `official_live_prediction`, con
+rejilla adaptativa de tres líneas centradas en P(over)≈50% y badge shadow en
+`live-detail.tsx`.
+Motivo: no existe replay histórico archivado de corners y tiros por segmento de
+cinco minutos comparable al de goles, de modo que exigir ese gate bloquearía
+indefinidamente un cambio puramente aditivo y reversible. Mantener el bloque
+fuera de `official_live_prediction` evita filtrar al contrato ya auditado por
+Fase 116 probabilidades sin validación walk-forward. Elo queda excluido porque
+es una fuerza de conversión de gol calibrada sobre diferencia de marcador;
+aplicarla a corners y tiros duplicaría la señal territorial del régimen.
+Estado: congelada e implementada
+Impacto en contratos/fases: abre Fase 117. No modifica `official_live_prediction`,
+`CONTRACT_VERSION`, `MODEL_VERSION`, la ruta pre-match, `MARKET_LINES` ni
+DEC-110, DEC-155 y DEC-156. Los checks nuevos entran en `_audit_checks`, por lo
+que un fallo de la capa nueva degrada el snapshot completo al fallback Markov
+existente, sin try/except paralelo.
+Evidencia requerida: no negatividad y finitud de las intensidades nuevas,
+invariante `shots_commercial >= lambda_gol` por lado, complementariedad
+over/under de cada línea de la rejilla, variación de la línea entre snapshots
+con distinta presión reciente, normalización del próximo gol, fallback exacto
+cuando el motor falla, paridad sin cambios de `official_live_prediction`, y
+gates pytest, Vitest, Playwright, typecheck y build Next aprobados.
+Evidencia obtenida (2026-08-10): la auditoría inicial detectó que la tasa base
+constante producía corners idénticos para ambos equipos en el minuto cero, es
+decir una línea genérica. Se añadió `_territory_strength`, que escala el
+territorio por el cociente de lambdas causales pre-match con exponente `0.5`,
+contraído porque el territorio discrimina menos que el gol; el ritmo base de
+comparación usa el mismo factor. Con `lambda_base 1.55/1.08` y sin eventos, el
+local proyecta `3.73` córners restantes con líneas `2.5/3.5/4.5` y el visitante
+`3.11` con líneas `1.5/2.5/3.5`. Cinco eventos de presión visitante invierten
+la relación a `3.32` contra `3.57` y desplazan el próximo gol de `0.346` a
+`0.378`. Al minuto 80 las líneas se recentran solas en `1.5/2.5/3.5`. Diez
+pruebas Python nuevas cubren no negatividad, invariante `shots_commercial >=
+lambda_gol`, complementariedad, adaptación a la presión, distinción entre
+equipos sin eventos, normalización del próximo gol, colapso sin tiempo
+restante, presencia de los checks en el gate oficial y ausencia de campos
+nuevos en `official_live_prediction`. Gates: 577 Python aprobadas/8 omitidas,
+21 Vitest, 14 Playwright, typecheck y build Next aprobados.
+
 ```text
 DEC-NNN
 Fecha:

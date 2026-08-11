@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
-import { api, percentage, record } from "@/lib/client-api";
+import { api, countLabel, edgeLabel, percentage, probabilityWidth, record } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
 import { EntityImage } from "@/components/entity-image";
 import { ProviderPredictor } from "@/components/provider-predictor";
@@ -50,7 +50,7 @@ function probabilities(markets: Record<string, unknown>, homeName: string, awayN
   ].filter((row) => Number.isFinite(row.value));
 }
 
-function OfficialLivePrediction({ value, engine, homeName, awayName }: { value: unknown; engine: unknown; homeName: string; awayName: string }) {
+function OfficialLivePrediction({ value, engine, teamMarkets, homeName, awayName }: { value: unknown; engine: unknown; teamMarkets: unknown; homeName: string; awayName: string }) {
   const official = record(value);
   const layers = record(engine);
   const markets = record(official.markets);
@@ -102,6 +102,7 @@ function OfficialLivePrediction({ value, engine, homeName, awayName }: { value: 
         </div>
         {fallback.applied ? <div className="notice">Fallback aplicado: {String(fallback.source ?? "Markov Live")} · {String(fallback.reason ?? "calidad insuficiente")}</div> : null}
       </article>
+      <LiveTeamMarkets value={teamMarkets} homeName={homeName} awayName={awayName} />
       <div className="component-grid">
         <ComponentCard title="Poisson dinámico" value={layers.dynamic_poisson} detailKeys={["integration", "remaining_seconds", "lambda_remaining_home", "lambda_remaining_away"]} />
         <ComponentCard title="CTMC" value={layers.ctmc} detailKeys={["dominant", "model"]} />
@@ -110,6 +111,55 @@ function OfficialLivePrediction({ value, engine, homeName, awayName }: { value: 
         <ComponentCard title="Hawkes residual" value={layers.hawkes_residual} detailKeys={["model_version", "rho"]} residual />
       </div>
     </>
+  );
+}
+
+const REMAINING_METRIC_LABELS: Record<string, string> = {
+  corners: "Córners restantes", shots: "Tiros restantes",
+};
+
+function LiveTeamMarkets({ value, homeName, awayName }: { value: unknown; homeName: string; awayName: string }) {
+  const block = record(value);
+  const grid = Array.isArray(block.bounded_market_grid_view) ? block.bounded_market_grid_view.map(record) : [];
+  const nextGoal = record(block.next_goal);
+  const hasNextGoal = nextGoal.probability_no_more_goals !== undefined;
+  if (!grid.length && !hasNextGoal) return null;
+  return (
+    <article className="model-card">
+      <div className="model-card-header"><h3>Córners, tiros y próximo gol</h3><ShadowBadge /></div>
+      <p className="ladder-caption">Proyección del tiempo restante desde el ritmo observado y el prior causal. Las líneas se recentran solas conforme avanza el partido. Salida experimental, no oficial.</p>
+      {hasNextGoal ? (
+        <div className="next-event">
+          <p className="eyebrow">PRÓXIMO GOL · {countLabel(nextGoal.remaining_minutes)} MIN RESTANTES</p>
+          <div className="subscription-row"><span>{homeName}</span><strong>{percentage(nextGoal.probability_home_next_goal)}</strong></div>
+          <div className="subscription-row"><span>{awayName}</span><strong>{percentage(nextGoal.probability_away_next_goal)}</strong></div>
+          <div className="subscription-row"><span>Sin más goles</span><strong>{percentage(nextGoal.probability_no_more_goals)}</strong></div>
+        </div>
+      ) : null}
+      {grid.length ? (
+        <div className="stack" style={{ marginTop: 14 }}>
+          {grid.map((row, index) => {
+            const lines = Array.isArray(row.lines) ? row.lines.map(record) : [];
+            if (!lines.length) return null;
+            const side = row.team_side === "home" ? "home" : "away";
+            const teamName = row.team_side === "home" ? homeName : awayName;
+            const metric = REMAINING_METRIC_LABELS[String(row.metric)] ?? String(row.metric).replaceAll("_", " ");
+            return (
+              <div className="ladder-group" key={String(row.key ?? index)}>
+                <div className="ladder-head"><span>{teamName} · {metric}</span><strong>μ {countLabel(row.expected_remaining)}</strong></div>
+                {lines.map((line, lineIndex) => (
+                  <div className="market-probability" key={`${String(row.key)}-${String(line.line)}-${lineIndex}`}>
+                    <div><span>Más de {String(line.line)} · Menos {percentage(line.under_probability)}</span><strong>{percentage(line.over_probability)}</strong></div>
+                    <i><b className={side} style={{ width: probabilityWidth(line.over_probability) }} /></i>
+                    <small className="ladder-edge">vs ritmo base {edgeLabel(line.over_probability, line.baseline_over_probability)}</small>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -213,7 +263,7 @@ export function LiveDetail({ fixtureId, league }: Props) {
           <RecentActions value={payload.recent_actions} />
           <PressureChart value={payload.match_dynamics} homeName={homeName} awayName={awayName} />
           <div className="prediction-divider"><span>PREDICCIONES EN TIEMPO REAL</span></div>
-          <OfficialLivePrediction value={payload.official_live_prediction} engine={payload.live_probability_engine} homeName={homeName} awayName={awayName} />
+          <OfficialLivePrediction value={payload.official_live_prediction} engine={payload.live_probability_engine} teamMarkets={payload.experimental_live_team_markets} homeName={homeName} awayName={awayName} />
           <div className="prediction-divider"><span>BENCHMARK EXTERNO · NO ES FEATURE DEL MODELO</span></div>
           <ProviderPredictor eventId={fixtureId} league={league} scope="live" homeName={homeName} awayName={awayName} />
           <div className="notice">Predictor y Pickcenter del proveedor se muestran sólo como referencia externa. Sus probabilidades y cuotas no alimentan el cálculo DIKAMAHA.</div>

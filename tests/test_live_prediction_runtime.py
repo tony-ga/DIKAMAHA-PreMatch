@@ -122,6 +122,35 @@ def test_official_live_engine_falls_back_to_markov_on_internal_error() -> None:
     assert result["official_live_prediction"]["markets"] == (
         result["experimental_markov_live"]["markets"]
     )
+    team_markets = result["experimental_live_team_markets"]
+    assert team_markets["status"] == "unavailable_fallback_active"
+    assert team_markets["bounded_market_grid_view"] == []
+    assert team_markets["next_goal"] == {}
+
+
+def test_official_live_engine_publishes_team_markets_on_success() -> None:
+    """La rejilla restante viaja junto a la salida oficial sin alterarla."""
+
+    result = predict_shadow_snapshot(
+        DikamahaInferenceEngine(), _snapshot(), _prior(),
+        {
+            "allowed_leagues": ["esp.1"], "rho_goal": 1.0,
+            "rho_next_event": 0.0,
+        },
+    )
+    team_markets = result["experimental_live_team_markets"]
+    next_goal = team_markets["next_goal"]
+
+    assert team_markets["status"] == "experimental_shadow_not_promoted"
+    assert team_markets["bounded_market_grid_view"]
+    assert set(team_markets["remaining_intensities"]) == {
+        "corners", "shots_commercial",
+    }
+    assert abs(
+        next_goal["probability_home_next_goal"]
+        + next_goal["probability_away_next_goal"]
+        + next_goal["probability_no_more_goals"] - 1.0
+    ) <= 1e-10
 
 
 class _ScoreboardConnector:
