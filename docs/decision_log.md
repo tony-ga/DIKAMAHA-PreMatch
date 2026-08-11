@@ -2416,6 +2416,50 @@ recuento de partidos por liga nueva; predicción pre-match real para al menos
 una liga nueva; verificación de que las ligas nuevas caen a fallback Markov y
 no a Hawkes; suite Python completa aprobada.
 
+DEC-161
+Fecha: 2026-08-11
+Problema: el usuario pide avisos diarios de "predicciones acertadas" que
+muestren los aciertos de los partidos del día, tanto en la Mini App como en el
+avisador (el publicador de canal de Fase 101). Un aviso que sólo listara
+aciertos contradice directamente DEC-158: Fase 118 congeló el historial como
+una cola estrictamente cronológica que nunca filtra por desempeño y siempre
+incluye los fallos, precisamente para que el sistema no se muestre mejor de lo
+que es. `/v1/track-record` ni siquiera acepta un parámetro `hit`.
+Opciones: (a) publicar un aviso que sólo contenga los partidos acertados del
+día, aceptando el sesgo de selección y redefiniendo DEC-158 para este aviso; o
+(b) un resumen diario íntegro que liste todos los partidos liquidados de un
+día calendario, acierto y fallo, con el conteo agregado de aciertos visible
+al inicio.
+Decisión: opción (b), confirmada explícitamente por el usuario ante la
+disyuntiva. Se añade `SettlementRepository.on_date(fecha, tz)` para leer por
+día calendario en vez de por ventana de conteo, sin cambiar `recent()` ni el
+contrato de `/v1/track-record`. El avisador publica una vez al día, después de
+las 09:00 América/Ciudad de México (mismo cierre de puerta que el resumen
+semanal y el aviso de mañana), el resumen íntegro del día calendario anterior
+completo, bajo una clave de idempotencia nueva `track_record_daily:{fecha}`
+separada de `track_record:{semana}`. La Mini App expone
+`GET /v1/track-record/daily?date=YYYYMMDD` con `date` obligatorio (sin default
+de reloj de pared en el servidor) y una sección "Resultados de hoy" en
+`/historial`, por encima del historial acumulado existente, calculando la
+fecha de hoy en el cliente igual que ya hace `markets/page.tsx`.
+Motivo: preservar el principio de Fase 118 sin renunciar a la cadencia diaria
+que pide el usuario; un resumen íntegro con aciertos visualmente destacados
+(✅/❌ por partido y conteo agregado al inicio) cumple "mostrar los aciertos
+del día" sin ocultar los fallos, y evita reabrir DEC-158.
+Estado: congelada
+Impacto en contratos/fases: abre Fase 121. No modifica `prediction_settlements`,
+`/v1/track-record`, el router, snapshots ni ninguna promoción. Añade una
+lectura de sólo agregación (`on_date`) y una publicación adicional idempotente
+al publicador de canal existente; no toca `_result_text` ni el settlement por
+partido individual que ya se publica en tiempo real.
+Evidencia requerida: `on_date` devuelve sólo partidos del día local pedido,
+cronológico, incluye fallos; el aviso diario del canal se publica una sola vez
+por fecha con replay idempotente y contiene al menos un ✅ y un ❌ cuando el
+día tuvo ambos; `/v1/track-record/daily` exige `date`, rechaza formato
+inválido y nunca acepta filtrar por acierto; la Mini App muestra "Resultados
+de hoy" sin ocultar partidos fallidos; suite Python, Vitest y typecheck
+aprobados.
+
 ```text
 DEC-NNN
 Fecha:

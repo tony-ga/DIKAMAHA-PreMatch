@@ -1,12 +1,16 @@
-"""Pruebas del historial de aciertos verificable de Fase 118."""
+"""Pruebas del historial de aciertos verificable de Fase 118 y su resumen
+diario de Fase 121 (DEC-161)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+MEXICO_TZ = ZoneInfo("America/Mexico_City")
 
 from src.settlement_store import (
     MINIMUM_SAMPLE,
@@ -35,13 +39,16 @@ def _repository() -> SqlAlchemySettlementRepository:
     return SqlAlchemySettlementRepository(factory)
 
 
-def _record(index: int, *, hit: bool = True) -> SettlementRecord:
+def _record(
+    index: int, *, hit: bool = True, kickoff: datetime | None = None,
+) -> SettlementRecord:
     actual = "Local" if hit else "Visitante"
+    kickoff_ts = kickoff if kickoff is not None else KICKOFF + timedelta(days=index)
     return SettlementRecord(
         fixture_key=f"fixture-{index}",
         league_slug="esp.1", match_id=1000 + index, competition_id="c",
-        kickoff_ts=KICKOFF + timedelta(days=index),
-        settled_at=KICKOFF + timedelta(days=index, hours=3),
+        kickoff_ts=kickoff_ts,
+        settled_at=kickoff_ts + timedelta(hours=3),
         home_team_name="Local", away_team_name="Visitante",
         score_home=2 if hit else 0, score_away=0 if hit else 2,
         prediction_hash=f"{index:064d}",
@@ -143,6 +150,50 @@ def test_recent_returns_a_chronological_queue_including_misses() -> None:
         "fixture-4", "fixture-3", "fixture-2"]
     assert any(
         row.official_verdicts["one_x_two"]["hit"] is False for row in rows)
+
+
+def test_on_date_filters_by_local_kickoff_day_not_utc_day() -> None:
+    """El día lo define la fecha local del kickoff, no la fecha UTC.
+
+    22:30 hora de Ciudad de México del 10 de agosto ya es 11 de agosto en
+    UTC; un filtro ingenuo por fecha UTC lo colaría en el día equivocado.
+    """
+
+    repository = _repository()
+    late_previous_day = datetime(
+        2026, 8, 10, 22, 30, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    target_morning = datetime(
+        2026, 8, 11, 10, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    early_next_day = datetime(
+        2026, 8, 12, 0, 30, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    repository.add_if_absent(_record(0, kickoff=late_previous_day, hit=True))
+    repository.add_if_absent(_record(1, kickoff=target_morning, hit=False))
+    repository.add_if_absent(_record(2, kickoff=early_next_day, hit=True))
+
+    rows = repository.on_date(date(2026, 8, 11), MEXICO_TZ)
+
+    assert [row.fixture_key for row in rows] == ["fixture-1"]
+    assert rows[0].official_verdicts["one_x_two"]["hit"] is False
+
+
+def test_on_date_orders_chronologically_and_includes_every_verdict() -> None:
+    repository = _repository()
+    early = datetime(2026, 8, 11, 9, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    late = datetime(2026, 8, 11, 21, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    repository.add_if_absent(_record(0, kickoff=late, hit=True))
+    repository.add_if_absent(_record(1, kickoff=early, hit=False))
+
+    rows = repository.on_date(date(2026, 8, 11), MEXICO_TZ)
+
+    assert [row.fixture_key for row in rows] == ["fixture-1", "fixture-0"]
+
+
+def test_on_date_returns_nothing_outside_the_requested_day() -> None:
+    repository = _repository()
+    repository.add_if_absent(_record(0, kickoff=datetime(
+        2026, 8, 11, 12, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)))
+
+    assert repository.on_date(date(2026, 8, 12), MEXICO_TZ) == []
 
 
 def test_track_record_hides_the_rate_below_the_minimum_sample() -> None:
@@ -256,6 +307,81 @@ def test_endpoint_publishes_the_chronological_queue() -> None:
     )
     assert "hit" not in client.get(
         "/v1/track-record?hit=true").json()["window"]
+
+
+def test_daily_endpoint_requires_a_date() -> None:
+    """`date` es obligatorio: no hay valor por defecto de reloj de pared."""
+
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    client = TestClient(create_app())
+
+    assert client.get("/v1/track-record/daily").status_code == 422
+
+
+def test_daily_endpoint_rejects_an_invalid_date_format() -> None:
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    client = TestClient(create_app())
+
+    response = client.get("/v1/track-record/daily?date=2026-08-11")
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "contract_validation_error"
+
+
+def test_daily_endpoint_degrades_without_a_configured_store() -> None:
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    client = TestClient(create_app())
+
+    payload = client.get("/v1/track-record/daily?date=20260811").json()
+
+    assert payload["status"] == "unavailable"
+    assert payload["matches"] == []
+    assert payload["date"] == "2026-08-11"
+
+
+def test_daily_endpoint_scopes_to_the_local_day_and_never_hides_misses() -> None:
+    """Fase 121 (DEC-161): el resumen diario nunca filtra por acierto."""
+
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    repository = _repository()
+    repository.add_if_absent(_record(0, hit=True, kickoff=datetime(
+        2026, 8, 11, 10, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)))
+    repository.add_if_absent(_record(1, hit=False, kickoff=datetime(
+        2026, 8, 11, 20, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)))
+    repository.add_if_absent(_record(2, hit=True, kickoff=datetime(
+        2026, 8, 12, 9, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)))
+    client = TestClient(create_app(settlement_store=repository))
+
+    payload = client.get("/v1/track-record/daily?date=20260811").json()
+
+    assert payload["status"] == "available"
+    assert payload["date"] == "2026-08-11"
+    # track_record() ordena sus "matches" del más reciente al más antiguo,
+    # igual que /v1/track-record; fixture-1 (20:00) llegó después que
+    # fixture-0 (10:00) ese mismo día local.
+    fixture_keys = [row["fixture_key"] for row in payload["matches"]]
+    assert fixture_keys == ["fixture-1", "fixture-0"]
+    hits = [
+        row["official_verdicts"]["one_x_two"]["hit"]
+        for row in payload["matches"]
+    ]
+    assert hits == [False, True]
+    filtered_attempt = client.get(
+        "/v1/track-record/daily?date=20260811&hit=true").json()
+    assert [row["fixture_key"] for row in filtered_attempt["matches"]] == (
+        fixture_keys)
 
 
 # Version: 1.0.0

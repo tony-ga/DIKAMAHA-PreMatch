@@ -1,5 +1,10 @@
-import { TrackRecord } from "@/components/track-record";
+import { DailyTrackRecord, TrackRecord } from "@/components/track-record";
 
 export default function HistorialPage() {
-  return <TrackRecord />;
+  return (
+    <div className="stack">
+      <DailyTrackRecord />
+      <TrackRecord />
+    </div>
+  );
 }

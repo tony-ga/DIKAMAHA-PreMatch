@@ -2,22 +2,31 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.settlement_store import (
+    SettlementBase,
+    SettlementRecord,
+    SqlAlchemySettlementRepository,
+)
 from src.telegram_bot import PredictionGateway
 from src.telegram_channel_publisher import (
     ChannelBroadcastBase,
     ChannelTransport,
     SqlAlchemyChannelRepository,
     TelegramChannelPublisher,
+    _daily_track_record_chunks,
     channel_prediction_messages,
 )
 from src.telegram_mobile_layout import mobile_layout_issues
+
+MEXICO_TZ = ZoneInfo("America/Mexico_City")
 
 
 class _Gateway(PredictionGateway):
@@ -146,6 +155,37 @@ def _repository() -> SqlAlchemyChannelRepository:
     ChannelBroadcastBase.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
     return SqlAlchemyChannelRepository(factory)
+
+
+def _settlement_repository() -> SqlAlchemySettlementRepository:
+    """Crea el almacén de veredictos liquidados en memoria."""
+
+    engine = create_engine(
+        "sqlite+pysqlite://", future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool)
+    SettlementBase.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
+    return SqlAlchemySettlementRepository(factory)
+
+
+def _settlement(index: int, *, hit: bool, kickoff_local: datetime) -> SettlementRecord:
+    """Construye un veredicto liquidado con kickoff normalizado a UTC."""
+
+    actual = "Local" if hit else "Visitante"
+    kickoff_utc = kickoff_local.astimezone(timezone.utc)
+    return SettlementRecord(
+        fixture_key=f"daily-fixture-{index}", league_slug="mex.1",
+        match_id=2000 + index, competition_id="c",
+        kickoff_ts=kickoff_utc, settled_at=kickoff_utc + timedelta(hours=3),
+        home_team_name="Puebla", away_team_name="Guadalajara",
+        score_home=2 if hit else 0, score_away=0 if hit else 2,
+        prediction_hash=f"{index:064d}",
+        official_verdicts={
+            "one_x_two": {"predicted": "Local", "actual": actual, "hit": hit},
+            "over_2_5": {"predicted": "No", "actual": "No", "hit": True},
+            "btts": {"predicted": "No", "actual": "No", "hit": True},
+        })
 
 
 def test_daily_prediction_is_frozen_and_replay_is_idempotent() -> None:
@@ -287,6 +327,112 @@ def test_legacy_freeze_gets_append_only_distributional_market_snapshot() -> None
     assert repository.predictions()[0].prediction == original
     assert "ESCENARIOS MÁS PROBABLES" in transport.messages[-1]
     assert publisher.run_cycle(now)["markets"] == 0
+
+
+def test_daily_track_record_publishes_the_previous_local_day_with_misses() -> None:
+    """Fase 121 (DEC-161): el aviso diario nunca oculta un fallo."""
+
+    gateway, transport = _Gateway(), _Transport()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    settlements.add_if_absent(_settlement(1, hit=False, kickoff_local=datetime(
+        2026, 7, 29, 20, 0, tzinfo=MEXICO_TZ)))
+    publisher = TelegramChannelPublisher(
+        gateway, _repository(), transport, settlements=settlements)
+    # 09:00 hora de Ciudad de México del 30 de julio = 15:00 UTC; el aviso
+    # cubre el día calendario local anterior, el 29 de julio.
+    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(now)
+
+    assert counts["track_record_daily"] == 1
+    daily = next(
+        message for message in transport.messages
+        if "RESULTADOS DEL DÍA" in message)
+    assert "✅" in daily
+    assert "❌" in daily
+    assert "1/2" in daily
+    assert "29/07/2026" in daily
+
+
+def test_daily_track_record_replay_is_idempotent() -> None:
+    gateway, transport = _Gateway(), _Transport()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    publisher = TelegramChannelPublisher(
+        gateway, _repository(), transport, settlements=settlements)
+    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+
+    first = publisher.run_cycle(now)
+    second = publisher.run_cycle(now)
+
+    assert first["track_record_daily"] == 1
+    assert second["track_record_daily"] == 0
+    assert sum(1 for m in transport.messages if "RESULTADOS DEL DÍA" in m) == 1
+
+
+def test_daily_track_record_is_silent_before_the_summary_time() -> None:
+    """No publica antes de las 09:00 locales, igual que el resumen semanal."""
+
+    gateway, transport = _Gateway(), _Transport()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    publisher = TelegramChannelPublisher(
+        gateway, _repository(), transport, settlements=settlements)
+    before_summary = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(before_summary)
+
+    assert counts["track_record_daily"] == 0
+    assert not any("RESULTADOS DEL DÍA" in m for m in transport.messages)
+
+
+def test_daily_track_record_is_silent_without_settled_matches() -> None:
+    gateway, transport = _Gateway(), _Transport()
+    settlements = _settlement_repository()
+    publisher = TelegramChannelPublisher(
+        gateway, _repository(), transport, settlements=settlements)
+    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(now)
+
+    assert counts["track_record_daily"] == 0
+
+
+def test_daily_track_record_ignores_the_current_day_and_other_leagues_day() -> None:
+    """Sólo cuenta el día calendario local anterior completo, no el actual."""
+
+    gateway, transport = _Gateway(), _Transport()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 30, 8, 0, tzinfo=MEXICO_TZ)))
+    publisher = TelegramChannelPublisher(
+        gateway, _repository(), transport, settlements=settlements)
+    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(now)
+
+    assert counts["track_record_daily"] == 0
+
+
+def test_daily_track_record_text_stays_mobile_safe_with_long_names() -> None:
+    from dataclasses import replace as dataclass_replace
+    from datetime import date as date_cls
+
+    base = _settlement(
+        0, hit=False, kickoff_local=datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ))
+    long = dataclass_replace(
+        base,
+        home_team_name="Club Deportivo Independiente de la Montaña",
+        away_team_name="Asociación Deportiva Internacional del Valle")
+
+    chunks = _daily_track_record_chunks(date_cls(2026, 7, 29), [long])
+
+    assert chunks
+    assert all(not mobile_layout_issues(chunk) for chunk in chunks)
 
 
 def _market_rows() -> list[dict[str, Any]]:

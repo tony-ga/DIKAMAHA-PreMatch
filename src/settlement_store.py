@@ -14,8 +14,9 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
     BigInteger,
@@ -95,6 +96,16 @@ class SettlementRepository(ABC):
     def recent(self, window: int) -> list[SettlementRecord]:
         """Devuelve la cola cronológica más reciente, sin filtrar por acierto."""
 
+    @abstractmethod
+    def on_date(self, target: date, tz: ZoneInfo) -> list[SettlementRecord]:
+        """Devuelve los partidos de un día calendario local, sin filtrar por acierto.
+
+        El día se define por la fecha local del kickoff, no por `settled_at`,
+        para que "los partidos del día" coincida con lo que un usuario
+        reconoce como la jornada, incluso si la liquidación cruzó la
+        medianoche por la ventana de `kickoff + 3h`.
+        """
+
 
 class SqlAlchemySettlementRepository(SettlementRepository):
     """Adaptador SQLAlchemy compatible con PostgreSQL y SQLite."""
@@ -138,6 +149,18 @@ class SqlAlchemySettlementRepository(SettlementRepository):
         limit = max(1, min(int(window), MAXIMUM_WINDOW))
         statement = select(PredictionSettlement).order_by(
             PredictionSettlement.kickoff_ts.desc()).limit(limit)
+        with self._factory() as session:
+            return [_record(row) for row in session.execute(statement).scalars()]
+
+    def on_date(self, target: date, tz: ZoneInfo) -> list[SettlementRecord]:
+        """Filtra por fecha local de kickoff, cronológico y completo."""
+
+        start_local = datetime.combine(target, time.min, tzinfo=tz)
+        end_local = start_local + timedelta(days=1)
+        statement = select(PredictionSettlement).where(
+            PredictionSettlement.kickoff_ts >= start_local.astimezone(timezone.utc),
+            PredictionSettlement.kickoff_ts < end_local.astimezone(timezone.utc),
+        ).order_by(PredictionSettlement.kickoff_ts.asc())
         with self._factory() as session:
             return [_record(row) for row in session.execute(statement).scalars()]
 
