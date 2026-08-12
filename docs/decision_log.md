@@ -3136,6 +3136,72 @@ pura del frontend, 1 E2E de Playwright); typecheck, build Next y las 39
 pruebas E2E existentes sin regresiones; suite Python completa 779
 aprobadas/8 omitidas.
 
+DEC-175
+Fecha: 2026-08-12
+Problema: reporte en vivo de Paris Saint-Germain vs Aston Villa (Supercopa de
+Europa, `uefa.super_cup`, ESPN 401873624): la predicción live no cargaba.
+Causa raíz en `src/universal_prematch.py::_lambdas`: `league_history_below_
+minimum` porque el snapshot activo sólo tiene un partido histórico de
+`uefa.super_cup` (la edición del año pasado, entre otros dos equipos) y el
+motor exige ocho de la misma competición. DEC-056 exigía fallar cerrado sin
+mezclar competiciones, motivada por Uruguay: una liga con historial real
+profundo (docenas de partidos por temporada, como Chile o Colombia en el
+mismo catálogo) que aún no estaba respaldada por completo. Verificado contra
+el snapshot activo: PSG tiene 63 partidos (Ligue 1, Champions, Mundial de
+Clubes...) y Aston Villa 58, ninguno perdido -sólo no cuentan porque son de
+otra competición-. La Supercopa, a diferencia de Uruguay, no tiene "más
+respaldo" que cargar: por formato es un partido al año entre rivales que
+cambian cada edición, así que ni bajar el mínimo ni esperar más backfill la
+resuelve.
+Opciones: (a) mantener DEC-056 sin cambios y aceptar que estas competiciones
+nunca predicen; (b) ampliar el fallback sólo a una lista curada de copas
+estructuralmente escasas (Supercopa UEFA, Supercopa de España, Copa
+Intercontinental FIFA), dejando a Uruguay y casos similares exactamente como
+hoy; (c) ampliar el fallback a cualquier competición que no alcance el
+mínimo, sin distinguir escasez estructural de respaldo incompleto. Opción
+presentada al usuario con el caso Uruguay como contraejemplo explícito;
+eligió (c).
+Decisión: (c). `_historical_pool` (nueva, en `universal_prematch.py`) intenta
+primero `_league_matches` (idéntico a antes); si no alcanza el mínimo, usa
+`_team_matches` -todo partido previo de cualquiera de los dos equipos, en
+cualquier competición, mismo corte causal estricto- siempre que ese conjunto
+sea estrictamente mayor. `_lambdas` conserva exactamente el mismo mínimo
+sobre el resultado, así que un equipo sin historia en ningún lado sigue
+rechazando con `league_history_below_minimum` igual que antes (verificado:
+un equipo con cero partidos propios en un snapshot donde su competición sí
+tiene partidos de *otros* equipos no reporta un conjunto utilizable). El
+payload declara `audit.history_pool`: `same_competition` o
+`cross_competition_team_fallback`, para que quede visible qué se usó.
+Motivo: el usuario, tras ver el contraejemplo de Uruguay, prefirió una regla
+única y predecible (ampliar siempre que falte el mínimo) sobre una lista
+curada que requiere mantenimiento manual y volvería a fallar para la próxima
+copa escasa no listada. Verificado contra el snapshot real: `uefa.super_cup`
+(PSG-Villa) pasa de rechazar a resolver con la cadena oficial completa
+(`selective_dc_kalman_official`, 119 partidos combinados tras deduplicar);
+`esp.super_cup` y `fifa.intercontinental_cup` -las otras dos copas de
+formato escaso del catálogo- también empiezan a resolver. Uruguay, probado
+con su historial real (4 partidos, ningún partido de los equipos objetivo en
+otra competición en el snapshot), sigue rechazando exactamente igual que
+antes: la ampliación no lo alcanza porque el conjunto por equipo no supera
+al conjunto por liga.
+Estado: congelada (reemplaza a DEC-056)
+Impacto en contratos/fases: no modifica `match_features v1`, el router
+oficial, los mínimos existentes (8 en `_lambdas`, 16 en
+`official_goal_chain._frame`) ni ningún mercado ya servido. Aplica a
+`predict()` y `reconstruct_live_prior()` por igual, así que cubre tanto
+predicción pre-match como reconstrucción del prior live. No toca
+`team_count_market_runtime.py` (mercados de equipo, artefacto pre-entrenado,
+no consume este historial por partido).
+Evidencia requerida: 7 pruebas nuevas en
+`tests/test_universal_prematch_history_fallback.py` (selección de
+`_team_matches`, las tres ramas de `_historical_pool`, integración real vía
+`UniversalPrematchEngine` para el caso que resuelve y el caso que sigue
+rechazando); verificado que fallan contra el código anterior al fix y pasan
+con él; suite Python completa 786 aprobadas/8 omitidas sin regresiones;
+reconstrucción real de `reconstruct_live_prior` contra el snapshot activo
+para PSG-Aston Villa, Supercopa de España y Copa Intercontinental FIFA con
+IDs de equipo reales.
+
 ```text
 DEC-NNN
 Fecha:

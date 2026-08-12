@@ -38,6 +38,7 @@ from src.team_count_market_runtime import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_WINDOWS = ROOT / "artifacts/phase_38_multileague_event_windows_v1/event_windows.json"
 STATES = ("available", "history_insufficient", "unsupported_league")
+_MINIMUM_HISTORY_MATCHES = 8
 LOGGER = logging.getLogger(__name__)
 _SHARED_GOAL_MODEL = DixonColesKalmanGoalModel()
 _SHARED_BTTS_PROVIDER = ArtifactBttsProbabilityProvider()
@@ -136,6 +137,52 @@ def _league_matches(matches: list[dict[str, Any]], request: UpcomingMatchInput) 
     return [row for row in matches if str(row["league_slug"]) == request.league_slug and int(row["match_id"]) != request.match_id and _parse_ts(str(row["match_date"])) < cutoff]
 
 
+def _team_matches(matches: list[dict[str, Any]], request: UpcomingMatchInput) -> list[dict[str, Any]]:
+    """Selecciona partidos previos de ambos equipos en cualquier competición.
+
+    Fallback de DEC-175 para `_historical_pool`: mismo corte causal estricto
+    que `_league_matches`, pero sin exigir `league_slug` igual, porque aquí
+    el conjunto ya no representa "la competición" sino "estos dos equipos".
+    """
+
+    cutoff = _parse_ts(request.kickoff_ts)
+    teams = {request.home_team_id, request.away_team_id}
+    return [
+        row for row in matches
+        if int(row["match_id"]) != request.match_id
+        and _parse_ts(str(row["match_date"])) < cutoff
+        and (int(row["home_team_id"]) in teams or int(row["away_team_id"]) in teams)
+    ]
+
+
+def _historical_pool(
+    matches: list[dict[str, Any]], request: UpcomingMatchInput,
+) -> tuple[list[dict[str, Any]], str]:
+    """Resuelve el historial efectivo con fallback entre competiciones.
+
+    DEC-175 sustituye el fallo cerrado de DEC-056 (`no se rellenan tasas con
+    otra competición`): esa regla protegía contra enmascarar ligas con
+    respaldo incompleto (el caso original, Uruguay, con partidos reales sin
+    cargar todavía), pero rechazaba igual a competiciones que por formato
+    nunca acumulan ocho partidos propios -una final anual entre rivales que
+    cambian cada edición no tiene "más respaldo" que cargar. Ambos casos se
+    resuelven igual: si la competición exacta no alcanza el mínimo, se usa
+    todo el historial disponible de los dos equipos en cualquier
+    competición. `_lambdas` seguirá exigiendo el mismo mínimo sobre el
+    resultado, así que un equipo genuinamente sin historia -no sólo sin
+    historia en esta competición- sigue rechazando exactamente igual que
+    hoy.
+    """
+
+    league_pool = _league_matches(matches, request)
+    if len(league_pool) >= _MINIMUM_HISTORY_MATCHES:
+        return league_pool, "same_competition"
+    team_pool = _team_matches(matches, request)
+    if len(team_pool) > len(league_pool):
+        return team_pool, "cross_competition_team_fallback"
+    return league_pool, "same_competition"
+
+
 def _team_stats(matches: list[dict[str, Any]]) -> dict[int, dict[str, float]]:
     """Calcula goles a favor, contra y apariciones por equipo."""
 
@@ -150,7 +197,7 @@ def _team_stats(matches: list[dict[str, Any]]) -> dict[int, dict[str, float]]:
 def _lambdas(matches: list[dict[str, Any]], request: UpcomingMatchInput) -> tuple[float, float, dict[str, Any]]:
     """Calcula tasas estructurales con shrinkage por liga y equipo."""
 
-    if len(matches) < 8:
+    if len(matches) < _MINIMUM_HISTORY_MATCHES:
         raise PrematchUnavailableError("league_history_below_minimum")
     total = max(len(matches), 1)
     league_rate = sum(row["home_goals"] + row["away_goals"] for row in matches) / (2.0 * total)
@@ -239,7 +286,8 @@ class UniversalPrematchEngine:
         """
 
         self._validate_identity(request)
-        matches = _league_matches(_load_matches(str(self._windows_path)), request)
+        matches, history_pool = _historical_pool(
+            _load_matches(str(self._windows_path)), request)
         home, away, markets, chain_provenance, chain_audit = (
             self._goal_output(matches, request))
         _, _, coverage = _lambdas(matches, request)
@@ -269,6 +317,7 @@ class UniversalPrematchEngine:
                 **chain_audit,
                 "target_match_data_used": False,
                 "cutoff_strictly_before_kickoff": True,
+                "history_pool": history_pool,
             },
         }
         payload["source_hash"] = hashlib.sha256(json.dumps(
@@ -281,14 +330,15 @@ class UniversalPrematchEngine:
     ) -> UpcomingPrediction:
         """Calcula la salida después de validar el contrato de entrada."""
 
-        matches = _league_matches(_load_matches(str(self._windows_path)), request)
+        matches, history_pool = _historical_pool(
+            _load_matches(str(self._windows_path)), request)
         home, away, markets, chain_provenance, chain_audit = (
             self._goal_output(matches, request))
         _, _, coverage = _lambdas(matches, request)
         warning = coverage["history_age_days"] > 45
         provenance = {**chain_provenance, "source": _source_label(self._windows_path), "snapshot_id": self._windows_path.parent.name, "snapshot_versioned": self._windows_path.parent.parent.name == "prematch_snapshots"}
         audit = {**coverage, "history_freshness_warning": warning,
-                 **chain_audit}
+                 "history_pool": history_pool, **chain_audit}
         shadow = self._team_markets(request)
         return UpcomingPrediction(
             "available", request.match_id, request.league_slug,
