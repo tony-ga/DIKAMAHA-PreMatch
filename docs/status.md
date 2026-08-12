@@ -460,8 +460,18 @@ Implementada y evaluada sobre la base histórica existente.
 - gates finales: 567 pruebas Python aprobadas/8 omitidas, 18 Vitest, 11
   Playwright, typecheck, build Next y builds Docker API/bot/Mini App aprobados.
 
-Estado: `implemented_historical_evidence_pending_deployment`. El rollback es
-`LIVE_PROBABILITY_ENGINE_OFFICIAL=false`.
+Estado: `railway_deployed_official`. Corrección de estado (2026-08-12, Paso 1
+del plan de cierre): la etiqueta anterior `pending_deployment` estaba
+desactualizada. `GET /v1/health` en producción
+(`dikamaha-prematch-production.up.railway.app`) confirma en vivo
+`"live_probability_engine_enabled":true` y
+`"live_probability_engine_official":true` — el flag nunca se fijó
+explícitamente en ningún `railway*.toml` y el código por defecto
+(`_env_bool("LIVE_PROBABILITY_ENGINE_OFFICIAL", True)`,
+`src/dikamaha_service.py:412-413`) ya lo activa. El rollback sigue disponible
+fijando `LIVE_PROBABILITY_ENGINE_OFFICIAL=false` explícitamente en el
+servicio, pero hoy el motor compuesto de Fase 116 es el que sirve
+`/v1/predict/live/fixture` en producción, no el fallback Markov.
 
 ## Fase 115 — Telegram Mini App híbrida
 
