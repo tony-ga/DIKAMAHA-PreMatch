@@ -422,35 +422,57 @@ class TelegramChannelPublisher:
             key, "track_record", _track_record_text(track_record(records)), now)
 
     def _daily_track_record(self, now: datetime) -> int:
-        """Publica el resumen íntegro del día calendario anterior.
+        """Publica el resumen de cada día calendario cuyo último kickoff ya
+        superó su propia ventana de liquidación (`kickoff + 3h`, la misma
+        que ya exige `_results` partido por partido) y que aún no se ha
+        publicado — no a una hora fija.
 
-        Se ejecuta a partir de las 09:00, cuando cualquier partido del día
-        anterior ya superó por horas el `kickoff + 3h` de liquidación. Lista
-        acierto y fallo por partido: DEC-161 prohíbe un aviso que sólo muestre
-        aciertos, igual que DEC-158 lo prohíbe para el historial acumulado.
+        Antes esperaba siempre hasta las 09:00 del día siguiente y resumía
+        el día anterior, con hasta 24h de rezago aunque el último partido
+        hubiera terminado al mediodía; DEC-167 lo reemplaza para publicar
+        el mismo día, tan pronto como el dato esté honestamente reconciliado.
+        Lista acierto y fallo por partido: DEC-161 prohíbe un aviso que sólo
+        muestre aciertos, igual que DEC-158 lo prohíbe para el historial
+        acumulado.
+
+        Recorre todos los días con predicciones congeladas, no sólo "hoy":
+        fijar el día objetivo a partir de la fecha local de `now` fallaría
+        en cuanto el ciclo corriera ya iniciado el día siguiente —exactamente
+        lo que puede pasar cuando el último kickoff es tarde (por ejemplo
+        22:30) y su ventana de +3h cruza la medianoche—, dejando ese día sin
+        publicar para siempre porque `now` nunca vuelve a apuntar a esa
+        fecha. Iterar por día evita ese punto ciego y además recupera
+        automáticamente cualquier día que un reinicio del servicio haya
+        dejado sin publicar.
         """
 
         if self._settlements is None:
             return 0
-        local = now.astimezone(MEXICO_TZ)
-        if local.timetz().replace(tzinfo=None) < SUMMARY_TIME:
-            return 0
-        target = local.date() - timedelta(days=1)
-        target_text = target.isoformat()
-        complete_key = f"track_record_daily:{target_text}:complete"
-        if self._repository.publication_exists(complete_key):
-            return 0
-        records = self._settlements.on_date(target, MEXICO_TZ)
-        if not records:
-            return 0
-        chunks = _daily_track_record_chunks(target, records)
-        published = sum(self._publish(
-            f"track_record_daily:{target_text}:{index}",
-            "track_record_daily", text, now)
-            for index, text in enumerate(chunks))
-        self._repository.record_publication(
-            complete_key, "track_record_daily_complete", "internal",
-            f"track_record_daily_complete:{target_text}:{len(chunks)}", now)
+        last_kickoff_by_day: dict[str, datetime] = {}
+        for row in self._repository.predictions():
+            current = last_kickoff_by_day.get(row.target_date)
+            if current is None or row.kickoff_ts > current:
+                last_kickoff_by_day[row.target_date] = row.kickoff_ts
+        published = 0
+        for target_text, last_kickoff in sorted(last_kickoff_by_day.items()):
+            if now < last_kickoff + SETTLEMENT_DELAY:
+                continue
+            complete_key = f"track_record_daily:{target_text}:complete"
+            if self._repository.publication_exists(complete_key):
+                continue
+            target = date.fromisoformat(target_text)
+            records = self._settlements.on_date(target, MEXICO_TZ)
+            if not records:
+                continue
+            chunks = _daily_track_record_chunks(target, records)
+            published += sum(self._publish(
+                f"track_record_daily:{target_text}:{index}",
+                "track_record_daily", text, now)
+                for index, text in enumerate(chunks))
+            self._repository.record_publication(
+                complete_key, "track_record_daily_complete", "internal",
+                f"track_record_daily_complete:{target_text}:{len(chunks)}",
+                now)
         return published
 
     def _daily(

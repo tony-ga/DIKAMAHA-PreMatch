@@ -217,12 +217,17 @@ Implementada. Ver `DEC-161`.
 - `GET /v1/track-record/daily?date=YYYYMMDD` expone el mismo agregado por
   fecha local; `date` es obligatorio, sin valor por defecto de reloj de
   pared en el servidor, y rechaza formato inválido con `422`;
-- el avisador (`TelegramChannelPublisher`) publica una vez al día, después de
-  las 09:00 América/Ciudad de México, el resumen íntegro del día calendario
-  local anterior completo — partido a partido, con ✅/❌ por los tres
+- el avisador (`TelegramChannelPublisher`) publica el resumen íntegro de
+  cada día calendario local — partido a partido, con ✅/❌ por los tres
   mercados oficiales y el conteo agregado de 1X2 al inicio —, bajo la clave
   de idempotencia `track_record_daily:{fecha}`, separada de
-  `track_record:{semana}` de Fase 118;
+  `track_record:{semana}` de Fase 118. **Actualizado por `DEC-167`**: ya no
+  espera a las 09:00 del día siguiente para resumir el día anterior; publica
+  el mismo día, en cuanto el último kickoff congelado de ese día supera su
+  propia ventana de liquidación (`kickoff + 3h`, la misma que exige
+  `_results`). Recorre todos los días con predicciones congeladas en cada
+  ciclo, no sólo "hoy", así que también recupera un día que un reinicio del
+  servicio hubiera dejado sin publicar;
 - la Mini App muestra "Resultados de hoy" en `/historial`, por encima del
   historial acumulado existente, calculando la fecha de hoy en el cliente
   igual que ya hace `markets/page.tsx`;

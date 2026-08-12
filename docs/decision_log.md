@@ -2708,6 +2708,61 @@ no asumido) y cambia de mensaje con el tiempo transcurrido; 693 pruebas
 Python aprobadas/8 omitidas (estables en cinco corridas consecutivas de los
 casos sensibles al tiempo), 23 Vitest, 38 Playwright, typecheck y build Next.
 
+DEC-167
+Fecha: 2026-08-12
+Problema: pedido explícito del usuario: quiere que la hora de publicación del
+resumen diario de aciertos ("Aciertos" en el canal de Telegram) dependa
+directamente de cuándo termina el último partido del día, y que se publique
+ese mismo día calendario. El diseño de Fase 121 (DEC-161) fijaba una hora
+única: siempre a partir de las 09:00 hora de Ciudad de México, resumiendo el
+día calendario ANTERIOR completo. Eso significaba hasta 24h de rezago
+sistemático aunque el último partido del día hubiera terminado y liquidado
+al mediodía.
+Opciones: (a) mover la hora fija a un valor distinto (por ejemplo, más
+temprano), que seguiría siendo arbitraria y seguiría sin depender del
+partido real; (b) derivar el disparo del último kickoff realmente congelado
+ese día más la ventana de liquidación `kickoff + 3h` que `_results` ya exige
+partido por partido, publicando en cuanto esa ventana cierra.
+Decisión: (b). `_daily_track_record` deja de fijar un único día objetivo a
+partir de `local.date()` en el momento del ciclo -eso fallaría en cuanto el
+ciclo corriera ya iniciado el día siguiente, precisamente lo que puede pasar
+si el último kickoff es tarde y su +3h cruza la medianoche- y en su lugar
+agrupa por día todas las predicciones ya congeladas en `ChannelRepository`,
+calcula el último kickoff de cada día y publica cualquier día cuya ventana
+de +3h ya cerró y que aún no tenga su clave `track_record_daily:{fecha}
+:complete`. Esto además recupera automáticamente cualquier día que un
+reinicio del servicio hubiera dejado sin revisar, algo que el diseño
+anterior no podía hacer.
+Motivo: la ventana de +3h no es una elección arbitraria de este cambio, es
+la misma garantía de integridad causal que ya rige la liquidación
+partido-por-partido (`_results`): antes de esa ventana el marcador y el
+play-by-play de ESPN pueden no estar reconciliados. Acortarla para forzar
+la publicación antes de medianoche en todos los casos rompería esa
+garantía, así que no se toca; en el caso límite de un kickoff muy tardío
+(por ejemplo 22:30), el resumen puede terminar publicándose ya iniciado el
+día siguiente, y eso queda documentado como el único escape aceptado. Para
+la inmensa mayoría de los días -donde el último partido termina bien antes
+de medianoche- el resumen ahora sale la misma noche en vez de esperar hasta
+la mañana siguiente.
+Estado: congelada
+Impacto en contratos/fases: modifica el disparador de Fase 121 (DEC-161),
+no su contenido ni su principio: sigue listando acierto y fallo de cada
+partido sin ocultar nada, sigue siendo idempotente por clave
+`track_record_daily:{fecha}:complete`, y `/v1/track-record/daily` de la Mini
+App no se toca -ya consultaba `prediction_settlements` en vivo para
+cualquier fecha pedida, sin depender del calendario de publicación del
+canal de Telegram. `_daily()` (la congelación de partidos de mañana a las
+09:00) y `_weekly_track_record` (el acumulado semanal de los lunes) quedan
+sin cambios: el pedido del usuario era específicamente sobre el resumen
+diario.
+Evidencia requerida: el aviso se publica el mismo día calendario local en
+cuanto el último kickoff congelado de ese día supera `kickoff + 3h`, no
+antes; el replay en el mismo instante es idempotente; un día sin
+predicciones congeladas que lo respalden no dispara nada; un día que un
+reinicio del servicio dejó sin revisar se recupera en el primer ciclo
+posterior aunque "hoy" ya haya avanzado varios días; 694 pruebas Python
+aprobadas/8 omitidas.
+
 ```text
 DEC-NNN
 Fecha:

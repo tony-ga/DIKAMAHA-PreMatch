@@ -329,20 +329,56 @@ def test_legacy_freeze_gets_append_only_distributional_market_snapshot() -> None
     assert publisher.run_cycle(now)["markets"] == 0
 
 
-def test_daily_track_record_publishes_the_previous_local_day_with_misses() -> None:
-    """Fase 121 (DEC-161): el aviso diario nunca oculta un fallo."""
+def _freeze_prediction_for(
+    repository: SqlAlchemyChannelRepository, index: int,
+    kickoff_local: datetime, target_date_text: str,
+) -> None:
+    """Siembra en `ChannelRepository` el fixture que respalda un settlement.
+
+    El nuevo disparador de `_daily_track_record` lee el último kickoff
+    congelado por día directamente de `ChannelRepository.predictions()`, no
+    del almacén de settlements; en producción ambos siempre coinciden porque
+    `_results` sólo liquida fixtures que ya pasaron por `freeze`, pero estas
+    pruebas siembran el settlement por separado, así que necesitan sembrar
+    también la predicción congelada correspondiente.
+    """
+
+    fixture = {
+        "league_slug": "mex.1", "match_id": 2000 + index,
+        "competition_id": str(2000 + index),
+        "home_team_id": 1, "away_team_id": 2,
+        "home_team_name": "Puebla", "away_team_name": "Guadalajara",
+        "kickoff_ts": kickoff_local.astimezone(timezone.utc).isoformat(),
+    }
+    repository.freeze(
+        fixture, {"probability_home": 0.6}, target_date_text,
+        kickoff_local.astimezone(timezone.utc) - timedelta(hours=6))
+
+
+def test_daily_track_record_publishes_the_same_day_once_the_last_kickoff_settles() -> None:
+    """DEC-167: el aviso diario nunca oculta un fallo (hereda DEC-161) y se
+    dispara el mismo día calendario local, no al día siguiente a las 09:00.
+    """
 
     gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
     settlements = _settlement_repository()
     settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
         2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
     settlements.add_if_absent(_settlement(1, hit=False, kickoff_local=datetime(
         2026, 7, 29, 20, 0, tzinfo=MEXICO_TZ)))
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
+    _freeze_prediction_for(
+        repository, 1, datetime(2026, 7, 29, 20, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
     publisher = TelegramChannelPublisher(
-        gateway, _repository(), transport, settlements=settlements)
-    # 09:00 hora de Ciudad de México del 30 de julio = 15:00 UTC; el aviso
-    # cubre el día calendario local anterior, el 29 de julio.
-    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+        gateway, repository, transport, settlements=settlements)
+    # Último kickoff 20:00 CDMX + 3h de liquidación = 23:00 CDMX, el mismo 29
+    # de julio (05:00 UTC del 30). El aviso se publica esa misma noche, no a
+    # las 09:00 del día siguiente.
+    now = datetime(2026, 7, 30, 5, 5, tzinfo=timezone.utc)
 
     counts = publisher.run_cycle(now)
 
@@ -358,12 +394,17 @@ def test_daily_track_record_publishes_the_previous_local_day_with_misses() -> No
 
 def test_daily_track_record_replay_is_idempotent() -> None:
     gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
     settlements = _settlement_repository()
     settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
         2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
     publisher = TelegramChannelPublisher(
-        gateway, _repository(), transport, settlements=settlements)
-    now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
+        gateway, repository, transport, settlements=settlements)
+    # Kickoff 10:00 CDMX + 3h = 13:00 CDMX = 19:00 UTC; justo después.
+    now = datetime(2026, 7, 29, 19, 5, tzinfo=timezone.utc)
 
     first = publisher.run_cycle(now)
     second = publisher.run_cycle(now)
@@ -373,18 +414,23 @@ def test_daily_track_record_replay_is_idempotent() -> None:
     assert sum(1 for m in transport.messages if "RESULTADOS DEL DÍA" in m) == 1
 
 
-def test_daily_track_record_is_silent_before_the_summary_time() -> None:
-    """No publica antes de las 09:00 locales, igual que el resumen semanal."""
+def test_daily_track_record_waits_for_the_settlement_window_to_close() -> None:
+    """No publica antes de que el último kickoff cumpla su ventana de +3h."""
 
     gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
     settlements = _settlement_repository()
     settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
         2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
     publisher = TelegramChannelPublisher(
-        gateway, _repository(), transport, settlements=settlements)
-    before_summary = datetime(2026, 7, 30, 12, 0, tzinfo=timezone.utc)
+        gateway, repository, transport, settlements=settlements)
+    # Kickoff 10:00 CDMX + 3h = 13:00 CDMX = 19:00 UTC; una hora antes.
+    before_ready = datetime(2026, 7, 29, 18, 0, tzinfo=timezone.utc)
 
-    counts = publisher.run_cycle(before_summary)
+    counts = publisher.run_cycle(before_ready)
 
     assert counts["track_record_daily"] == 0
     assert not any("RESULTADOS DEL DÍA" in m for m in transport.messages)
@@ -392,9 +438,13 @@ def test_daily_track_record_is_silent_before_the_summary_time() -> None:
 
 def test_daily_track_record_is_silent_without_settled_matches() -> None:
     gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
     settlements = _settlement_repository()
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
     publisher = TelegramChannelPublisher(
-        gateway, _repository(), transport, settlements=settlements)
+        gateway, repository, transport, settlements=settlements)
     now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
 
     counts = publisher.run_cycle(now)
@@ -402,13 +452,19 @@ def test_daily_track_record_is_silent_without_settled_matches() -> None:
     assert counts["track_record_daily"] == 0
 
 
-def test_daily_track_record_ignores_the_current_day_and_other_leagues_day() -> None:
-    """Sólo cuenta el día calendario local anterior completo, no el actual."""
+def test_daily_track_record_ignores_a_day_without_frozen_predictions() -> None:
+    """Un settlement sin predicción congelada respaldándolo no dispara nada.
+
+    En producción esto no ocurre (`_results` sólo liquida lo que `freeze`
+    congeló primero), pero el disparador depende de `ChannelRepository`, no
+    del almacén de settlements, así que debe degradar sin publicar si esa
+    fuente no tiene nada para ese fixture.
+    """
 
     gateway, transport = _Gateway(), _Transport()
     settlements = _settlement_repository()
     settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
-        2026, 7, 30, 8, 0, tzinfo=MEXICO_TZ)))
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
     publisher = TelegramChannelPublisher(
         gateway, _repository(), transport, settlements=settlements)
     now = datetime(2026, 7, 30, 15, 0, tzinfo=timezone.utc)
@@ -416,6 +472,35 @@ def test_daily_track_record_ignores_the_current_day_and_other_leagues_day() -> N
     counts = publisher.run_cycle(now)
 
     assert counts["track_record_daily"] == 0
+
+
+def test_daily_track_record_catches_up_a_day_missed_by_a_service_restart() -> None:
+    """Recorrer todos los días pendientes recupera uno que quedó sin revisar.
+
+    Antes el día objetivo se derivaba de `local.date()` en el momento del
+    ciclo: si el servicio no corrió ningún ciclo durante varios días (por
+    ejemplo, tras una caída) y "hoy" ya avanzó, ese día antiguo nunca volvía
+    a coincidir con `local.date()` y su aviso se perdía para siempre. Iterar
+    por día en vez de fijarlo a partir de `now` lo recupera igual.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
+    publisher = TelegramChannelPublisher(
+        gateway, repository, transport, settlements=settlements)
+    # El primer ciclo tras la caída corre tres días después.
+    now = datetime(2026, 8, 1, 15, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(now)
+
+    assert counts["track_record_daily"] == 1
+    assert any("RESULTADOS DEL DÍA" in m for m in transport.messages)
 
 
 def test_daily_track_record_text_stays_mobile_safe_with_long_names() -> None:
