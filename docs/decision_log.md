@@ -2880,6 +2880,59 @@ cuatro archivos eliminados como untracked; no existe commit histórico que los
 contenga; esta entrada documenta el incidente para que no se repita sin una
 decisión explícita que reabra Fase 83.
 
+DEC-170
+Fecha: 2026-08-12
+Problema: DEC-100 (2026-07-28) cerró el tuning retrospectivo sobre la cohorte
+de confirmación de Markov v4 tras ~15 iteraciones rechazadas (Fases 76-80U),
+pero dejó Fase 81 (confirmación prospectiva independiente, ≥500 partidos/≥10
+ligas) como "programada" y dependiente de que Fase 73 siguiera acumulando su
+cohorte. Fase 73 recolecta manualmente vía
+`scripts/run_phase_73_multicutoff_snapshots.py`, sin automatización ni
+calendario, y hoy tiene 60 filas/5 fixtures -muy lejos del gate-. El usuario
+decidió cerrar el producto actual con éxito en vez de perseguir la promoción
+de Markov v4 (ver el plan de cierre del proyecto). Mantener Fases 73/81-83
+como "programada"/"bloqueada" sin ningún compromiso de recolección deja el
+roadmap en un estado ambiguo: ni cerrado ni activo, sin fecha posible de
+cierre.
+Opciones: (a) mantener el estado actual sin cambios, preservando la
+ambigüedad; (b) declarar explícitamente sin trabajo activo la cadena de
+promoción de Markov v4 (Fases 73, 81, 82, 83), archivándola como resultado de
+investigación documentado en vez de trabajo pendiente, sin impedir una
+reapertura futura explícita; (c) cancelar permanentemente sin posibilidad de
+reapertura, contradiciendo la regla no negociable de preservar evidencia y
+mantener puertas abiertas a nueva evidencia independiente.
+Decisión: (b). Fase 73 (recolección prospectiva multicutoff) suspende su
+recolección activa; Fase 81 (confirmación independiente), Fase 82
+(integración oficial) y Fase 83 (validación de valor de apuesta) quedan
+archivadas: sin recolección de cohorte, sin implementación programada, sin
+fecha objetivo. Fase 84B (mercados de jugador) permanece en el mismo estado
+por una razón estructural distinta pero convergente -no existe fuente de
+datos causal de alineación/minutos-, así que también queda archivada en vez
+de "bloqueada" indefinida. Esto NO reabre ni contradice DEC-100, que ya
+cerró el tuning retrospectivo; lo extiende declarando que tampoco se sigue
+invirtiendo esfuerzo en generar la cohorte prospectiva que Fase 81
+necesitaría. Las fases ya integradas como shadow en el producto -84A, 85, 88,
+89, 90, 93, y Markov Live/Hawkes de Fase 114- NO se archivan y no cambian:
+siguen sirviendo tráfico real bajo su etiqueta shadow/fallback exacto, porque
+no son investigación pendiente sino resultado ya entregado.
+Motivo: perseguir Fase 81 sin una cohorte automatizada ni un compromiso de
+tiempo no tiene fecha de cierre realista, y el usuario priorizó explícitamente
+estabilizar el producto en producción sobre continuar el programa de
+investigación. Archivar en vez de dejar "programada" evita que alguien lea el
+roadmap en el futuro y asuma que hay trabajo activo en curso donde no lo hay,
+cumpliendo a la vez la regla de preservar evidencia negativa sin borrarla ni
+cerrarle la puerta a una reapertura con nueva evidencia independiente.
+Estado: congelada
+Impacto en contratos/fases: actualiza el estado declarado de Fases 73 y 81 en
+`docs/00_roadmap_actual.md` de "activa"/"programada" a "archivada"; no
+modifica DEC-100, el router oficial, ningún endpoint, ni las fases shadow ya
+integradas al producto (84A/85/88/89/90/93/114). Una reapertura de Fase 73/81
+requiere una decisión explícita nueva, análoga a como DEC-100 ya exige para
+reabrir tuning retrospectivo.
+Evidencia requerida: `docs/00_roadmap_actual.md` refleja "archivada" en las
+filas de Fases 73 y 81 y en el "Objetivo congelado"; ningún artefacto, script
+ni endpoint de producción se modifica como consecuencia de esta decisión.
+
 ```text
 DEC-NNN
 Fecha:

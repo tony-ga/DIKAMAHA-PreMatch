@@ -17,12 +17,25 @@ La revisión operativa de artefactos queda validada para despliegue: la imagen
 Linux verifica sólo los componentes que consume y acepta la representación
 LF/CRLF sin relajar contenido, esquema ni hashes binarios.
 
-## Objetivo congelado
+## Objetivo congelado (archivado, DEC-170)
 
 Generar predicciones pre-match mediante simulación de trayectorias históricas.
-El núcleo nuevo será `markov_pre_match v4`: un modelo latente, direccional y
+El núcleo nuevo era `markov_pre_match v4`: un modelo latente, direccional y
 con duración, aprendido sobre microventanas causales y agregado a mercados de
 15 minutos. Dixon-Coles y Kalman aportan capacidad estructural y forma reciente.
+
+**Este objetivo queda archivado por DEC-170 (2026-08-12).** Tras ~15
+iteraciones rechazadas (Fases 76-80U, cerradas por DEC-100), el proyecto
+decidió cerrar el producto actual en producción en vez de seguir persiguiendo
+la promoción de Markov v4. Fases 73 (recolección prospectiva), 81
+(confirmación independiente), 82 (integración oficial) y 83 (validación de
+apuesta) quedan sin trabajo activo ni fecha objetivo — no bloqueadas de forma
+ambigua, sino archivadas como resultado de investigación documentado. Las
+fases ya integradas como shadow en el producto (84A, 85, 88, 89, 90, 93 y
+Markov Live/Hawkes de Fase 114) no se ven afectadas: siguen sirviendo tráfico
+real bajo su etiqueta shadow/fallback exacto. Una reapertura requiere una
+decisión explícita nueva con cohorte independiente, igual que ya exigía
+DEC-100.
 
 ## Arquitectura objetivo
 
@@ -190,7 +203,7 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 70 | `state_labeling_v2_candidate` | rechazada como reemplazo | Más variables aumentan soporte, pero el spread de riesgo siguiente cae `0.132934→0.085693`; v1 se conserva |
 | 71 | `state_semantic_revision` | rechazada para promoción; fallback validado | Cadena conjunta, temporalidad y residual corregidos; cuatro taxonomías eligen `alpha=0`, spread `0.020323` y holdout idéntico al baseline |
 | 72 | `markov_causal_contract` | validada | 12/12 recursos ESPN obligatorios, 16 capturas live por ejecución, raw-first/replay auditado y 295 pruebas aprobadas |
-| 73 | `prematch_multicutoff_snapshots` | activa; 60 snapshots en 5 fixtures/ligas | 100% pre-kickoff; falta segundo bucket por fixture para cerrar cobertura |
+| 73 | `prematch_multicutoff_snapshots` | archivada (DEC-170); 60 snapshots en 5 fixtures/ligas al momento de la suspensión | 100% pre-kickoff; recolección prospectiva suspendida, no se sigue acumulando cohorte |
 | 74 | `causal_sequence_corpus` | autorizada para implementación | Cero leakage/solapamiento, marcador reconciliado y ≥95% de secuencias completas en ligas admitidas |
 | 75 | `directional_targets_strong_baselines` | programada | Targets post-match aislados y comparadores calibrados, incluido modelo tabular same-data |
 | 76 | `latent_state_discovery` | ready_for_next_phase | 76R supera NMI, spread, ocupación, estabilidad y duración en dos folds OOS |
@@ -200,11 +213,11 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 80 | `nested_walkforward_ablation` | rejected_for_revision | Mejor variante `-0.000002`, IC95% cruza cero y sólo 44.83% de ligas no degradan |
 | 80V | `historical_100_match_report` | diagnóstico validado, no promocionable | 100 partidos/13 ligas; 80U `0.954427` vs continuo `0.953792`, reporte causal ordenado y replay idéntico |
 | 80W | `complete_system_100_match_test` | diagnóstico validado, no promocionable | Cadena DC/Kalman→Markov en 100 partidos; fiabilidad `54.4%` vs mayoría `56.2%`, replay idéntico |
-| 81 | `independent_prospective_confirmation` | programada | ≥500 partidos, ≥10 ligas, cohorte sellada y confirmación bootstrap positiva |
-| 82 | `official_markov_v4_integration` | bloqueada por Fases 80–81 | Paridad offline/online, provenance completo, rollback y activación sólo de mercados aprobados |
-| 83 | `betting_value_validation` | bloqueada por Fase 82 | Cuotas, ROI, Kelly y drawdown sólo después de aprobar probabilidades |
+| 81 | `independent_prospective_confirmation` | archivada (DEC-170), sin cohorte propia | ≥500 partidos, ≥10 ligas, cohorte sellada y confirmación bootstrap positiva |
+| 82 | `official_markov_v4_integration` | archivada (DEC-170); bloqueada por Fases 80–81 | Paridad offline/online, provenance completo, rollback y activación sólo de mercados aprobados |
+| 83 | `betting_value_validation` | archivada (DEC-170); bloqueada por Fase 82 | Cuotas, ROI, Kelly y drawdown sólo después de aprobar probabilidades |
 | 84A | `team_count_markets` | ready_for_next_phase, shadow | 4 líneas aprobadas en 1,895 confirmation/33 ligas; goles y router intactos |
-| 84B | `player_market_readiness` | blocked_by_data | Exige identidad, minutos, titularidad, alineación causal y atribución de eventos |
+| 84B | `player_market_readiness` | archivada (DEC-170); blocked_by_data | Exige identidad, minutos, titularidad, alineación causal y atribución de eventos; no existe fuente causal disponible |
 | 85 | `count_market_shadow_integration` | ready_for_prospective_shadow | 4 líneas integradas, paridad oficial exacta, fallback seguro, replay y 373 pruebas |
 | 86 | `count_market_prospective_confirmation` | ready_for_next_phase | 523 predicciones/18 ligas raw-first, modelo+baseline congelados y cero outcomes leídos |
 | 87 | `count_market_outcome_materialization` | activa, 0/523 | Colector raw-first validado; espera `kickoff + 3h`, predicciones intactas y scoring bloqueado |
