@@ -90,6 +90,39 @@ def test_dockerfile_copies_the_metric_coverage_map() -> None:
         "el Dockerfile no copia el mapa de cobertura de métricas")
 
 
+def test_every_copied_artifact_survives_dockerignore() -> None:
+    """Un `COPY` de artefacto no sirve si `.dockerignore` lo excluye.
+
+    Fallo real: el mapa de cobertura se añadió al `Dockerfile` y a
+    `.gitignore`, pero no a la lista blanca de `.dockerignore`, que arranca
+    con `artifacts/*`. El build murió con
+    `"/artifacts/metric_coverage/coverage_map.json": not found` y la prueba
+    anterior no lo detectó porque sólo leía el texto del `Dockerfile`.
+
+    Esta prueba comprueba la condición real -que el fichero llegue al
+    contexto de build- para todos los artefactos copiados, no sólo el que
+    motivó el fallo.
+    """
+
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    ignore_lines = {
+        line.strip() for line in
+        (DOCKERFILE.parent / ".dockerignore").read_text(
+            encoding="utf-8").splitlines()
+    }
+    copied = {
+        token for line in dockerfile.splitlines()
+        if line.startswith("COPY ")
+        for token in line.split()[1:-1]
+        if token.startswith("artifacts/")
+    }
+    assert copied, "no se detectó ningún COPY de artefactos"
+    for path in sorted(copied):
+        assert f"!{path}" in ignore_lines, (
+            f"{path} se copia en el Dockerfile pero .dockerignore lo excluye; "
+            "el build fallará con 'not found'")
+
+
 def test_ledger_path_is_writable_by_the_runtime_user() -> None:
     """El ledger no puede apuntar a un punto de montaje ajeno al usuario `app`.
 

@@ -42,6 +42,8 @@ artifacts/*
 !artifacts/phase_122_confidence_reliability/hashes.json
 !artifacts/phase_114_live_markov_hawkes_v1/
 !artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
+!artifacts/metric_coverage/
+!artifacts/metric_coverage/coverage_map.json
 *.db
 *.sqlite
 *.pem
