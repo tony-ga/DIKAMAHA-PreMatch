@@ -46,12 +46,14 @@ try:
         MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
     )
     from src.team_count_market_runtime import MARKET_METADATA
+    from src.telegram_bot import PredictionGatewayError
 except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
     from prematch_raw_store import canonical_hash
     from settlement_store import (
         MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
     )
     from team_count_market_runtime import MARKET_METADATA
+    from telegram_bot import PredictionGatewayError
 
 GOAL_MARKET_KEYS = {"1x2": "one_x_two", "over_2_5": "over_2_5", "btts": "btts"}
 MAXIMUM_WINDOW = 500
@@ -398,6 +400,91 @@ def resolve_team_market(
         observed_value={"observed": float(observed), "line": pick.line},
         settlement_source="team_market_statistics", settled_at=settled_at,
     )
+
+
+def run_freeze_cycle(
+    gateway: Any, repository: HighProbabilityPickRepository,
+    date: str | None, now: datetime,
+) -> dict[str, int]:
+    """Congela los picks vigentes cuyo fixture todavía no arranca.
+
+    Compartida por el runner standalone de Fase 123 y por la integración
+    dentro del proceso del publicador del canal -misma regla, un solo lugar-.
+    """
+
+    response = gateway.high_probability(date=date, limit=30)
+    picks = response.get("picks") or []
+    eligibility_sha256 = str(
+        (response.get("provenance") or {}).get("eligibility_sha256") or "")
+    frozen = skipped_started = skipped_invalid = 0
+    for pick in picks:
+        fixture = pick.get("fixture")
+        if not isinstance(fixture, dict):
+            skipped_invalid += 1
+            continue
+        try:
+            record = freeze_from_pick(pick, fixture, eligibility_sha256, now)
+        except (KeyError, TypeError, ValueError):
+            skipped_invalid += 1
+            continue
+        if record.kickoff_ts <= now:
+            skipped_started += 1
+            continue
+        if repository.freeze_if_absent(record):
+            frozen += 1
+    return {
+        "frozen": frozen, "skipped_started": skipped_started,
+        "skipped_invalid": skipped_invalid, "candidates": len(picks),
+    }
+
+
+def run_settle_cycle(
+    gateway: Any, repository: HighProbabilityPickRepository,
+    settlements: Any, now: datetime,
+) -> dict[str, int]:
+    """Liquida los picks cuyo fixture ya está sellado en `prediction_settlements`."""
+
+    settled = still_pending = failed = 0
+    for pick in repository.unsettled(now):
+        settlement = settlements.get(pick.fixture_key)
+        if settlement is None:
+            still_pending += 1
+            continue
+        record = resolve_goal_market(pick, settlement)
+        if record is None:
+            try:
+                statistics = gateway.explorer_statistics(
+                    pick.league_slug, str(pick.match_id),
+                    settlement.competition_id)
+            except PredictionGatewayError:
+                failed += 1
+                continue
+            record = resolve_team_market(pick, statistics, settlement.settled_at)
+        if record is None:
+            failed += 1
+            continue
+        if repository.settle_if_absent(record):
+            settled += 1
+    return {"settled": settled, "still_pending": still_pending, "failed": failed}
+
+
+def run_prospective_cycle(
+    gateway: Any, repository: HighProbabilityPickRepository,
+    settlements: Any, date: str | None = None,
+) -> dict[str, Any]:
+    """Ejecuta congelación y liquidación con instante UTC explícito.
+
+    `settlements=None` congela igual pero omite la liquidación -degradación
+    segura cuando no hay `DATABASE_URL` configurada, igual que Fase 118-.
+    """
+
+    now = datetime.now(timezone.utc)
+    freeze_counts = run_freeze_cycle(gateway, repository, date, now)
+    settle_counts = (
+        run_settle_cycle(gateway, repository, settlements, now)
+        if settlements is not None
+        else {"settled": 0, "still_pending": 0, "failed": 0})
+    return {"freeze": freeze_counts, "settle": settle_counts}
 
 
 def prospective_reliability(

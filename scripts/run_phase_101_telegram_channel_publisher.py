@@ -48,10 +48,18 @@ from src.settlement_store import (  # noqa: E402
     SettlementRepository,
     build_repository as build_settlement_repository,
 )
+from src.high_probability_settlement import (  # noqa: E402
+    HighProbabilityPickRepository,
+    PickSettlementBase,
+    SqlAlchemyHighProbabilityPickRepository,
+    build_repository as build_pick_repository,
+    run_prospective_cycle,
+)
 from src.runtime_logging import configure_runtime_logging  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 DATABASE = ROOT / "data" / "phase_101" / "telegram_channel.sqlite"
+PICK_DATABASE = ROOT / "data" / "phase_123" / "high_probability_prospective.sqlite"
 
 
 class DryRunTransport(ChannelTransport):
@@ -189,6 +197,53 @@ def _cycle(publisher: TelegramChannelPublisher) -> dict[str, int]:
     return result
 
 
+def _pick_repository(dry_run: bool) -> HighProbabilityPickRepository:
+    """Crea el repositorio de picks de Fase 123 en el mismo proceso.
+
+    Comparte contenedor y cadencia con el publicador del canal en vez de un
+    servicio Railway nuevo (decisión del cierre del proyecto): mismo lenguaje,
+    misma `DATABASE_URL`, cero infraestructura adicional. El caso dry-run
+    exige `StaticPool` explícito -sin él, cada conexión SQLite en memoria ve
+    una base distinta y congelar seguido de liquidar operaría sobre datos
+    que ya no están-, así que no puede pasar por `build_pick_repository`
+    (motor simple, pensado para PostgreSQL/SQLite en disco).
+    """
+
+    if dry_run:
+        engine = create_engine(
+            "sqlite+pysqlite://", future=True,
+            connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        PickSettlementBase.metadata.create_all(engine)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
+        return SqlAlchemyHighProbabilityPickRepository(factory)
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        return build_pick_repository(database_url)
+    PICK_DATABASE.parent.mkdir(parents=True, exist_ok=True)
+    LOGGER.warning(
+        "phase123_pick_store_backend backend=sqlite_local path=%s "
+        "reason=DATABASE_URL_missing", PICK_DATABASE)
+    return build_pick_repository(f"sqlite+pysqlite:///{PICK_DATABASE}")
+
+
+def _high_probability_cycle(dry_run: bool) -> dict[str, Any]:
+    """Ejecuta un ciclo de Fase 123 reutilizando la configuración del canal.
+
+    Se construye por dentro de este método -no una sola vez fuera del
+    bucle- para que un fallo de conexión puntual no deje el estado a medio
+    inicializar; el costo de reconstruir un cliente HTTP y una fábrica de
+    sesiones cada `HIGH_PROBABILITY_PROSPECTIVE_POLL_SECONDS` es
+    insignificante frente al de una predicción.
+    """
+
+    gateway = DikamahaHttpGateway(telegram_config_from_env())
+    repository = _pick_repository(dry_run)
+    settlements = _settlements(dry_run)
+    result = run_prospective_cycle(gateway, repository, settlements, None)
+    LOGGER.info("phase123_cycle_completed counts=%s", result)
+    return result
+
+
 def _run(args: argparse.Namespace) -> int:
     """Mantiene el worker vivo o ejecuta una sola iteración.
 
@@ -201,7 +256,10 @@ def _run(args: argparse.Namespace) -> int:
     """
 
     interval = max(60, int(os.getenv("TELEGRAM_CHANNEL_POLL_SECONDS", "300")))
+    hp_interval = max(
+        60, int(os.getenv("HIGH_PROBABILITY_PROSPECTIVE_POLL_SECONDS", "1800")))
     publisher: TelegramChannelPublisher | None = None
+    next_hp_cycle = time.monotonic()
     while True:
         try:
             if publisher is None:
@@ -219,6 +277,13 @@ def _run(args: argparse.Namespace) -> int:
                     return 1
             else:
                 LOGGER.exception("channel_cycle_failed error=%s", error)
+        if time.monotonic() >= next_hp_cycle:
+            try:
+                _high_probability_cycle(args.dry_run)
+            except Exception as error:  # noqa: BLE001 - Fase 123 nunca tumba el canal
+                LOGGER.warning(
+                    "phase123_cycle_failed error=%s", type(error).__name__)
+            next_hp_cycle = time.monotonic() + hp_interval
         if args.once:
             return 0
         time.sleep(interval)

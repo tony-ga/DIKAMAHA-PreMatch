@@ -49,10 +49,8 @@ from src.high_probability_settlement import (  # noqa: E402
     HighProbabilityPickRepository,
     PickSettlementBase,
     SqlAlchemyHighProbabilityPickRepository,
-    freeze_from_pick,
     prospective_reliability,
-    resolve_goal_market,
-    resolve_team_market,
+    run_prospective_cycle,
 )
 from src.runtime_logging import configure_runtime_logging  # noqa: E402
 
@@ -103,77 +101,6 @@ def _repository(dry_run: bool) -> HighProbabilityPickRepository:
     return SqlAlchemyHighProbabilityPickRepository(factory)
 
 
-def _freeze_cycle(
-    gateway: DikamahaHttpGateway, repository: HighProbabilityPickRepository,
-    date: str | None, now: datetime,
-) -> dict[str, int]:
-    """Congela los picks vigentes cuyo fixture todavía no arranca."""
-
-    response = gateway.high_probability(date=date, limit=30)
-    picks = response.get("picks") or []
-    eligibility_sha256 = str(
-        (response.get("provenance") or {}).get("eligibility_sha256") or "")
-    frozen = skipped_started = skipped_invalid = 0
-    for pick in picks:
-        fixture = pick.get("fixture")
-        if not isinstance(fixture, dict):
-            skipped_invalid += 1
-            continue
-        try:
-            record = freeze_from_pick(pick, fixture, eligibility_sha256, now)
-        except (KeyError, TypeError, ValueError) as error:
-            LOGGER.warning(
-                "phase123_freeze_pick_invalid match_id=%s error=%s",
-                fixture.get("match_id"), error)
-            skipped_invalid += 1
-            continue
-        if record.kickoff_ts <= now:
-            skipped_started += 1
-            continue
-        if repository.freeze_if_absent(record):
-            frozen += 1
-    return {
-        "frozen": frozen, "skipped_started": skipped_started,
-        "skipped_invalid": skipped_invalid, "candidates": len(picks),
-    }
-
-
-def _settle_cycle(
-    gateway: DikamahaHttpGateway, repository: HighProbabilityPickRepository,
-    settlements: Any, now: datetime,
-) -> dict[str, int]:
-    """Liquida los picks cuyo fixture ya está sellado en `prediction_settlements`."""
-
-    settled = still_pending = failed = 0
-    for pick in repository.unsettled(now):
-        settlement = settlements.get(pick.fixture_key)
-        if settlement is None:
-            still_pending += 1
-            continue
-        record = resolve_goal_market(pick, settlement)
-        if record is None:
-            try:
-                statistics = gateway.explorer_statistics(
-                    pick.league_slug, str(pick.match_id),
-                    settlement.competition_id)
-            except PredictionGatewayError as error:
-                LOGGER.warning(
-                    "phase123_settle_statistics_failed fixture=%s error=%s",
-                    pick.fixture_key, error)
-                failed += 1
-                continue
-            record = resolve_team_market(pick, statistics, settlement.settled_at)
-        if record is None:
-            LOGGER.warning(
-                "phase123_settle_unresolvable pick=%s fixture=%s",
-                pick.pick_key, pick.fixture_key)
-            failed += 1
-            continue
-        if repository.settle_if_absent(record):
-            settled += 1
-    return {"settled": settled, "still_pending": still_pending, "failed": failed}
-
-
 def _report(repository: HighProbabilityPickRepository) -> None:
     """Imprime la fiabilidad prospectiva acumulada, sin decidir promoción."""
 
@@ -188,14 +115,9 @@ def _cycle(
     gateway: DikamahaHttpGateway, repository: HighProbabilityPickRepository,
     settlements: Any, date: str | None,
 ) -> dict[str, Any]:
-    """Ejecuta congelación y liquidación con instante UTC explícito."""
+    """Ejecuta un ciclo completo y registra el resultado."""
 
-    now = datetime.now(timezone.utc)
-    freeze_counts = _freeze_cycle(gateway, repository, date, now)
-    settle_counts = (
-        _settle_cycle(gateway, repository, settlements, now)
-        if settlements is not None else {"settled": 0, "still_pending": 0, "failed": 0})
-    result = {"freeze": freeze_counts, "settle": settle_counts}
+    result = run_prospective_cycle(gateway, repository, settlements, date)
     LOGGER.info("phase123_cycle_completed counts=%s", result)
     return result
 
