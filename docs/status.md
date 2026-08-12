@@ -1,10 +1,54 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-11
-**Fase activa:** Fase 122 Menú de mayor probabilidad
-**Objetivo Fase 122:** medir dónde una probabilidad alta del modelo pre-match es
-realmente de fiar y exponer en la Mini App sólo los picks del día cuyo par
-(mercado, tramo de confianza) tenga fiabilidad histórica demostrada.
+**Actualizado:** 2026-08-12
+**Fase activa:** Fase 123 Validación prospectiva del menú de mayor probabilidad
+**Objetivo Fase 123:** convertir la evidencia histórica post-hoc de Fase 122 en
+confirmación prospectiva real, congelando los picks del menú antes del
+kickoff y liquidándolos después contra el resultado verificado.
+
+## Fase 123 — Validación prospectiva del menú de mayor probabilidad
+
+Implementada. Ver `DEC-171`. Paso 3 del plan de cierre del proyecto.
+
+- `src/high_probability_settlement.py` añade dos tablas nuevas
+  (`high_probability_pick_freezes`, `high_probability_pick_settlements`) y
+  `scripts/run_phase_123_high_probability_prospective.py` corre el ciclo de
+  congelar/liquidar, mismo patrón operativo que Fase 101 (`--once`,
+  `--dry-run`, `DATABASE_URL` con respaldo SQLite local, degradación segura
+  sin base de datos configurada);
+- congela cada pick de `GET /v1/high-probability` con su hash y su fixture
+  antes del kickoff (`freeze_from_pick`, idempotente por `pick_key`), y
+  rechaza congelar cualquier fixture cuyo kickoff ya haya pasado al momento
+  del ciclo, aunque la API lo hubiera devuelto;
+- liquida sólo cuando `prediction_settlements` (Fase 118) ya tiene fila para
+  ese `fixture_key` -estado final, marcador reconciliado y `kickoff + 3h` ya
+  certificados por esa fila, sin repetir la espera-; 1X2/Over 2.5/BTTS salen
+  directo de `official_verdicts`;
+- los nueve mercados de equipo de `MARKET_METADATA` NO se liquidan contra
+  `shadow_verdicts`: esa liquidación corre sobre la rejilla dinámica de Fase
+  102 con líneas centradas en P(over)≈50% por partido, mientras el menú usa
+  la línea fija de Fase 84A/88/89, sin garantía de que ambas vistas liquiden
+  la misma línea exacta. Se liquidan en su lugar contra `explorer_statistics`
+  directo con la línea fija del propio pick, reutilizando `team_market_hit`
+  -extraída de `_shadow_verdicts` a `src/settlement_store.py` sin cambiar su
+  resultado, cubierto por los 21 tests existentes de Fase 118 sin
+  regresiones-;
+- `prospective_reliability` agrega por (mercado, tramo de confianza) con el
+  mismo umbral mínimo de muestra e intervalo de Wilson que el track record
+  oficial; no decide gate ni promoción, sólo publica la cifra comparable
+  contra la tasa declarada por el gate v2 post-hoc de Fase 122.
+
+Estado: `implemented_pending_first_prospective_cohort`. El código está
+completo y probado, pero no se ha desplegado ni ejecutado en producción
+todavía: `total_frozen`/`total_settled` arrancan en cero. Gates: 12 pruebas
+nuevas en `tests/test_phase_123_high_probability_prospective.py`, suite
+completa 702 Python aprobadas/8 omitidas sin regresiones. Despliegue a
+Railway pendiente de aprobación del usuario.
+
+Limitación aceptada: si un fixture de un pick del menú nunca llega a
+liquidarse en `prediction_settlements` -por ejemplo, si el publicador del
+canal no lo escaneó ese día-, ese pick queda pendiente indefinidamente sin
+tope de espera, igual que Fase 121 acepta para el resumen diario.
 
 ## Fase 122 — Menú de mayor probabilidad
 

@@ -2933,6 +2933,72 @@ Evidencia requerida: `docs/00_roadmap_actual.md` refleja "archivada" en las
 filas de Fases 73 y 81 y en el "Objetivo congelado"; ningún artefacto, script
 ni endpoint de producción se modifica como consecuencia de esta decisión.
 
+DEC-171
+Fecha: 2026-08-12
+Problema: el menú de mayor probabilidad (Fase 122) sólo tiene evidencia
+histórica post-hoc: el gate v2 que aprueba sus nueve celdas se re-especificó
+después de ver el resultado de v1, y su holdout de 270 partidos es un
+subconjunto de la misma cohorte de Fase 105/119, no una muestra independiente.
+`docs/status.md` ya señalaba la validación prospectiva -congelar picks antes
+del kickoff y liquidarlos después- como el siguiente paso recomendado. Es la
+única funcionalidad de cara al usuario cuya credibilidad depende
+directamente de esta confirmación, así que cerrar el producto con éxito
+exige resolverla, sin reabrir el programa de investigación Markov v4 que
+DEC-170 acaba de archivar.
+Opciones: (a) dejar la recomendación sin ejecutar; (b) reconstruir desde cero
+el pipeline de congelar/reconciliar/liquidar, duplicando lo que Fase 118/101
+ya resuelven; (c) construir sólo la pieza que falta -qué picks mostró el menú
+cada día- y reutilizar el pipeline de settlement ya existente para resolver
+el veredicto, sin repetir su lógica de reconciliación ni de espera.
+Decisión: (c). Fase 123 añade dos tablas nuevas
+(`high_probability_pick_freezes`, `high_probability_pick_settlements` en
+`src/high_probability_settlement.py`) y el runner
+`scripts/run_phase_123_high_probability_prospective.py`. Congela cada pick de
+`GET /v1/high-probability` con su hash y su fixture antes del kickoff
+(`freeze_from_pick`, idempotente por `pick_key`), y liquida sólo cuando
+`prediction_settlements` (Fase 118) ya tiene una fila para ese
+`fixture_key` -esa fila certifica estado final, marcador reconciliado y
+`kickoff + 3h`, así que Fase 123 nunca repite esa espera ni la reconciliación-.
+Para 1X2/Over 2.5/BTTS el veredicto sale directo de `official_verdicts`
+(`resolve_goal_market`). Para los nueve mercados de equipo de
+`MARKET_METADATA` el veredicto NO se lee de `shadow_verdicts`: esa liquidación
+corre sobre la rejilla dinámica de Fase 102 con líneas centradas en
+P(over)≈50% por partido, mientras el menú usa la línea fija de Fase 84A/88/89,
+así que no hay garantía de que ambas vistas liquiden la misma línea exacta.
+`resolve_team_market` liquida en su lugar contra `explorer_statistics` directo
+con la línea fija del propio pick, reutilizando la misma regla de acierto que
+ya usa `_shadow_verdicts` -extraída a `team_market_hit` en
+`src/settlement_store.py`, con `_shadow_verdicts` migrado a llamarla en vez de
+duplicar la comparación-. `prospective_reliability` agrega por
+`(mercado, tramo de confianza)` con el mismo umbral mínimo de muestra y el
+mismo intervalo de Wilson que ya usa el track record oficial; no decide gate
+ni promoción, sólo publica la cifra comparable.
+Motivo: reutilizar `prediction_settlements` evita reconstruir la detección de
+estado final y la reconciliación de marcador -ya endurecidas por incidentes
+reales de Fase 118/121/122-, y evita que Fase 123 quede desincronizada si esa
+lógica cambia. Liquidar mercados de equipo por línea fija en vez de por clave
+de la rejilla evita un defecto silencioso: si se hubiera intentado casar por
+nombre de clave, un pick declarado a línea 4.5 podría liquidarse contra la
+línea más cercana de una rejilla dinámica de 1.5/5.5/9.5, dando un veredicto
+que no corresponde al pick que el usuario realmente vio.
+Estado: congelada
+Impacto en contratos/fases: no modifica el router oficial, `official_verdicts`,
+`_shadow_verdicts` (mismo resultado, ahora vía función compartida) ni ningún
+endpoint público; no altera el gate v2 de Fase 122 ni sus nueve celdas. Añade
+un método `get(fixture_key)` a `SettlementRepository` (lectura puntual, sin
+tocar `add_if_absent`/`recent`/`on_date`). El menú de mayor probabilidad sigue
+sirviendo exactamente igual; Fase 123 sólo observa lo que ya expone y lo
+liquida por separado.
+Evidencia requerida: 12 pruebas nuevas en
+`tests/test_phase_123_high_probability_prospective.py` (congelación
+idempotente, liquidación idempotente, mapeo de mercados oficiales, liquidación
+de mercados de equipo por línea fija, rechazo de mercados desconocidos,
+fiabilidad prospectiva oculta bajo muestra mínima y visible al alcanzarla);
+suite completa del repositorio 702 pruebas Python aprobadas/8 omitidas sin
+regresiones tras el refactor de `_shadow_verdicts`. Sin cohorte real todavía:
+el runner no se ha ejecutado en producción, así que `total_frozen`/
+`total_settled` están en cero hasta el primer despliegue.
+
 ```text
 DEC-NNN
 Fecha:

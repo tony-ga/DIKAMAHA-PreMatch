@@ -106,6 +106,10 @@ class SettlementRepository(ABC):
         medianoche por la ventana de `kickoff + 3h`.
         """
 
+    @abstractmethod
+    def get(self, fixture_key: str) -> SettlementRecord | None:
+        """Busca el veredicto sellado de un fixture puntual, si ya existe."""
+
 
 class SqlAlchemySettlementRepository(SettlementRepository):
     """Adaptador SQLAlchemy compatible con PostgreSQL y SQLite."""
@@ -164,6 +168,13 @@ class SqlAlchemySettlementRepository(SettlementRepository):
         with self._factory() as session:
             return [_record(row) for row in session.execute(statement).scalars()]
 
+    def get(self, fixture_key: str) -> SettlementRecord | None:
+        """Lee por clave primaria; ya reconciliado si la fila existe."""
+
+        with self._factory() as session:
+            row = session.get(PredictionSettlement, fixture_key)
+            return _record(row) if row is not None else None
+
 
 def _record(row: PredictionSettlement) -> SettlementRecord:
     """Convierte una fila ORM en la vista inmutable."""
@@ -193,6 +204,19 @@ def build_repository(database_url: str) -> SqlAlchemySettlementRepository:
     SettlementBase.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
     return SqlAlchemySettlementRepository(factory)
+
+
+def team_market_hit(direction: str, line: float, observed: float) -> bool:
+    """Decide el acierto de una línea de equipo contra el conteo observado.
+
+    Regla única compartida por `_shadow_verdicts` (rejilla dinámica de Fase
+    102) y por la liquidación de picks de Fase 123 (línea fija de
+    `MARKET_METADATA`): ambas comparan el mismo tipo de línea contra el mismo
+    tipo de conteo, sólo cambia de dónde sale la línea.
+    """
+
+    actual_over = observed > line
+    return (direction == "over") == actual_over
 
 
 def wilson_interval(hits: int, total: int) -> tuple[float, float]:

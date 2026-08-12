@@ -101,6 +101,14 @@ class PredictionGateway(ABC):
 
         return {"fixtures": []}
 
+    def high_probability(
+        self, date: str | None = None, limit: int = 30,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Consulta el menú de mayor probabilidad del día (Fase 122)."""
+
+        return {"picks": [], "fixtures_scanned": 0, "fixtures_catalog_size": 0}
+
     def predict_live_fixture(
         self, payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -409,6 +417,20 @@ class DikamahaHttpGateway(PredictionGateway):
 
         return self._post(
             "/v1/predict/live/fixture", payload, timeout_multiplier=3.0)
+
+    def high_probability(
+        self, date: str | None = None, limit: int = 30,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Obtiene los picks vigentes del menú de mayor probabilidad."""
+
+        params: dict[str, Any] = {"limit": max(1, min(limit, 30))}
+        if date:
+            params["date"] = date
+        if leagues:
+            params["leagues"] = leagues
+        return self._get(
+            "/v1/high-probability", params, timeout_multiplier=3.0)
 
     def models(self) -> dict[str, Any]:
         """Obtiene el inventario operativo de la API."""

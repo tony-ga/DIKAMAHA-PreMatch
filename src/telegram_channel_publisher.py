@@ -31,6 +31,7 @@ from src.settlement_store import (
     MINIMUM_SAMPLE,
     SettlementRecord,
     SettlementRepository,
+    team_market_hit,
     track_record,
 )
 from src.telegram_bot import PredictionGateway, PredictionGatewayError
@@ -1261,11 +1262,11 @@ def _shadow_verdicts(
             continue
         line = float(row["line"])
         predicted_over = float(row["over_probability"]) >= 0.5
-        actual_over = float(observed) > line
+        direction = "over" if predicted_over else "under"
         output[str(row["key"])] = {
             "predicted": f"Más de {line}" if predicted_over else f"Menos de {line}",
             "actual": f"{int(observed)} observados",
-            "hit": predicted_over == actual_over,
+            "hit": team_market_hit(direction, line, float(observed)),
         }
     return output
 
