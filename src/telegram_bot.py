@@ -554,9 +554,13 @@ def _gateway_payload(response: requests.Response) -> dict[str, Any]:
     try:
         payload = response.json()
     except ValueError as error:
-        raise PredictionGatewayError("dikamaha_invalid_response") from error
+        raise PredictionGatewayError(
+            f"dikamaha_invalid_response:{response.status_code}") from error
     if response.status_code >= 400 or not isinstance(payload, dict):
-        raise PredictionGatewayError("dikamaha_prediction_rejected")
+        detail = (
+            str(payload.get("detail")) if isinstance(payload, dict) else None)
+        raise PredictionGatewayError(
+            f"dikamaha_prediction_rejected:{response.status_code}:{detail}")
     return payload
 
 
