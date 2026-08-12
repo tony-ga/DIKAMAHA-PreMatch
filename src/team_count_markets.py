@@ -93,6 +93,47 @@ def poisson_over_probability(rate: float, integer_line: int) -> float:
     return min(max(1.0 - cumulative, 0.0), 1.0)
 
 
+def combined_dispersion(
+    dispersion: float, home_rate: float, away_rate: float,
+    correlation: float = 0.0,
+) -> float:
+    """Dispersión equivalente al sumar los conteos de los dos equipos.
+
+    Una NB con varianza `μ + φμ²` sumada a otra da, para el total:
+
+        Var(T) = Var(H) + Var(A) + 2·ρ·σ_H·σ_A
+
+    La versión original omitía el término de covarianza, es decir asumía
+    independencia entre local y visitante. Medido sobre el corpus, esa
+    suposición es falsa y en direcciones opuestas según la métrica:
+
+    - **Córners `ρ = -0.31`** y tiros `ρ = -0.15`: son casi de suma cero, el
+      equipo que domina el territorio deja al rival con menos. Asumir
+      independencia **sobreestima** la varianza del total, ensancha la
+      distribución y subestima las probabilidades -exactamente el sesgo que
+      la auditoría de escalera encontró en los mercados `total`.
+    - **Tarjetas `ρ = +0.19`**: un partido áspero reparte para ambos lados, de
+      modo que la independencia subestima la varianza.
+
+    `correlation = 0.0` reproduce exactamente el comportamiento anterior.
+    """
+
+    home = max(float(home_rate), 0.0)
+    away = max(float(away_rate), 0.0)
+    total = max(home + away, 1e-9)
+    phi = max(float(dispersion), 0.0)
+    rho = min(max(float(correlation), -1.0), 1.0)
+    variance_home = home + phi * home * home
+    variance_away = away + phi * away * away
+    covariance = 2.0 * rho * math.sqrt(
+        max(variance_home, 0.0) * max(variance_away, 0.0))
+    # La varianza del total nunca puede caer por debajo de la de un Poisson:
+    # una correlación muy negativa podría empujar el término φ a negativo, que
+    # la NB no puede representar.
+    excess = variance_home + variance_away + covariance - total
+    return max(excess / (total * total), 1e-8)
+
+
 def negative_binomial_over_probability(
     rate: float, dispersion: float, integer_line: int,
 ) -> float:

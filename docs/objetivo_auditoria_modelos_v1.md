@@ -319,9 +319,46 @@ las dos orientaciones asume independencia entre local y visitante, pero en un
 partido de ritmo alto ambos suben a la vez. Asumir independencia subestima la
 varianza del total. Es un tercer defecto real, todavía sin corregir.
 
-Pendiente para continuar: modelar esa correlación local-visitante para
-recuperar las 40 líneas `total`, y después exponer en la Mini App las 310
-publicables etiquetadas por origen de fiabilidad.
+### Tercera corrección: correlación local-visitante (2026-08-12)
+
+La hipótesis inicial era que local y visitante se mueven **juntos** en un
+partido de ritmo alto. Los datos la refutaron: la correlación residual de
+córners es **negativa (`-0.29`)**, igual que la de tiros (`-0.17`). Tiene
+sentido futbolístico -córners y tiros son casi de suma cero: el equipo que
+domina el territorio deja al rival con menos-. Las tarjetas sí son positivas
+(`+0.19`): un partido áspero reparte para ambos lados.
+
+Asumir independencia, por tanto, **sobreestimaba** la varianza del total en
+córners y tiros, ensanchando la distribución y subestimando las
+probabilidades. `combined_dispersion` (`src/team_count_markets.py`) añade el
+término de covarianza `2·ρ·σ_H·σ_A`; `correlation = 0.0` reproduce la fórmula
+anterior exactamente, de modo que un artefacto sin el campo degrada al
+comportamiento previo.
+
+Detalle que importó: la correlación necesaria es la **residual**, no la
+bruta. La bruta mezcla la covariación de las medias entre partidos con la
+covariación real alrededor de ellas, y sólo la segunda entra en la varianza
+condicional del total. En tiros la bruta da `+0.27` y la residual `-0.17`
+-signo opuesto-. Las residuales estimadas sobre `fit`+`selection` coinciden
+con las medidas de forma independiente en confirmación (córners `-0.29` vs
+`-0.31`, tiros `-0.17` vs `-0.15`), lo que sugiere una estimación estable.
+
+### Estado acumulado de la auditoría
+
+| | Inicial | Tras priors + dispersión | Tras correlación |
+| --- | ---: | ---: | ---: |
+| Publicables | 254 | 310 | **324** |
+| Con ventaja real | 38 | 84 | **94** |
+| Miscalibradas | 96 | 40 | **26** |
+
+Las 26 restantes se concentran en `shots total` (11 líneas altas, 13.5–23.5),
+córners `home`/`away` en la zona media, y `shots home` 11.5–13.5. Ya no hay
+un patrón único que las explique; la siguiente iteración necesitaría
+diagnóstico línea a línea en vez de una corrección estructural.
+
+Pendiente para continuar: exponer en la Mini App las 324 líneas publicables
+etiquetadas por origen de fiabilidad (`model_edge` frente a
+`base_rate_driven`), suprimiendo las 26 miscalibradas.
 
 ## Qué NO promete este objetivo
 

@@ -264,6 +264,68 @@ def _baselines_with(
     return output
 
 
+def _residual_correlations(
+    examples: list[dict[str, Any]], models: dict[str, Any],
+    weights: dict[str, float], coverage: MetricCoverage,
+) -> dict[str, float]:
+    """Mide la correlación entre los dos equipos del mismo partido.
+
+    La fórmula que combina ambas orientaciones asumía independencia. Medido
+    sobre el corpus, esa suposición es falsa y en direcciones opuestas según
+    la métrica: córners son casi de suma cero -el equipo que domina el
+    territorio deja al rival con menos- mientras que las tarjetas se reparten
+    juntas, porque un partido áspero las produce para ambos lados.
+
+    La correlación necesaria es la **residual**, no la bruta. La bruta mezcla
+    la covariación de las medias entre partidos -dos equipos de una liga de
+    ritmo alto tienen ambos medias altas- con la covariación real alrededor
+    de esas medias, que es la única que entra en la varianza condicional del
+    total. Medido en tiros: `+0.27` bruta frente a `-0.15` residual, con
+    signo opuesto.
+
+    Se estima sólo sobre `fit` y `selection`, nunca sobre confirmación.
+    """
+
+    train = [row for row in examples if row["split"] in ("fit", "selection")]
+    by_match: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in train:
+        by_match[int(row["match_id"])][
+            "home" if row["is_home"] else "away"] = row
+
+    output: dict[str, float] = {}
+    for spec in METRICS:
+        residual_home, residual_away = [], []
+        for sides in by_match.values():
+            if "home" not in sides or "away" not in sides:
+                continue
+            if any(_contaminated(sides[side], spec.name, coverage)
+                   for side in ("home", "away")):
+                continue
+            values = []
+            for side in ("home", "away"):
+                row = sides[side]
+                features = np.asarray([row["features"]], dtype=float)
+                raw = float(models[spec.name].predict(features)[0])
+                weight = float(weights[spec.name])
+                predicted = (
+                    weight * raw
+                    + (1.0 - weight) * row["baselines"][spec.name])
+                values.append(float(row["targets"][spec.name]) - predicted)
+            residual_home.append(values[0])
+            residual_away.append(values[1])
+        if len(residual_home) < 100:
+            output[spec.name] = 0.0
+            continue
+        home = np.asarray(residual_home)
+        away = np.asarray(residual_away)
+        if home.std() < 1e-9 or away.std() < 1e-9:
+            output[spec.name] = 0.0
+            continue
+        output[spec.name] = float(
+            np.clip(np.corrcoef(home, away)[0, 1], -0.95, 0.95))
+    return output
+
+
 def _blended_prediction(
     solver: Any, weight: float, rows: list[dict[str, Any]], metric: str,
     coverage: MetricCoverage,
@@ -454,6 +516,7 @@ def _market_metrics_clean(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _market_rows_clean(
     rows: list[dict[str, Any]], dispersions: dict[str, float],
+    correlations: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Construye líneas comerciales sólo con partidos cuyas dos orientaciones
     conservan la métrica requerida."""
@@ -477,7 +540,8 @@ def _market_rows_clean(
             if not required.issubset(sides_available):
                 continue
             markets[name] = _market_score(
-                home, away, metric, side, line, dispersions[metric])
+                home, away, metric, side, line, dispersions[metric],
+                float((correlations or {}).get(metric, 0.0)))
         if markets:
             output.append({
                 "match_id": home["match_id"], "match_date": home["match_date"],
@@ -490,19 +554,25 @@ def _market_rows_clean(
 
 def _market_score(
     home: dict[str, Any], away: dict[str, Any], metric: str, side: str,
-    line: int, dispersion: float,
+    line: int, dispersion: float, correlation: float = 0.0,
 ) -> dict[str, Any]:
     """Réplica de `_match_markets`/`_binary_score` de Fase 84A para una línea."""
 
-    from scripts.run_phase_84a_team_count_markets import (
-        _binary_score, _combined_dispersion, _rate)
-    from src.team_count_markets import negative_binomial_over_probability
+    from scripts.run_phase_84a_team_count_markets import _binary_score, _rate
+    from src.team_count_markets import (
+        combined_dispersion, negative_binomial_over_probability)
     model_rate = _rate(home, away, metric, side, "expected")
     baseline_rate = _rate(home, away, metric, side, "baseline")
     actual = _rate(home, away, metric, side, "actual")
-    model_phi = _combined_dispersion(home, away, metric, side, "expected", dispersion)
-    baseline_phi = _combined_dispersion(
-        home, away, metric, side, "baseline", dispersion)
+    if side == "total":
+        model_phi = combined_dispersion(
+            dispersion, home["expected"][metric], away["expected"][metric],
+            correlation)
+        baseline_phi = combined_dispersion(
+            dispersion, home["baseline"][metric], away["baseline"][metric],
+            correlation)
+    else:
+        model_phi = baseline_phi = dispersion
     return _binary_score(
         negative_binomial_over_probability(model_rate, model_phi, line),
         negative_binomial_over_probability(baseline_rate, baseline_phi, line),
@@ -521,15 +591,21 @@ def run() -> dict[str, Any]:
     examples = _examples_clean(matches, specs)
     models, alphas, selection_scores, dispersions, weights, dropped = (
         _fit_models_clean(examples, coverage))
+    correlations = _residual_correlations(
+        examples, models, weights, coverage)
+    LOGGER.info(
+        "correlaciones_residuales_local_visitante=%s",
+        {k: round(v, 3) for k, v in correlations.items()})
     predictions = _predict_clean(examples, models, weights, coverage)
     scored = _score_clean(predictions, _outcomes(examples))
-    market_rows = _market_rows_clean(scored, dispersions)
+    market_rows = _market_rows_clean(scored, dispersions, correlations)
     counts = _count_metrics_clean(scored)
     markets = _market_metrics_clean(market_rows)
     gate = _clamp_to_approved(_gate(counts, markets))
     result = _result_clean(
         matches, examples, alphas, dispersions, weights, selection_scores,
-        scored, market_rows, counts, markets, gate, dropped, specs)
+        scored, market_rows, counts, markets, gate, dropped, specs,
+        correlations)
     _publish_clean(result, models)
     return result
 
@@ -567,6 +643,7 @@ def _result_clean(
     scored: list[dict[str, Any]], market_rows: list[dict[str, Any]],
     counts: dict[str, Any], markets: dict[str, Any], gate: dict[str, Any],
     dropped: dict[str, int], specs: list[Any],
+    correlations: dict[str, float],
 ) -> dict[str, Any]:
     """Compone el contrato, idéntico en forma al de Fase 84A."""
 
@@ -579,7 +656,8 @@ def _result_clean(
         "config": {
             "version": "team_count_markets_v3_kickoff_integrity",
             "alphas": alphas, "dispersions": dispersions,
-            "model_weights": weights, "market_lines": MARKET_LINES,
+            "model_weights": weights, "correlations": correlations,
+            "market_lines": MARKET_LINES,
             "metrics": [asdict(spec) for spec in specs],
             "model_status": "experimental_shadow_not_promoted",
         },

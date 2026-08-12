@@ -25,6 +25,7 @@ from src.artifact_integrity import artifact_hash_matches
 from src.market_calibration import ArtifactMarketCalibrationProvider
 from src.metric_coverage import MetricCoverage
 from src.team_count_markets import (
+    combined_dispersion,
     negative_binomial_distribution,
     negative_binomial_over_probability,
 )
@@ -166,6 +167,16 @@ def _validate_count_config(
                 raise ValueError(f"team_market_{field}_nonfinite")
     if any(float(value) <= 0.0 for value in config["dispersions"].values()):
         raise ValueError("team_market_dispersion_invalid")
+    correlations = config.get("correlations")
+    if correlations is not None:
+        # Campo opcional: un artefacto anterior sin él degrada a independencia,
+        # que es exactamente el comportamiento previo.
+        if not isinstance(correlations, dict) or not set(
+                correlations).issubset(names):
+            raise ValueError("team_market_correlations_keys_invalid")
+        for value in correlations.values():
+            if not _finite_number(value) or not -1.0 <= float(value) <= 1.0:
+                raise ValueError("team_market_correlation_out_of_range")
     if any(not 0.0 <= float(value) <= 1.0 for value in config["model_weights"].values()):
         raise ValueError("team_market_weight_invalid")
     if not isinstance(models, dict) or set(models) != set(names):
@@ -330,20 +341,27 @@ def _expected(
 def _combined_phi(
     metric: str, side: str, expected: dict[str, dict[str, float]],
     dispersions: dict[str, float],
+    correlations: dict[str, float] | None = None,
 ) -> float:
-    """Conserva varianza al sumar conteos home y away."""
+    """Conserva varianza al sumar conteos home y away.
+
+    Incorpora la correlación medida entre los dos equipos del mismo partido.
+    Un artefacto sin `correlations` -o una métrica ausente en él- degrada a
+    `0.0`, que reproduce exactamente la fórmula de independencia anterior.
+    """
 
     phi = float(dispersions[metric])
     if side != "total":
         return phi
     home, away = expected["home"][metric], expected["away"][metric]
-    total = max(home + away, 1e-9)
-    return max(phi * (home * home + away * away) / (total * total), 1e-8)
+    rho = float((correlations or {}).get(metric, 0.0))
+    return combined_dispersion(phi, home, away, rho)
 
 
 def _market_probability(
     definition: list[Any], expected: dict[str, dict[str, float]],
     dispersions: dict[str, float],
+    correlations: dict[str, float] | None = None,
 ) -> float:
     """Convierte intensidades de conteo en probabilidad comercial."""
 
@@ -352,7 +370,7 @@ def _market_probability(
         rate = expected["home"][metric] + expected["away"][metric]
     else:
         rate = expected[side][metric]
-    phi = _combined_phi(metric, side, expected, dispersions)
+    phi = _combined_phi(metric, side, expected, dispersions, correlations)
     return negative_binomial_over_probability(rate, phi, line)
 
 
@@ -364,7 +382,8 @@ def _probabilities(
 
     return {
         name: _market_probability(
-            config["market_lines"][name], expected, config["dispersions"])
+            config["market_lines"][name], expected, config["dispersions"],
+            config.get("correlations"))
         for name in enabled
     }
 
@@ -539,7 +558,8 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         markov, markov_baselines, markov_expected, ladders, markov_meta = (
             self._safe_markov(request))
         ladders.extend(_count_distributional_view(
-            expected, baseline_expected, config["dispersions"]))
+            expected, baseline_expected, config["dispersions"],
+            config.get("correlations")))
         probabilities.update(markov)
         baselines.update(markov_baselines)
         calibrated = self._apply_market_calibration(
@@ -865,6 +885,7 @@ def _count_distributional_view(
     expected: dict[str, dict[str, float]],
     baseline: dict[str, dict[str, float]],
     dispersions: dict[str, float],
+    correlations: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Añade tiros a puerta por equipo y total desde Fase 84A."""
 
@@ -872,8 +893,9 @@ def _count_distributional_view(
     for side in ("home", "away", "total"):
         mean = _side_rate(expected, metric, side)
         base_mean = _side_rate(baseline, metric, side)
-        phi = _combined_phi(metric, side, expected, dispersions)
-        base_phi = _combined_phi(metric, side, baseline, dispersions)
+        phi = _combined_phi(metric, side, expected, dispersions, correlations)
+        base_phi = _combined_phi(
+            metric, side, baseline, dispersions, correlations)
         row = _distributional_row(
             metric, side, "full_match",
             negative_binomial_distribution(mean, phi),
@@ -984,23 +1006,26 @@ def _global_market_view(
     expected: dict[str, dict[str, float]],
     baseline: dict[str, dict[str, float]],
     dispersions: dict[str, float],
+    correlations: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Modela totales desde intensidades históricas directas de Fase 84A."""
 
-    return [_direct_total(expected, baseline, dispersions, metric)
+    return [_direct_total(expected, baseline, dispersions, metric, correlations)
             for metric in ("corners", "shots", "yellow_cards", "shots_on_target")]
 
 
 def _direct_total(
     expected: dict[str, dict[str, float]], baseline: dict[str, dict[str, float]],
     dispersions: dict[str, float], metric: str,
+    correlations: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Construye una PMF total NB con tasa y dispersión causal observada."""
 
     rate = _side_rate(expected, metric, "total")
     base_rate = _side_rate(baseline, metric, "total")
-    phi = _combined_phi(metric, "total", expected, dispersions)
-    base_phi = _combined_phi(metric, "total", baseline, dispersions)
+    phi = _combined_phi(metric, "total", expected, dispersions, correlations)
+    base_phi = _combined_phi(
+        metric, "total", baseline, dispersions, correlations)
     model = negative_binomial_distribution(rate, phi)
     base = negative_binomial_distribution(base_rate, base_phi)
     row = _distributional_row(metric, "total", "full_match", model, base)

@@ -300,3 +300,74 @@ def test_calibrated_specs_ignore_selection_and_confirmation() -> None:
 
     corners = next(spec for spec in specs if spec.name == "corners")
     assert corners.safe_default == pytest.approx(5.0)
+
+
+def test_negative_correlation_narrows_the_total_distribution() -> None:
+    """Corners son casi de suma cero: el que domina deja al rival con menos.
+
+    Asumir independencia sobreestima la varianza del total, ensancha la NB y
+    subestima las probabilidades -el sesgo que la auditoria midio en los
+    mercados total.
+    """
+
+    from src.team_count_markets import combined_dispersion
+
+    independent = combined_dispersion(0.30, 4.0, 4.0, 0.0)
+    negatively_correlated = combined_dispersion(0.30, 4.0, 4.0, -0.29)
+
+    assert negatively_correlated < independent
+
+
+def test_positive_correlation_widens_the_total_distribution() -> None:
+    """Un partido aspero reparte tarjetas para ambos lados a la vez."""
+
+    from src.team_count_markets import combined_dispersion
+
+    independent = combined_dispersion(0.05, 2.0, 2.0, 0.0)
+    positively_correlated = combined_dispersion(0.05, 2.0, 2.0, 0.19)
+
+    assert positively_correlated > independent
+
+
+def test_zero_correlation_reproduces_the_previous_formula() -> None:
+    """Compatibilidad: un artefacto sin `correlations` no cambia de resultado."""
+
+    from src.team_count_markets import combined_dispersion
+
+    phi, home, away = 0.30, 5.0, 3.0
+    total = home + away
+    legacy = max(phi * (home * home + away * away) / (total * total), 1e-8)
+
+    assert combined_dispersion(phi, home, away, 0.0) == pytest.approx(legacy)
+
+
+def test_extreme_negative_correlation_never_produces_invalid_dispersion() -> None:
+    """La NB no admite phi negativo; el suelo protege la distribucion."""
+
+    from src.team_count_markets import combined_dispersion
+
+    assert combined_dispersion(0.30, 5.0, 5.0, -0.95) > 0.0
+
+
+def test_runtime_defaults_to_independence_without_correlations() -> None:
+    """Un artefacto anterior sin el campo degrada al comportamiento previo."""
+
+    from src.team_count_market_runtime import _combined_phi
+
+    expected = {"home": {"corners": 5.0}, "away": {"corners": 3.0}}
+    dispersions = {"corners": 0.30}
+
+    assert _combined_phi("corners", "total", expected, dispersions, None) == (
+        _combined_phi("corners", "total", expected, dispersions, {}))
+
+
+def test_runtime_ignores_correlation_for_single_sided_markets() -> None:
+    """Una linea de un solo equipo no combina nada: phi queda intacta."""
+
+    from src.team_count_market_runtime import _combined_phi
+
+    expected = {"home": {"corners": 5.0}, "away": {"corners": 3.0}}
+
+    assert _combined_phi(
+        "corners", "home", expected, {"corners": 0.30},
+        {"corners": -0.29}) == 0.30

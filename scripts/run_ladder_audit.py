@@ -92,7 +92,9 @@ def main() -> int:
         phi = float(dispersions[metric])
         for side in SIDES:
             ladder = audit_ladder(
-                rows, metric, side, phi, _maximum(metric, side))
+                rows, metric, side, phi, _maximum(metric, side),
+                correlation=float(
+                    config.get("correlations", {}).get(metric, 0.0)))
             cells.extend(ladder)
             edge = sum(1 for c in ladder if c["verdict"] == VERDICT_EDGE)
             base = sum(1 for c in ladder if c["verdict"] == VERDICT_BASE_RATE)

@@ -25,9 +25,11 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 
 try:
-    from src.team_count_markets import negative_binomial_distribution
+    from src.team_count_markets import (
+        combined_dispersion, negative_binomial_distribution)
 except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
-    from team_count_markets import negative_binomial_distribution
+    from team_count_markets import (
+        combined_dispersion, negative_binomial_distribution)
 
 # Muestra mínima por celda. Por debajo no se emite veredicto: el intervalo
 # bootstrap sería tan ancho que cualquier conclusión resultaría vacía.
@@ -60,16 +62,15 @@ def over_probability(mean: float, phi: float, threshold: int) -> float:
 
 def combined_phi(
     phi: float, home_mean: float, away_mean: float,
+    correlation: float = 0.0,
 ) -> float:
-    """Conserva la varianza al sumar dos conteos independientes.
+    """Delega en la misma fórmula que usa el runtime para las líneas `total`.
 
-    Misma fórmula que ya usa el runtime para las líneas `total`; se replica
-    aquí para auditar exactamente lo que se sirve.
+    Se reutiliza en vez de replicarse para que la auditoría no pueda
+    divergir de lo que realmente se sirve.
     """
 
-    total = max(home_mean + away_mean, 1e-9)
-    extra = phi * (home_mean * home_mean + away_mean * away_mean)
-    return max(extra / (total * total), 1e-8)
+    return combined_dispersion(phi, home_mean, away_mean, correlation)
 
 
 def _expected_calibration_error(
@@ -278,7 +279,7 @@ def _side_rows(
 
 def audit_ladder(
     rows: list[dict[str, Any]], metric: str, side: str, phi: float,
-    maximum_line: int, seed: int = 20260812,
+    maximum_line: int, seed: int = 20260812, correlation: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Audita cada línea entera de una escalera (0.5 hasta `maximum_line`+0.5)."""
 
@@ -293,7 +294,9 @@ def audit_ladder(
         predicted, baseline, actual_over = [], [], []
         for row in observations:
             scale = row["phi_scale"]
-            row_phi = phi if scale is None else combined_phi(phi, *scale)
+            row_phi = (
+                phi if scale is None
+                else combined_phi(phi, *scale, correlation))
             predicted.append(over_probability(row["model"], row_phi, threshold))
             baseline.append(
                 over_probability(row["baseline"], row_phi, threshold))
