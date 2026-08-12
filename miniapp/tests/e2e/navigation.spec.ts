@@ -593,6 +593,13 @@ test("shows verified hits with confidence interval and baseline", async ({ page 
       disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
     }),
   }));
+  // Registrado después del genérico para que gane la coincidencia (ver nota
+  // en el test del resumen diario): esta prueba no cubre "Resultados de
+  // hoy", así que lo deja fuera para no chocar en texto con el historial.
+  await page.route("**/api/track-record/daily**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: "unavailable", reason: "settlement_store_not_configured" }),
+  }));
   await page.goto("/historial");
   await expect(page.getByRole("heading", { name: "Historial de aciertos" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Mercados oficiales" })).toBeVisible();
@@ -600,8 +607,8 @@ test("shows verified hits with confidence interval and baseline", async ({ page 
   await expect(page.getByText(/Entre 39% y 75% · referencia 50%/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Mercados experimentales" })).toBeVisible();
   await expect(page.getByText(/Sin validación confirmatoria/)).toBeVisible();
-  await expect(page.getByText("✅").first()).toBeVisible();
-  await expect(page.getByText("❌").first()).toBeVisible();
+  await expect(page.getByText("Acierto").first()).toBeVisible();
+  await expect(page.getByText("Fallo").first()).toBeVisible();
   await expect(page.getByText(/congeló y publicó antes del kickoff/)).toBeVisible();
 });
 
@@ -688,13 +695,75 @@ test("shows today's daily digest above the accumulated historial, hits and misse
   await page.goto("/historial");
 
   await expect(page.getByRole("heading", { name: "Resultados de hoy" })).toBeVisible();
-  await expect(page.getByText("1/2 resultados 1X2 acertados hoy")).toBeVisible();
+  const today = page.locator("article.model-card").filter({ hasText: "Resultados de hoy" });
+  await expect(today.getByText("Resultado (1X2)", { exact: true })).toBeVisible();
+  await expect(today.getByText("1/2", { exact: true })).toBeVisible();
   await expect(page.getByText("Puebla").first()).toBeVisible();
   await expect(page.getByText("Guadalajara").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Historial de aciertos" })).toBeVisible();
   await expect(page.getByText("Real Madrid").first()).toBeVisible();
-  const checks = await page.getByText("✅").count();
-  const crosses = await page.getByText("❌").count();
+  const checks = await page.getByText("Acierto").count();
+  const crosses = await page.getByText("Fallo").count();
   expect(checks).toBeGreaterThan(0);
   expect(crosses).toBeGreaterThan(0);
+});
+
+test("shows every calculated market and line for a settled match, not just 1X2/O2.5/BTTS", async ({ page }) => {
+  // El quinto (total_corners...) queda deliberadamente al final: con
+  // SHADOW_PREVIEW_SIZE=4 debe quedar oculto hasta expandir.
+  const shadowVerdicts = {
+    home_corners_first_half_over_4_5: { predicted: "Más de 4.5", actual: "6 observados", hit: true },
+    away_shots_on_target_full_match_over_7_5: { predicted: "Menos de 7.5", actual: "9 observados", hit: false },
+    home_yellow_cards_full_match_over_1_5: { predicted: "Más de 1.5", actual: "2 observados", hit: true },
+    away_corners_first_half_over_2_5: { predicted: "Más de 2.5", actual: "1 observados", hit: false },
+    total_corners_full_match_over_9_5: { predicted: "Menos de 9.5", actual: "8 observados", hit: true },
+  };
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: "available", window: { requested: 60, available: 0 }, official: {}, shadow: { markets: {} }, matches: [] }),
+  }));
+  await page.route("**/api/track-record/daily**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "available",
+      date: "2026-08-11",
+      official: {
+        one_x_two: { hits: 1, total: 1, sufficient_sample: false, missing_for_rate: 19 },
+        over_2_5: { hits: 1, total: 1, sufficient_sample: false, missing_for_rate: 19 },
+        btts: { hits: 0, total: 1, sufficient_sample: false, missing_for_rate: 19 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: {
+        home_corners_first_half_over_4_5: { hits: 6, total: 9 },
+      } },
+      matches: [{
+        fixture_key: "mex.1:900001", league_slug: "mex.1", match_id: 900001,
+        kickoff_ts: "2026-08-11T20:00:00Z",
+        home_team_name: "Puebla", away_team_name: "Guadalajara",
+        score_home: 2, score_away: 1, prediction_hash: "shadow0",
+        official_verdicts: {
+          one_x_two: { predicted: "Puebla", actual: "Puebla", hit: true },
+          over_2_5: { predicted: "Sí", actual: "Sí", hit: true },
+          btts: { predicted: "Sí", actual: "No", hit: false },
+        },
+        shadow_verdicts: shadowVerdicts,
+      }],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+    }),
+  }));
+
+  await page.goto("/historial");
+
+  await expect(page.getByRole("heading", { name: "Resultados de hoy" })).toBeVisible();
+  await expect(page.getByText("Córners, tiros y tarjetas")).toBeVisible();
+  await expect(page.getByText("6/9")).toBeVisible();
+  await expect(page.getByText(/Puebla · Córners · 1ª mitad/)).toBeVisible();
+  await expect(page.getByText(/Guadalajara · Tiros a puerta · partido completo/)).toBeVisible();
+  await expect(page.getByText(/Puebla · Tarjetas amarillas · partido completo/)).toBeVisible();
+  await expect(page.getByText(/Guadalajara · Córners · 1ª mitad/)).toBeVisible();
+  await expect(page.getByText("Puebla + Guadalajara · Córners · partido completo")).not.toBeVisible();
+
+  await page.getByRole("button", { name: /Ver las 5 líneas/ }).click();
+
+  await expect(page.getByText("Puebla + Guadalajara · Córners · partido completo")).toBeVisible();
 });

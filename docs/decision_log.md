@@ -3268,6 +3268,63 @@ de córners/tiros restantes, tarjetas de componentes del motor (Poisson,
 CTMC, hazard, Elo, Hawkes) y el benchmark externo del proveedor confirmados
 con datos reales del mismo partido, sin cambios necesarios.
 
+DEC-177
+Fecha: 2026-08-12
+Problema: el usuario pide que "Resultados de hoy" muestre los aciertos de
+todos los mercados y líneas calculadas en los partidos mostrados, no sólo
+1X2/Más de 2.5/Ambos marcan, y pide además evitar emojis en la presentación.
+Verificado contra el código: `/v1/track-record/daily` ya devuelve
+`matches[].shadow_verdicts` -las líneas de córners/tiros/tarjetas de la
+rejilla dinámica de Fase 102, congeladas y liquidadas por partido junto a los
+tres mercados oficiales- pero `DailyTrackRecord` nunca las leía, sólo
+mostraba el conteo agregado de 1X2. Aparte, `MatchRow` marcaba cada veredicto
+con ✅/❌.
+Opciones para "todos los mercados": (a) ampliar sólo con lo que
+`shadow_verdicts` ya trae por partido -datos reales, ya liquidados, del mismo
+conjunto de partidos mostrado-; (b) conectar además el menú de Fase 123 (sus
+propias tablas `high_probability_pick_settlements`, hoy sin ninguna ruta
+HTTP). Se descarta (b) para este cambio: Fase 123 congela sólo una selección
+curada de picks de alta probabilidad, no todos los mercados de todos los
+partidos del día, y mezclarla en un resumen que por DEC-158/161 debe ser
+cronológico y sin selección por desempeño reabriría exactamente el sesgo que
+esas decisiones evitan. Queda como ampliación posible y separada si se pide
+explícitamente.
+Decisión: (a). `MatchRow` ahora también itera `shadow_verdicts` -con vista
+previa de 4 líneas y botón "Ver las N líneas" para el resto, igual que
+`AuditedLadder`-, usando `shadowMarketLabel` (nuevo, `miniapp/lib/
+track-record.ts`) para traducir la clave liquidada
+(`home_corners_first_half_over_4_5`) a una etiqueta legible. El encabezado
+de "Resultados de hoy" pasa de una sola frase con sólo el conteo 1X2 a un
+`metric-grid` con los tres mercados oficiales más el agregado de líneas
+shadow del día (`shadowSummary`). Para "evitar emojis": ✅/❌ se reemplaza por
+texto ("Acierto"/"Fallo") con clases CSS nuevas `.verdict-hit`/`.verdict-miss`
+que reutilizan los colores ya definidos del proyecto (`--mint`/`--danger`),
+compartido entre `DailyTrackRecord` y `TrackRecord` porque ambos usan
+`MatchRow`. No se tocaron los emojis de otras secciones (marcador de goles en
+vivo, favoritos, iconos de navegación): el pedido llegó en el contexto de
+"aciertos diarios" y ninguna de esas otras zonas fue mencionada ni es parte
+del mismo componente.
+Motivo: `shadow_verdicts` ya es evidencia real y liquidada para exactamente
+los partidos que "Resultados de hoy" muestra -ampliarlo ahí satisface el
+pedido sin inventar una fuente nueva ni mezclar filosofías de selección
+distintas. El patrón de vista previa + expandir ya está validado en
+`AuditedLadder`; reusarlo evita una superficie de UI nueva. `--danger` ya es
+el color de error establecido del proyecto (usado en `.status-lamp`,
+`.catalog-warning`); texto + color reutiliza el sistema existente en vez de
+introducir un nuevo lenguaje visual.
+Estado: congelada
+Impacto en contratos/fases: ningún cambio de backend; `/v1/track-record` y
+`/v1/track-record/daily` no se modificaron, sólo se empezó a leer un campo
+que ya devolvían. No conecta Fase 123.
+Evidencia requerida: 10 pruebas Vitest nuevas (`tests/track-record.test.ts`:
+parseo de clave shadow con y sin periodo, normalización de
+`shadow_verdicts` malformado, suma del agregado, degradación); 1 prueba E2E
+nueva que verifica que un partido con 5 líneas shadow muestra 4 por defecto y
+la quinta sólo tras expandir, y que el agregado del día suma correctamente
+entre mercados; 4 aserciones E2E existentes migradas de buscar ✅/❌ a
+"Acierto"/"Fallo"; typecheck, build Next y suite completa de Playwright (42)
+y Vitest (45) sin regresiones.
+
 ```text
 DEC-NNN
 Fecha:

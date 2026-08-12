@@ -1,15 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
+import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
+import { SHADOW_PREVIEW_SIZE, shadowMarketLabel, shadowMatchEntries, shadowSummary } from "@/lib/track-record";
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
   ["one_x_two", "Resultado (1X2)"],
   ["over_2_5", "Más de 2.5 goles"],
   ["btts", "Ambos marcan"],
 ];
+
+function VerdictMark({ hit }: { hit: boolean }) {
+  return <strong className={hit ? "verdict-hit" : "verdict-miss"}>{hit ? "Acierto" : "Fallo"}</strong>;
+}
 
 function MarketSummary({ label, value }: { label: string; value: unknown }) {
   const market = record(value);
@@ -48,15 +54,20 @@ function today(): string {
 }
 
 function MatchRow({ value }: { value: unknown }) {
+  const [expanded, setExpanded] = useState(false);
   const row = record(value);
   const verdicts = record(row.official_verdicts);
+  const homeName = String(row.home_team_name ?? "");
+  const awayName = String(row.away_team_name ?? "");
+  const shadowEntries = shadowMatchEntries(row.shadow_verdicts);
+  const visibleShadow = expanded ? shadowEntries : shadowEntries.slice(0, SHADOW_PREVIEW_SIZE);
   const kickoff = typeof row.kickoff_ts === "string"
     ? new Date(row.kickoff_ts).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
     : "—";
   return (
     <div className="ladder-group">
       <div className="ladder-head">
-        <span>{String(row.home_team_name)} {String(row.score_home)}–{String(row.score_away)} {String(row.away_team_name)}</span>
+        <span>{homeName} {String(row.score_home)}–{String(row.score_away)} {awayName}</span>
         <strong>{kickoff}</strong>
       </div>
       {OFFICIAL_LABELS.map(([key, label]) => {
@@ -65,10 +76,26 @@ function MatchRow({ value }: { value: unknown }) {
         return (
           <div className="subscription-row" key={key}>
             <span>{label} · {String(verdict.predicted)}</span>
-            <strong>{verdict.hit ? "✅" : "❌"}</strong>
+            <VerdictMark hit={Boolean(verdict.hit)} />
           </div>
         );
       })}
+      {visibleShadow.map((entry) => (
+        <div className="subscription-row" key={entry.key}>
+          <span>{shadowMarketLabel(entry.key, homeName, awayName)} · {String(entry.predicted)}</span>
+          <VerdictMark hit={Boolean(entry.hit)} />
+        </div>
+      ))}
+      {shadowEntries.length > SHADOW_PREVIEW_SIZE ? (
+        <button
+          type="button"
+          className="secondary-button"
+          style={{ justifySelf: "start", marginTop: 4 }}
+          onClick={() => setExpanded((state) => !state)}
+        >
+          {expanded ? "Mostrar menos" : `Ver las ${shadowEntries.length} líneas`}
+        </button>
+      ) : null}
       <small className="ladder-edge">Predicción congelada · {String(row.prediction_hash ?? "")}</small>
     </div>
   );
@@ -98,15 +125,31 @@ export function DailyTrackRecord() {
       </article>
     );
   }
-  const oneXTwo = record(record(payload.official).one_x_two);
-  const hits = Number(oneXTwo.hits ?? 0);
+  const official = record(payload.official);
+  const shadow = shadowSummary(payload.shadow);
   return (
     <article className="model-card">
       <div className="model-card-header"><h3>Resultados de hoy</h3></div>
       <p className="ladder-caption">
-        {hits}/{matches.length} resultados 1X2 acertados hoy. Se muestran todos los partidos
-        liquidados, acertados y no acertados.
+        Todos los partidos liquidados hoy, acertados y no acertados, con todos los mercados
+        y líneas calculadas para cada uno.
       </p>
+      <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
+        {OFFICIAL_LABELS.map(([key, label]) => {
+          const market = record(official[key]);
+          return (
+            <Metric
+              key={key}
+              label={label}
+              value={`${Number(market.hits ?? 0)}/${Number(market.total ?? 0)}`}
+              accent={key === "one_x_two"}
+            />
+          );
+        })}
+        {shadow.total > 0 ? (
+          <Metric label="Córners, tiros y tarjetas" value={`${shadow.hits}/${shadow.total}`} />
+        ) : null}
+      </div>
       <div className="stack" style={{ marginTop: 14 }}>
         {matches.map((match, index) => (
           <MatchRow key={String(record(match).fixture_key ?? index)} value={match} />

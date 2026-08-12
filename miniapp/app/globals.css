@@ -394,6 +394,8 @@ button { color: inherit; }
 .field input:focus, .field select:focus { border-color: var(--signal); box-shadow: 0 0 0 3px rgba(64, 138, 113, .12); }
 .subscription-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; }
 .subscription-row p { margin: 4px 0 0; color: var(--muted); font-size: .7rem; }
+.verdict-hit { color: var(--mint); }
+.verdict-miss { color: var(--danger); }
 .switch { border: 1px solid var(--line); background: rgba(176, 228, 204, .08); min-width: 50px; min-height: 30px; border-radius: 999px; cursor: pointer; }
 .switch.on { background: var(--signal); }
 .danger-button { border: 0; color: var(--danger); background: transparent; cursor: pointer; padding: 8px 0; }
