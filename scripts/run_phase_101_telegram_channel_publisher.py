@@ -282,7 +282,8 @@ def _run(args: argparse.Namespace) -> int:
                 _high_probability_cycle(args.dry_run)
             except Exception as error:  # noqa: BLE001 - Fase 123 nunca tumba el canal
                 LOGGER.warning(
-                    "phase123_cycle_failed error=%s", type(error).__name__)
+                    "phase123_cycle_failed error_type=%s error=%s",
+                    type(error).__name__, error)
             next_hp_cycle = time.monotonic() + hp_interval
         if args.once:
             return 0
