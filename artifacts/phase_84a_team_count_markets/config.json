@@ -3,18 +3,18 @@
     "corners": 10.0,
     "corners_first_half": 10.0,
     "red_cards": 0.1,
-    "shots": 10.0,
+    "shots": 1.0,
     "shots_on_target": 0.1,
     "yellow_cards": 0.1,
     "yellow_cards_first_half": 1.0
   },
   "dispersions": {
-    "corners": 0.37590572923536913,
-    "corners_first_half": 0.44717260207731807,
-    "red_cards": 0.5783939789137932,
-    "shots": 0.3500844965543732,
-    "shots_on_target": 0.18260401810510316,
-    "yellow_cards": 0.0010319491592509914,
+    "corners": 0.3000698093154057,
+    "corners_first_half": 0.3658988093769896,
+    "red_cards": 0.41999534392238613,
+    "shots": 0.0959717354620308,
+    "shots_on_target": 0.047283997309226215,
+    "yellow_cards": 0.0001,
     "yellow_cards_first_half": 0.0001
   },
   "market_lines": {
@@ -78,53 +78,53 @@
     {
       "first_half_only": false,
       "name": "corners",
-      "safe_default": 4.5,
+      "safe_default": 7.60715669810102,
       "source_field": "corners"
     },
     {
       "first_half_only": true,
       "name": "corners_first_half",
-      "safe_default": 2.2,
+      "safe_default": 3.316109029841106,
       "source_field": "corners"
     },
     {
       "first_half_only": false,
       "name": "yellow_cards",
-      "safe_default": 1.8,
+      "safe_default": 2.087442761535752,
       "source_field": "yellow_cards"
     },
     {
       "first_half_only": true,
       "name": "yellow_cards_first_half",
-      "safe_default": 0.8,
+      "safe_default": 0.6286544557942938,
       "source_field": "yellow_cards"
     },
     {
       "first_half_only": false,
       "name": "red_cards",
-      "safe_default": 0.05,
+      "safe_default": 0.11315604085945756,
       "source_field": "red_cards"
     },
     {
       "first_half_only": false,
       "name": "shots",
-      "safe_default": 10.0,
+      "safe_default": 9.22862095531587,
       "source_field": "shots"
     },
     {
       "first_half_only": false,
       "name": "shots_on_target",
-      "safe_default": 3.5,
+      "safe_default": 3.314426040061633,
       "source_field": "shots_on_target"
     }
   ],
   "model_status": "experimental_shadow_not_promoted",
   "model_weights": {
-    "corners": 0.0,
+    "corners": 0.1,
     "corners_first_half": 0.0,
     "red_cards": 0.6,
-    "shots": 0.6,
-    "shots_on_target": 0.9,
+    "shots": 0.7,
+    "shots_on_target": 1.0,
     "yellow_cards": 0.8,
     "yellow_cards_first_half": 1.0
   },

@@ -268,9 +268,60 @@ excluirlas del entrenamiento- ya no aplica, porque ahora se excluyen del
 ajuste, no sólo de la salida. Purgar el historial acumulado en sí exigiría
 reconstruir el corpus de Fase 74, fuera de alcance de esta reparación.
 
-Pendiente para continuar: con la dispersión ya corregida, la auditoría de la
-escalera completa (0.5 al máximo) es ahora la siguiente etapa -antes habría
-medido sobre una base sesgada.
+### Auditoría de la escalera completa y segunda ronda de correcciones (2026-08-12)
+
+`src/ladder_audit.py` + `scripts/run_ladder_audit.py` auditan **350 celdas**
+(6 métricas × 3 lados × cada línea entera desde 0.5 hasta el máximo). Cada
+celda mide muestra, tasa observada, probabilidad media declarada, ECE por
+tramos, y **dos** ventajas con IC bootstrap por partido completo:
+
+- **acierto contra el lado mayoritario**, que en líneas extremas es casi
+  imposible de batir y por sí solo declararía éxito donde no lo hay;
+- **Brier contra el baseline de liga**, que responde la pregunta que importa
+  para una salida adaptativa: ¿conocer los equipos concretos mejora la
+  probabilidad frente a usar la media de la liga? El veredicto usa esta.
+
+La primera pasada encontró dos defectos de especificación, ambos corregidos:
+
+1. **Prior de suavizado mal especificado.** Fase 84A fijaba `safe_default` a
+   mano: córners `4.5` con media real `7.99`, córners 1ª mitad `2.2` frente a
+   `3.51`. Ese prior sesgaba el baseline hacia abajo **y** contaminaba los
+   features de historial de cada equipo, que se suavizan contra él. Ahora se
+   estima desde el bloque `fit`.
+2. **Dispersión marginal en vez de condicional.** `phi` se estimaba sobre la
+   varianza del target agrupado, que mezcla la dispersión alrededor de la
+   media de cada partido con la variación de esa media entre partidos. Para un
+   modelo que ya predice una media por partido, contar la segunda infla `phi`
+   y empuja todas las probabilidades hacia 0.5. Medido: tiros `0.34` marginal
+   frente a `0.12` condicional.
+
+Efecto de las dos correcciones sobre las mismas 350 celdas:
+
+| | Antes | Después |
+| --- | ---: | ---: |
+| Publicables (calibradas) | 254 | **310** |
+| Con ventaja real del modelo | 38 | **84** |
+| Miscalibradas | 96 | **40** |
+
+Sesgo medio de calibración: córners `-0.0345 → -0.0104`, córners 1ª mitad
+`-0.0251 → -0.0109`, tiros `-0.0167 → -0.0114`.
+
+**Los córners recuperaron modelo, pero apenas.** Con el prior corregido el
+peso de mezcla pasó de `0.0` a `0.1` y aparecieron 22 líneas con ventaja real
+donde antes había cero. Aun así la mejora de deviance es del `0.16%`: la
+identidad de los equipos aporta muy poco en córners frente a la media de liga,
+y córners de primera mitad sigue en peso `0.0` -sin modelo por equipo-. Tiros
+a puerta, en cambio, subió a peso `1.0` (modelo completo).
+
+**Causa identificada de las 40 miscalibradas restantes**: se concentran en
+mercados `total` (córners total 13, tiros total 12). La fórmula que combina
+las dos orientaciones asume independencia entre local y visitante, pero en un
+partido de ritmo alto ambos suben a la vez. Asumir independencia subestima la
+varianza del total. Es un tercer defecto real, todavía sin corregir.
+
+Pendiente para continuar: modelar esa correlación local-visitante para
+recuperar las 40 líneas `total`, y después exponer en la Mini App las 310
+publicables etiquetadas por origen de fiabilidad.
 
 ## Qué NO promete este objetivo
 

@@ -194,3 +194,109 @@ def test_clamp_detects_a_regression_in_an_already_approved_market() -> None:
 
 # Version: 1.0.0
 # Created: 2026-08-12
+
+
+def test_conditional_dispersion_is_lower_than_marginal_when_model_informs() -> None:
+    """El nucleo de la correccion de calibracion.
+
+    La dispersion marginal mezcla dos fuentes: la variacion alrededor de la
+    media de cada partido y la variacion de esa media entre partidos. Para un
+    modelo que ya predice una media por partido, contar la segunda infla phi,
+    ensancha la NB y empuja las probabilidades hacia 0.5. Medido en el corpus:
+    tiros daba 0.34 marginal frente a 0.12 condicional.
+    """
+
+    import numpy as np
+    from scripts.repair_team_count_coverage_bias import _dispersion
+
+    rng = np.random.default_rng(11)
+    means = rng.uniform(4.0, 16.0, size=4000)
+    targets = rng.poisson(means).astype(float)
+
+    marginal = _dispersion(targets)
+    conditional = _dispersion(targets, means)
+
+    assert marginal > conditional
+    # Los datos son Poisson puros condicionados a la media, asi que la
+    # dispersion condicional debe quedar practicamente en el suelo.
+    assert conditional < 0.02
+
+
+def test_conditional_dispersion_floors_underdispersed_metrics() -> None:
+    """Las tarjetas son infradispersas; la NB no puede representarlo.
+
+    Un phi negativo romperia la distribucion, asi que el suelo la deja en
+    Poisson en vez de propagar un parametro invalido.
+    """
+
+    import numpy as np
+    from scripts.repair_team_count_coverage_bias import _dispersion
+
+    means = np.full(500, 2.0)
+    targets = np.full(500, 2.0)
+
+    assert _dispersion(targets, means) > 0.0
+
+
+def test_calibrated_specs_replace_a_misspecified_prior() -> None:
+    """Corners usaba un prior de 4.5 con media real ~8.
+
+    Ese prior no solo sesgaba el baseline hacia abajo: contaminaba los
+    features de historial de cada equipo, que se suavizan contra el.
+    """
+
+    from scripts.repair_team_count_coverage_bias import _calibrated_specs
+
+    class _Coverage:
+        def absent_metrics(self, league):
+            return frozenset()
+
+    matches = [
+        {
+            "split": "fit", "league_slug": "esp.1",
+            "home": {name: 8.0 for name in (
+                "corners", "corners_first_half", "yellow_cards",
+                "yellow_cards_first_half", "red_cards", "shots",
+                "shots_on_target")},
+            "away": {name: 8.0 for name in (
+                "corners", "corners_first_half", "yellow_cards",
+                "yellow_cards_first_half", "red_cards", "shots",
+                "shots_on_target")},
+        }
+        for _ in range(40)
+    ]
+
+    specs = _calibrated_specs(matches, _Coverage())
+
+    corners = next(spec for spec in specs if spec.name == "corners")
+    assert corners.safe_default == pytest.approx(8.0)
+
+
+def test_calibrated_specs_ignore_selection_and_confirmation() -> None:
+    """El prior se estima solo con `fit`, el bloque mas antiguo."""
+
+    from scripts.repair_team_count_coverage_bias import _calibrated_specs
+
+    class _Coverage:
+        def absent_metrics(self, league):
+            return frozenset()
+
+    names = ("corners", "corners_first_half", "yellow_cards",
+             "yellow_cards_first_half", "red_cards", "shots",
+             "shots_on_target")
+    matches = [
+        {"split": "fit", "league_slug": "esp.1",
+         "home": {name: 5.0 for name in names},
+         "away": {name: 5.0 for name in names}}
+        for _ in range(30)
+    ] + [
+        {"split": "confirmation", "league_slug": "esp.1",
+         "home": {name: 50.0 for name in names},
+         "away": {name: 50.0 for name in names}}
+        for _ in range(30)
+    ]
+
+    specs = _calibrated_specs(matches, _Coverage())
+
+    corners = next(spec for spec in specs if spec.name == "corners")
+    assert corners.safe_default == pytest.approx(5.0)

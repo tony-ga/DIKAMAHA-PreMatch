@@ -86,32 +86,34 @@ LOGGER = logging.getLogger(__name__)
 REPORT_SUFFIX = "coverage_bias_repair_v1"
 
 
-def _examples_clean(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _examples_clean(
+    matches: list[dict[str, Any]], specs: list[Any] | None = None,
+) -> list[dict[str, Any]]:
     """Reconstruye ejemplos igual que Fase 84A, con targets sin filtrar aún.
 
     El filtro se aplica después, por métrica, en `_matrix_clean`: una misma
     fila puede ser válida para tarjetas y contaminada para córners.
     """
 
+    specs = specs if specs is not None else list(METRICS)
     team: dict[tuple[str, int, str], list[float]] = {}
     league: dict[tuple[str, bool, str], list[float]] = {}
     output = []
     for bucket in kickoff_buckets(matches):
         for match in bucket:
-            output.extend(_match_examples_clean(match, team, league))
+            output.extend(
+                _match_examples_clean(specs, match, team, league))
         for match in bucket:
             _update_history_clean(match, team, league)
     return output
 
 
 def _match_examples_clean(
-    match: dict[str, Any], team: dict[Any, list[float]],
+    specs: list[Any], match: dict[str, Any], team: dict[Any, list[float]],
     league: dict[Any, list[float]],
 ) -> list[dict[str, Any]]:
-    """Réplica exacta de `_match_examples` de Fase 84A."""
+    """Réplica de `_match_examples` de Fase 84A con priors parametrizados."""
 
-    from scripts.run_phase_84a_team_count_markets import (
-        _baselines, _features)
     output = []
     for home in (True, False):
         side, rival = ("home", "away") if home else ("away", "home")
@@ -121,9 +123,9 @@ def _match_examples_clean(
             "is_home": home,
             "team_id": match[f"{side}_team_id"],
             "opponent_team_id": match[f"{rival}_team_id"],
-            "features": _features(match, home, team, league),
+            "features": _features_with(specs, match, home, team, league),
             "targets": match[side],
-            "baselines": _baselines(match, home, league),
+            "baselines": _baselines_with(specs, match, home, league),
         })
     return output
 
@@ -166,12 +168,114 @@ def _matrix_clean(
     return features, targets, len(rows) - len(kept)
 
 
-def _dispersion(targets: np.ndarray) -> float:
-    """Idéntica a la de Fase 84A: sobredispersión por momentos."""
+def _dispersion(targets: np.ndarray, predicted: np.ndarray | None = None) -> float:
+    """Estima la sobredispersión **condicional** a la media predicha.
 
-    mean = max(float(np.mean(targets)), 1e-9)
-    variance = float(np.var(targets))
-    return max((variance - mean) / (mean * mean), 1e-4)
+    Fase 84A la estimaba sobre la varianza marginal del target agrupado, que
+    mezcla dos fuentes distintas: la dispersión real alrededor de la media de
+    cada partido y la variación de esa media entre partidos. Para un modelo
+    que ya predice una media por partido, la segunda no debe contarse: inflaba
+    `phi`, ensanchaba la NB y empujaba todas las probabilidades hacia 0.5.
+
+    Medido sobre el corpus: para tiros la marginal daba `0.34` frente a `0.12`
+    condicional -casi el triple-, y la auditoría de escalera encontró 96
+    líneas subestimando de forma sistemática por ese motivo.
+
+    Sin `predicted` conserva el comportamiento marginal original.
+    """
+
+    if predicted is None:
+        mean = max(float(np.mean(targets)), 1e-9)
+        variance = float(np.var(targets))
+        return max((variance - mean) / (mean * mean), 1e-4)
+    mu = np.clip(np.asarray(predicted, dtype=float), 1e-9, None)
+    residual = (np.asarray(targets, dtype=float) - mu) ** 2 - mu
+    # Un valor negativo significa infradispersión (las tarjetas lo son): la NB
+    # no puede representarla, así que el suelo la deja en Poisson.
+    return max(float(np.mean(residual) / np.mean(mu * mu)), 1e-4)
+
+
+def _calibrated_specs(
+    matches: list[dict[str, Any]], coverage: MetricCoverage,
+) -> list[Any]:
+    """Recalcula el prior de suavizado de cada métrica desde los datos.
+
+    Fase 84A fijó `safe_default` a mano: córners `4.5` cuando la media real es
+    `7.99`, córners de primera mitad `2.2` frente a `3.51`. Ese prior no sólo
+    sesga el baseline hacia abajo -explica buena parte de la subestimación
+    sistemática que encontró la auditoría-, también contamina los *features*
+    de historial de cada equipo, que se suavizan contra él: un equipo con
+    pocos partidos queda descrito por una cifra que no se parece a su liga.
+
+    Se estima únicamente sobre el bloque `fit` -el más antiguo- para no mirar
+    datos de selección ni de confirmación.
+    """
+
+    from dataclasses import replace
+    fit = [match for match in matches if match["split"] == "fit"]
+    output = []
+    for spec in METRICS:
+        values = []
+        for match in fit:
+            for side in ("home", "away"):
+                row = {
+                    "league_slug": match["league_slug"],
+                    "targets": match[side],
+                }
+                if not _contaminated(row, spec.name, coverage):
+                    values.append(float(match[side][spec.name]))
+        default = float(np.mean(values)) if values else spec.safe_default
+        output.append(replace(spec, safe_default=max(default, 1e-6)))
+    return output
+
+
+def _features_with(
+    specs: list[Any], match: dict[str, Any], home: bool,
+    team: dict[Any, list[float]], league: dict[Any, list[float]],
+) -> list[float]:
+    """Réplica de `_features` de Fase 84A con priors parametrizados."""
+
+    from scripts.run_phase_84a_team_count_markets import _profile_values
+    league_name = str(match["league_slug"])
+    own = int(match["home_team_id"] if home else match["away_team_id"])
+    rival = int(match["away_team_id"] if home else match["home_team_id"])
+    values = [float(home)]
+    for spec in specs:
+        own_stats = team.get((league_name, own, spec.name), [0.0, 0.0, 0.0])
+        rival_stats = team.get(
+            (league_name, rival, spec.name), [0.0, 0.0, 0.0])
+        league_stats = league.get((league_name, home, spec.name), [0.0, 0.0])
+        values.extend(_profile_values(
+            own_stats, rival_stats, league_stats, spec.safe_default))
+    return values
+
+
+def _baselines_with(
+    specs: list[Any], match: dict[str, Any], home: bool,
+    league: dict[Any, list[float]],
+) -> dict[str, float]:
+    """Réplica de `_baselines` de Fase 84A con priors parametrizados."""
+
+    league_name = str(match["league_slug"])
+    output = {}
+    for spec in specs:
+        total, count = league.get((league_name, home, spec.name), [0.0, 0.0])
+        output[spec.name] = (total + 20.0 * spec.safe_default) / (count + 20.0)
+    return output
+
+
+def _blended_prediction(
+    solver: Any, weight: float, rows: list[dict[str, Any]], metric: str,
+    coverage: MetricCoverage,
+) -> np.ndarray:
+    """Reproduce la media publicada: mezcla de modelo y baseline de liga."""
+
+    kept = [row for row in rows if not _contaminated(row, metric, coverage)]
+    features = np.asarray([row["features"] for row in kept], dtype=float)
+    baseline = np.asarray(
+        [row["baselines"][metric] for row in kept], dtype=float)
+    raw = solver.predict(features)
+    return weight * raw + (1.0 - weight) * baseline
 
 
 def _select_alpha_clean(
@@ -223,7 +327,12 @@ def _fit_models_clean(
         models[spec.name] = solver
         alphas[spec.name] = alpha
         selection_scores[spec.name] = scores
-        dispersions[spec.name] = _dispersion(y_train)
+        # La dispersión se mide contra la media que realmente se publica -la
+        # mezcla seleccionada entre modelo y baseline-, no contra la salida
+        # cruda del solver: es esa mezcla la que alimenta la NB en runtime.
+        blended = _blended_prediction(
+            solver, weight, train, spec.name, coverage)
+        dispersions[spec.name] = _dispersion(y_train, blended)
         weights[spec.name] = weight
         dropped[spec.name] = dropped_train
     return models, alphas, selection_scores, dispersions, weights, dropped
@@ -405,7 +514,11 @@ def run() -> dict[str, Any]:
 
     coverage = MetricCoverage()
     matches = _matches(_read_rows())
-    examples = _examples_clean(matches)
+    specs = _calibrated_specs(matches, coverage)
+    LOGGER.info(
+        "priors_recalibrados=%s",
+        {spec.name: round(spec.safe_default, 3) for spec in specs})
+    examples = _examples_clean(matches, specs)
     models, alphas, selection_scores, dispersions, weights, dropped = (
         _fit_models_clean(examples, coverage))
     predictions = _predict_clean(examples, models, weights, coverage)
@@ -416,7 +529,7 @@ def run() -> dict[str, Any]:
     gate = _clamp_to_approved(_gate(counts, markets))
     result = _result_clean(
         matches, examples, alphas, dispersions, weights, selection_scores,
-        scored, market_rows, counts, markets, gate, dropped)
+        scored, market_rows, counts, markets, gate, dropped, specs)
     _publish_clean(result, models)
     return result
 
@@ -453,7 +566,7 @@ def _result_clean(
     weights: dict[str, float], selection_scores: dict[str, Any],
     scored: list[dict[str, Any]], market_rows: list[dict[str, Any]],
     counts: dict[str, Any], markets: dict[str, Any], gate: dict[str, Any],
-    dropped: dict[str, int],
+    dropped: dict[str, int], specs: list[Any],
 ) -> dict[str, Any]:
     """Compone el contrato, idéntico en forma al de Fase 84A."""
 
@@ -467,7 +580,7 @@ def _result_clean(
             "version": "team_count_markets_v3_kickoff_integrity",
             "alphas": alphas, "dispersions": dispersions,
             "model_weights": weights, "market_lines": MARKET_LINES,
-            "metrics": [asdict(spec) for spec in METRICS],
+            "metrics": [asdict(spec) for spec in specs],
             "model_status": "experimental_shadow_not_promoted",
         },
         "selection": selection_scores,
