@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { EntityImage } from "@/components/entity-image";
+import { LoadingProgress } from "@/components/loading-progress";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, queryString, record } from "@/lib/client-api";
 
@@ -135,9 +136,7 @@ export default function HighProbabilityPage() {
           El artefacto de fiabilidad de Fase 122 no está cargado, de modo que no se expone ningún pick.
         </StatePanel>
       ) : query.isLoading ? (
-        <StatePanel title="Evaluando partidos de hoy">
-          Calculando los mercados de cada partido y filtrando por fiabilidad demostrada.
-        </StatePanel>
+        <LoadingProgress title="Evaluando partidos de hoy" />
       ) : picks.length ? (
         <div className="stack">{picks.map((pick, index) => <PickCard key={`${String(record(pick.fixture).match_id)}-${String(pick.market)}-${index}`} value={pick} />)}</div>
       ) : (

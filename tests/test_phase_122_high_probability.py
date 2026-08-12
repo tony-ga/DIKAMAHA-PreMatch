@@ -7,8 +7,10 @@ tasa observada histórica, no la probabilidad del modelo.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -452,6 +454,141 @@ def test_endpoint_limit_is_bounded(monkeypatch: Any) -> None:
     assert payload["count"] == 2
     assert len(payload["picks"]) == 2
     assert payload["total_candidates"] == 3
+
+
+# --------------------------------------------------------------------------
+# Concurrencia acotada y presupuesto de tiempo
+#
+# Antes el barrido era un bucle secuencial sin límites: con caché fría (los
+# partidos de mañana, que nadie vio todavía) podía encadenar hasta 30
+# inferencias completas una tras otra, monopolizando el pool de hilos
+# compartido con el resto del servicio. En producción esto se midió tumbando
+# hasta /v1/models (un diccionario en memoria, sin E/S) a 10+ segundos.
+# --------------------------------------------------------------------------
+
+def _slow_fixtures(count: int) -> list[dict[str, Any]]:
+    """Construye un catálogo sintético de `count` fixtures."""
+
+    return [
+        {"match_id": index, "league_slug": "esp.1", "home_team_id": index,
+         "away_team_id": index + 1000,
+         "kickoff_ts": f"2026-08-13T{10 + index % 12:02d}:00:00+00:00",
+         "home_team_name": f"Local {index}", "away_team_name": f"Visita {index}",
+         "home_team_logo": None, "away_team_logo": None}
+        for index in range(count)
+    ]
+
+
+def test_predictions_run_with_bounded_concurrency_not_unbounded(
+    monkeypatch: Any,
+) -> None:
+    """Nunca hay más de HIGH_PROBABILITY_CONCURRENCY inferencias a la vez.
+
+    Sin este límite, 12 fixtures fríos dispararían 12 inferencias
+    simultáneas y saturarían el mismo pool de hilos que usa todo lo demás.
+    """
+
+    import src.dikamaha_service as service
+
+    fixtures = _slow_fixtures(12)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+
+    in_flight = {"current": 0, "max_seen": 0}
+
+    async def prediction(app: Any, engine: Any, config: Any,
+                         fixture: dict[str, Any]) -> dict[str, Any]:
+        """Simula una inferencia real con latencia, contando concurrencia."""
+
+        in_flight["current"] += 1
+        in_flight["max_seen"] = max(in_flight["max_seen"], in_flight["current"])
+        await asyncio.sleep(0.15)
+        in_flight["current"] -= 1
+        return _prediction(home_corners_over_4_5=0.70)
+
+    monkeypatch.setattr(service, "_high_probability_prediction", prediction)
+
+    payload = TestClient(
+        create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
+    ).get("/v1/high-probability").json()
+
+    assert in_flight["max_seen"] <= service.HIGH_PROBABILITY_CONCURRENCY
+    assert in_flight["max_seen"] > 1, "debe paralelizar, no ser secuencial"
+    assert payload["fixtures_scanned"] == 12
+
+
+def test_wall_clock_budget_returns_partial_results_instead_of_blocking(
+    monkeypatch: Any,
+) -> None:
+    """Un catálogo grande y lento devuelve lo que alcanzó, no bloquea todo.
+
+    Antes esto no tenía presupuesto de tiempo: fixtures fríos podían sumar su
+    latencia completa de forma secuencial. Aquí, completar los 40 fixtures
+    sin presupuesto tomaría al menos ~1s (40 fixtures / concurrencia 4 ×
+    0.1s); el presupuesto de 0.2s debe cortarlo bastante antes. Los márgenes
+    son deliberadamente amplios (5x+) para no ser un test frágil al correr
+    junto al resto de la suite bajo carga de CPU compartida.
+    """
+
+    import src.dikamaha_service as service
+
+    fixtures = _slow_fixtures(40)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(
+        service, "HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS", 0.2)
+
+    async def prediction(app: Any, engine: Any, config: Any,
+                         fixture: dict[str, Any]) -> dict[str, Any]:
+        """Simula una inferencia real con latencia constante."""
+
+        await asyncio.sleep(0.1)
+        return _prediction(home_corners_over_4_5=0.70)
+
+    monkeypatch.setattr(service, "_high_probability_prediction", prediction)
+
+    started = time.monotonic()
+    payload = TestClient(
+        create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
+    ).get("/v1/high-probability?limit=50").json()
+    elapsed = time.monotonic() - started
+
+    assert payload["status"] == "ok"
+    assert payload["fixtures_catalog_size"] == 40
+    assert payload["fixtures_scanned"] < 40, (
+        "el presupuesto debe cortar el barrido antes de agotar el catálogo")
+    assert elapsed < 5.0, "no debe bloquear por la suma de las 40 latencias"
+
+
+def test_high_probability_catalog_fetch_is_cached(monkeypatch: Any) -> None:
+    """Dos llamadas seguidas comparten un único barrido ESPN real."""
+
+    import src.dikamaha_service as service
+
+    calls = {"count": 0}
+    fixtures = _slow_fixtures(2)
+
+    def fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+        """Cuenta cuántas veces se ejecuta el barrido real."""
+
+        calls["count"] += 1
+        return fixtures
+
+    monkeypatch.setattr(service, "_upcoming_catalog", fetch)
+
+    async def prediction(app: Any, engine: Any, config: Any,
+                         fixture: dict[str, Any]) -> dict[str, Any]:
+        """Predicción sintética instantánea."""
+
+        return _prediction(home_corners_over_4_5=0.70)
+
+    monkeypatch.setattr(service, "_high_probability_prediction", prediction)
+
+    client = TestClient(create_app(
+        ServiceConfig(mode="operational_readonly", external_calls_enabled=True)))
+    first = client.get("/v1/high-probability")
+    second = client.get("/v1/high-probability")
+
+    assert first.status_code == second.status_code == 200
+    assert calls["count"] == 1
 
 
 def test_eligibility_artifact_is_versioned_in_repository() -> None:

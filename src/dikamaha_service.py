@@ -106,6 +106,15 @@ MEXICO_TZ = ZoneInfo("America/Mexico_City")
 # Cota de fixtures que barre `/v1/high-probability`. Cada uno cuesta una
 # inferencia completa; la caché TTL absorbe las repeticiones dentro del día.
 HIGH_PROBABILITY_FIXTURES = 30
+# Con caché fría (partidos que nadie vio todavía, típicamente los de mañana),
+# un barrido secuencial de hasta 30 inferencias monopolizaba el pool de hilos
+# compartido el tiempo completo; hasta /v1/models, un diccionario en memoria
+# sin E/S, quedaba en cola detrás de eso y tardaba segundos. La concurrencia
+# acotada solapa las esperas de E/S sin saturar el pool, y el presupuesto de
+# tiempo devuelve resultados parciales en vez de bloquear indefinidamente,
+# mismo principio que `daily_partial_failure` del publicador de Fase 101.
+HIGH_PROBABILITY_CONCURRENCY = 4
+HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS = 18.0
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -688,6 +697,50 @@ async def _high_probability_prediction(
     return await app.state.upcoming_cache.get_or_compute(key, calculate)
 
 
+async def _high_probability_picks(
+    app: FastAPI, engine: Any, config: ServiceConfig,
+    view: Any, fixtures: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Predice fixtures con concurrencia acotada y presupuesto de tiempo.
+
+    Reemplaza un bucle secuencial sin límites que podía encadenar hasta
+    `HIGH_PROBABILITY_FIXTURES` inferencias completas una tras otra con
+    caché fría, monopolizando el pool de hilos compartido con el resto del
+    servicio durante todo ese tramo.
+    """
+
+    semaphore = asyncio.Semaphore(HIGH_PROBABILITY_CONCURRENCY)
+    deadline = time.monotonic() + HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS
+    picks: list[dict[str, Any]] = []
+    scanned = 0
+    skipped = 0
+
+    async def _one(fixture: dict[str, Any]) -> None:
+        """Predice un fixture si el presupuesto de tiempo aún lo permite."""
+
+        nonlocal scanned, skipped
+        async with semaphore:
+            if time.monotonic() >= deadline:
+                return
+            scanned += 1
+            try:
+                payload = await _high_probability_prediction(
+                    app, engine, config, fixture)
+            except (PrematchUnavailableError, ValueError, OverflowError,
+                    FloatingPointError, HTTPException) as error:
+                LOGGER.info(
+                    "Fixture sin predicción utilizable %s: %s",
+                    fixture.get("match_id"), error)
+                skipped += 1
+                return
+            picks.extend(
+                {**pick, "fixture": _high_probability_fixture(fixture)}
+                for pick in view.picks(payload))
+
+    await asyncio.gather(*(_one(fixture) for fixture in fixtures))
+    return picks, scanned, skipped
+
+
 def _high_probability_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
     """Reduce el fixture a la identidad visible del menú."""
 
@@ -1020,31 +1073,30 @@ def create_app(
             }
         selected = leagues or ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 50)
-        try:
+        catalog_key = json.dumps({
+            "endpoint": "high_probability", "leagues": selected,
+            "limit": HIGH_PROBABILITY_FIXTURES, "date": date,
+        }, sort_keys=True)
+
+        async def _fetch_catalog() -> dict[str, Any]:
+            """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
+
             fixtures = await _infer_with_timeout(
                 _upcoming_catalog, (selected, HIGH_PROBABILITY_FIXTURES, date),
                 effective.inference_timeout_seconds * 5,
             )
+            return {"fixtures": fixtures}
+
+        try:
+            cached = await app.state.upcoming_catalog_cache.get_or_compute(
+                catalog_key, _fetch_catalog)
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo mayor probabilidad: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
+        fixtures = cached["fixtures"]
 
-        picks: list[dict[str, Any]] = []
-        skipped = 0
-        for fixture in fixtures:
-            try:
-                payload = await _high_probability_prediction(
-                    app, upcoming_engine, effective, fixture)
-            except (PrematchUnavailableError, ValueError, OverflowError,
-                    FloatingPointError, HTTPException) as error:
-                LOGGER.info(
-                    "Fixture sin predicción utilizable %s: %s",
-                    fixture.get("match_id"), error)
-                skipped += 1
-                continue
-            picks.extend(
-                {**pick, "fixture": _high_probability_fixture(fixture)}
-                for pick in view.picks(payload))
+        picks, scanned, skipped = await _high_probability_picks(
+            app, upcoming_engine, effective, view, fixtures)
         picks.sort(key=lambda pick: (
             -pick["observed_rate"], -pick["model_probability"],
             pick["fixture"]["kickoff_ts"], pick["market"]))
@@ -1054,7 +1106,8 @@ def create_app(
             "picks": picks[:bounded],
             "count": min(len(picks), bounded),
             "total_candidates": len(picks),
-            "fixtures_scanned": len(fixtures),
+            "fixtures_scanned": scanned,
+            "fixtures_catalog_size": len(fixtures),
             "fixtures_without_prediction": skipped,
             "provenance": view.provenance(),
         }

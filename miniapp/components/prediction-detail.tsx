@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
+import { LoadingProgress } from "@/components/loading-progress";
 import { useAuth } from "@/components/providers";
 import { api, countLabel, edgeLabel, percentage, probabilityWidth, queryString, record, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
@@ -101,7 +102,7 @@ export function PredictionDetail(props: Props) {
     const { title, detail } = unavailableReason(query.error);
     return <StatePanel title={title}>{detail}</StatePanel>;
   }
-  if (query.isLoading || (identityRequired && identity.isLoading)) return <StatePanel title="Calculando pre-match">Resolviendo equipos y aplicando el snapshot versionado anterior al kickoff.</StatePanel>;
+  if (query.isLoading || (identityRequired && identity.isLoading)) return <LoadingProgress title="Calculando pre-match" />;
   const payload = query.data ?? {};
   const fixture = record(payload.fixture);
   const catalogFixture = identity.data?.fixtures.find((row) => String(row.match_id) === props.fixtureId);

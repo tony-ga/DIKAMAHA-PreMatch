@@ -169,6 +169,12 @@ button { color: inherit; }
 .state-panel h2 { margin: 9px 0; }
 .state-panel .primary-button { margin-top: 16px; }
 .state-icon { color: var(--mint); font-size: 1.8rem; }
+/* Deliberadamente indeterminada: un segmento que se desliza, no un
+   porcentaje. El servidor no expone progreso real de una inferencia causal,
+   así que un número que sube solo sería un patrón engañoso. */
+.progress-track { position: relative; width: 100%; max-width: 240px; height: 4px; margin: 2px auto 18px; border-radius: 999px; background: rgba(176, 228, 204, .14); overflow: hidden; }
+.progress-fill { position: absolute; top: 0; left: -35%; width: 35%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, transparent, var(--mint), transparent); animation: progressSlide 1.4s ease-in-out infinite; }
+@keyframes progressSlide { 0% { left: -35%; } 100% { left: 100%; } }
 .muted { color: var(--muted); line-height: 1.5; }
 .stack { display: grid; gap: 12px; }
 .model-card, .data-panel { padding: 17px; border: 1px solid var(--line); border-radius: 18px; background: rgba(14, 28, 26, .88); }

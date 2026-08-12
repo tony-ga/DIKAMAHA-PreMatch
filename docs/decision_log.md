@@ -2650,6 +2650,64 @@ idempotente se reintenta ante 503 transitorio y uno sin marcar no; ninguna
 mutación existente pasa por el nuevo parámetro; 690 pruebas Python aprobadas/8
 omitidas, 23 Vitest, 31 Playwright, typecheck y build Next aprobados.
 
+DEC-166
+Fecha: 2026-08-12
+Problema: reporte real de que abrir una predicción individual (F.C.
+Copenhagen vs Debrecen) y las predicciones de partidos del día siguiente
+tardaban muchísimo. Los logs de Railway mostraron algo más severo que la
+incidencia anterior: incluso `/v1/models`, un diccionario en memoria sin
+E/S, tardó 10-12s en varias ocasiones, y varias llamadas a
+`/v1/predict/upcoming` y a `/v1/high-probability` agotaron 30-35s y
+devolvieron 504/499. Causa raíz identificada en el propio código: el
+endpoint `/v1/high-probability` (Fase 122) barría hasta
+`HIGH_PROBABILITY_FIXTURES=30` partidos en un bucle secuencial sin límite de
+concurrencia ni presupuesto de tiempo total. Con caché fría —exactamente los
+partidos de mañana que nadie había visto todavía uno por uno— esto
+encadenaba hasta 30 inferencias completas una tras otra, monopolizando el
+mismo pool de hilos compartido con el resto del servicio durante todo ese
+tramo; de ahí que hasta una ruta trivial quedara en cola detrás.
+Opciones: (a) reducir `HIGH_PROBABILITY_FIXTURES` a un número menor,
+tratando el síntoma sin resolver que el barrido siga siendo secuencial y sin
+presupuesto; (b) acotar la concurrencia con un semáforo y añadir un
+presupuesto de tiempo de pared que corte el barrido devolviendo resultados
+parciales, igual que ya hace `daily_partial_failure` del publicador de Fase
+101 para un problema análogo.
+Decisión: (b). `_high_probability_picks` ejecuta las predicciones con
+`asyncio.Semaphore(HIGH_PROBABILITY_CONCURRENCY=4)` y corta nuevas
+predicciones pasado `HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS=18.0`,
+devolviendo los picks ya calculados. El campo `fixtures_scanned` pasa a
+significar "fixtures realmente intentados" en vez de "tamaño del catálogo";
+se añade `fixtures_catalog_size` para conservar ese dato por separado. El
+barrido interno de catálogo de este endpoint, que antes repetía su propio
+llamado a ESPN en cada invocación, ahora reutiliza `upcoming_catalog_cache`
+(la caché de Fase 165) con su propia clave, así que llamadas repetidas o
+reintentadas dentro del TTL comparten un único barrido real. Además se
+añadió `LoadingProgress`, un indicador deliberadamente indeterminado (una
+franja que se desliza, no un porcentaje inventado) con mensajes que
+reconocen el tiempo transcurrido, sustituyendo el panel estático de
+"Calculando pre-match" en la predicción individual y en Mayor probabilidad.
+Motivo: el servidor no expone progreso real de una inferencia causal, así
+que una barra determinada sería un patrón engañoso; lo honesto es mostrar
+que el trabajo sigue en curso y reconocer cuando tarda más de lo normal, no
+inventar un avance. Sobre el fondo: la concurrencia acotada solapa las
+esperas de E/S sin saturar el pool de hilos compartido, y el presupuesto de
+tiempo prioriza devolver algo útil sobre bloquear indefinidamente esperando
+completar un catálogo entero en frío.
+Estado: congelada
+Impacto en contratos/fases: no modifica probabilidades, causalidad, el
+router ni ningún modelo. Cambia el significado de `fixtures_scanned` en la
+respuesta de `/v1/high-probability` (de tamaño de catálogo a intentos
+reales) y añade `fixtures_catalog_size`; los tres tests existentes de Fase
+122 no se vieron afectados porque ninguno alcanza el presupuesto de tiempo
+en sus escenarios rápidos mockeados.
+Evidencia requerida: nunca hay más inferencias simultáneas que
+`HIGH_PROBABILITY_CONCURRENCY`; un catálogo lento corta antes de agotarse y
+no bloquea por la suma de las latencias; dos llamadas seguidas comparten un
+único barrido de catálogo; la barra de progreso se anima de verdad (medido,
+no asumido) y cambia de mensaje con el tiempo transcurrido; 693 pruebas
+Python aprobadas/8 omitidas (estables en cinco corridas consecutivas de los
+casos sensibles al tiempo), 23 Vitest, 38 Playwright, typecheck y build Next.
+
 ```text
 DEC-NNN
 Fecha:
