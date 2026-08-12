@@ -3092,6 +3092,50 @@ mercados "total" con muestra cero de forma silenciosa-); suite completa 739
 Python aprobadas/8 omitidas sin regresiones tras publicar el artefacto
 reajustado.
 
+DEC-174
+Fecha: 2026-08-12
+Problema: la auditoría de escalera (350 celdas, 336 publicables tras las
+correcciones de dispersión/prior/correlación/alias) quedaba sin conectar a la
+Mini App. Al diseñar la exposición apareció un hallazgo que cambiaba el
+alcance: `bounded_market_grid_view` -la "Rejilla adaptativa por periodo" que
+la Mini App ya muestra- no sale del modelo auditado (Fase 84A, NB). Sale de
+Markov (Fase 88), un modelo distinto que esta ronda no tocó ni midió. Sólo
+las líneas fijas de `user_market_view` y la escalera de tiros a puerta salían
+de Fase 84A.
+Opciones: (a) ensanchar `bounded_market_grid_view` con las líneas auditadas
+de Fase 84A, mezclando en la misma vista un modelo verificado con uno que no
+lo fue en esta ronda; (b) reemplazar por completo la rejilla existente por la
+escalera auditada, perdiendo la cobertura de segunda mitad que sólo Markov
+modela; (c) publicar una vista nueva y separada, exclusivamente con lo que se
+auditó, sin tocar la rejilla existente.
+Decisión: (c). `audited_market_ladder_view` es un campo nuevo en el payload,
+construido por `_audited_market_ladder_view` en
+`src/team_count_market_runtime.py`, que cubre exactamente las seis métricas
+de Fase 84A (córners, córners 1ª mitad, tiros, tiros a puerta, tarjetas y
+tarjetas 1ª mitad) filtradas por `src/ladder_reliability_view.py` contra
+`ladder_reliability.json`. `bounded_market_grid_view` no se modifica.
+`LadderReliabilityView` degrada **cerrado** -al revés que `MetricCoverage`,
+que degrada abierto-: sin el artefacto, la vista auditada queda vacía en vez
+de mostrar líneas sin verificar. La asimetría es intencional: `MetricCoverage`
+protege un mercado que funciona de una lista de supresión ausente; aquí
+publicar exige evidencia positiva de fiabilidad, no lo contrario.
+Motivo: (a) habría hecho indistinguible para el usuario qué línea está
+verificada y cuál no, exactamente la clase de certeza inventada que motivó
+todo este objetivo de auditoría. (b) descarta trabajo real y aprobado de Fase
+88/89 sin ninguna evidencia de que esté mal -no se auditó, no se rechazó-.
+Estado: congelada
+Impacto en contratos/fases: no modifica `APPROVED_MARKETS`,
+`bounded_market_grid_view`, `user_market_view` ni ningún mercado ya servido;
+sólo añade un campo nuevo al payload shadow. No reabre ni evalúa Fase 88/89.
+Dockerfile y `.dockerignore` actualizados para `ladder_reliability.json`,
+verificados con la prueba de regresión que ya cubre todos los `COPY` de
+artefactos contra la lista blanca (ver DEC-172).
+Evidencia requerida: 24 pruebas nuevas (7 de integración del runtime real
+contra el artefacto sin mocks, 10 de `LadderReliabilityView`, 11 de la lógica
+pura del frontend, 1 E2E de Playwright); typecheck, build Next y las 39
+pruebas E2E existentes sin regresiones; suite Python completa 779
+aprobadas/8 omitidas.
+
 ```text
 DEC-NNN
 Fecha:

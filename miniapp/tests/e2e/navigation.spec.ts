@@ -216,6 +216,53 @@ test("renders an adaptive market grid with distinct lines per period", async ({ 
   await expect(grid.getByText("vs baseline +7.0 pp", { exact: false })).toBeVisible();
 });
 
+test("renders the audited ladder with reliability labels and an expand toggle", async ({ page }) => {
+  const auditedLine = (line: number, over: number, reliability: string, observed: number, sample: number) => ({
+    line, over_probability: over, under_probability: 1 - over, reliability,
+    observed_rate_historical: observed, sample_size: sample,
+  });
+  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      fixture: { home_team_name: "Cambridge United", away_team_name: "Barnet" },
+      probability_home: 0.4, probability_draw: 0.3, probability_away: 0.3,
+      probability_over_2_5: 0.55, probability_btts: 0.52,
+      expected_home_goals: 1.42, expected_away_goals: 1.08,
+      lambda_home: 1.42, lambda_away: 1.08,
+      experimental_team_markets: {
+        user_market_view: [],
+        bounded_market_grid_view: [],
+        audited_market_ladder_view: [
+          {
+            key: "home_shots", metric: "shots", team_side: "home",
+            period: "full_match", expected_count: 11.6,
+            lines: [
+              auditedLine(9.5, 0.74, "model_edge", 0.71, 1768),
+              auditedLine(10.5, 0.68, "model_edge", 0.65, 1768),
+              auditedLine(11.5, 0.59, "model_edge", 0.56, 1768),
+              auditedLine(12.5, 0.51, "model_edge", 0.49, 1768),
+              auditedLine(13.5, 0.43, "model_edge", 0.41, 1768),
+              auditedLine(14.5, 0.35, "base_rate_driven", 0.33, 1768),
+            ],
+          },
+        ],
+      },
+    }),
+  }));
+  await page.goto("/predictions/401880614?league=eng.league_cup&home=351&away=280&kickoff=2030-01-10T20%3A00%3A00Z");
+  const audited = page.locator("article.model-card").filter({ hasText: "Escalera auditada" });
+  await expect(audited).toBeVisible();
+  await expect(audited.getByText("5 de 6 líneas con ventaja del modelo")).toBeVisible();
+  // Vista compacta: sólo 4 de las 6 líneas auditadas se muestran de entrada.
+  await expect(audited.getByText("Más de 11.5", { exact: false })).toBeVisible();
+  await expect(audited.getByText("Más de 9.5", { exact: false })).not.toBeVisible();
+  await audited.getByRole("button", { name: "Ver las 6 líneas" }).click();
+  await expect(audited.getByText("Más de 9.5", { exact: false })).toBeVisible();
+  await expect(audited.getByText("Más de 14.5", { exact: false })).toBeVisible();
+  await expect(audited.getByText("histórico 41%", { exact: false })).toBeVisible();
+});
+
 test("shows the global open close and live market tape", async ({ page }) => {
   await page.unroute("**/api/provider/markets**");
   await page.route("**/api/provider/markets**", (route) => route.fulfill({

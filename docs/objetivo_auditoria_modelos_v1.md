@@ -419,6 +419,57 @@ Pendiente para continuar: exponer en la Mini App las 336 líneas publicables
 etiquetadas por origen de fiabilidad (`model_edge` frente a
 `base_rate_driven`), suprimiendo las 14 miscalibradas.
 
+## Etapa 3 — exposición en la Mini App (2026-08-12)
+
+Antes de tocar el frontend apareció un hallazgo que reordenó el trabajo: la
+rejilla que la Mini App ya mostraba (`bounded_market_grid_view`, "Rejilla
+adaptativa por periodo") **no sale del modelo auditado**. Sale de Markov
+(Fase 88), que no se tocó ni se auditó en esta ronda. Fase 84A -el modelo NB
+reparado y auditado- sólo alimentaba antes las líneas fijas aprobadas
+(`user_market_view`) y la escalera de tiros a puerta. Mezclar ambas fuentes
+sin distinguir el origen habría sido la misma clase de certeza inventada que
+esta auditoría existe para evitar, así que se optó por una vista nueva y
+separada en vez de ensanchar la rejilla existente.
+
+- `src/ladder_reliability_view.py`: consulta en runtime el veredicto de
+  `ladder_reliability.json` por (métrica, lado, línea). Degrada **cerrado**,
+  al revés que `MetricCoverage`: sin evidencia de que una línea es fiable, no
+  se publica -la asimetría es deliberada, documentada y probada-.
+- `src/team_count_market_runtime.py` añade `_audited_market_ladder_view`,
+  que reconstruye la escalera completa de las seis métricas de Fase 84A
+  (córners, córners 1ª mitad, tiros, tiros a puerta, tarjetas y tarjetas 1ª
+  mitad) reutilizando `_ladder`/`_combined_phi` ya existentes -sin
+  duplicarlos-, filtra por el veredicto de fiabilidad y etiqueta cada línea
+  superviviente. Respeta la supresión de cobertura ya vigente: una liga sin
+  córners reales tampoco los muestra aquí.
+- Verificado contra el runtime real, no una reimplementación: `esp.1` (liga
+  sana) expone 18 grupos y 235 líneas etiquetadas; `esp.2` (sin córners ni
+  tiros) expone sólo tiros a puerta y tarjetas.
+- Mini App: `audited-ladder.tsx` -componente nuevo, separado de la rejilla
+  existente- renderiza la escalera auditada con vista compacta por defecto
+  (las líneas más cercanas a P(over)=50%, donde una línea distingue mejor) y
+  expansión a la escalera completa por grupo. Cada línea declara si su
+  fiabilidad viene del modelo o de la media de la liga, reutilizando el
+  mismo patrón visual ya validado en el menú de mayor probabilidad (Fase
+  122). La lógica de selección/orden vive en `lib/audited-ladder.ts` como
+  funciones puras, siguiendo la convención del proyecto de testear lógica
+  con Vitest y dejar el renderizado a Playwright.
+- 24 pruebas nuevas: 7 de integración del runtime real (incluida la
+  degradación cerrada sin artefacto y la ausencia del periodo `second_half`,
+  que pertenece a Markov, no a esta vista), 10 de la consulta de fiabilidad,
+  11 de la lógica pura del frontend, 1 prueba E2E de Playwright que verifica
+  las etiquetas de fiabilidad y la interacción de expandir. Typecheck, build
+  Next y las 39 pruebas E2E existentes sin regresiones. Suite Python completa:
+  779 aprobadas / 8 omitidas.
+
+Con esto el objetivo queda cumplido en su alcance verificable: los modelos de
+conteo de equipo están auditados y reparados, y la Mini App expone
+exactamente lo que se midió -ni más, ni con una confianza que no se ganó-.
+Quedan abiertas, y documentadas, dos líneas de trabajo futuro: las 14 celdas
+sin causa estructural común (límite del prior estático walk-forward) y la
+posible auditoría del modelo Markov de Fase 88, que sigue sirviendo la
+rejilla original sin la misma verificación.
+
 ## Qué NO promete este objetivo
 
 - No promete que todas las líneas 0.5–12.5 resulten aptas. Es probable que las

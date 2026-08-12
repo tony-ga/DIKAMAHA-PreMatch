@@ -30,9 +30,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.ladder_audit import (  # noqa: E402
+    METRIC_LADDERS,
     VERDICT_BASE_RATE,
     VERDICT_EDGE,
     audit_ladder,
+    maximum_line,
     summarize,
 )
 from src.team_count_market_runtime import LADDER_MAXIMUMS  # noqa: E402
@@ -40,27 +42,7 @@ from src.team_count_market_runtime import LADDER_MAXIMUMS  # noqa: E402
 LOGGER = logging.getLogger(__name__)
 ARTIFACT = ROOT / "artifacts/phase_84a_team_count_markets"
 OUTPUT = ROOT / "artifacts/ladder_audit/ladder_reliability.json"
-
-# Qué escalera corresponde a cada métrica del artefacto. El nombre ya codifica
-# el periodo, así que el máximo se elige por métrica base y mitad.
-METRIC_LADDERS = {
-    "corners": ("corners", "full_match"),
-    "corners_first_half": ("corners", "half"),
-    "shots": ("shots", "full_match"),
-    "shots_on_target": ("shots_on_target", "full_match"),
-    "yellow_cards": ("yellow_cards", "full_match"),
-    "yellow_cards_first_half": ("yellow_cards", "half"),
-}
 SIDES = ("home", "away", "total")
-
-
-def _maximum(metric: str, side: str) -> int:
-    """Devuelve el umbral entero máximo a auditar para esa métrica y lado."""
-
-    base, period = METRIC_LADDERS[metric]
-    maximum = LADDER_MAXIMUMS[base][period]
-    # Una línea `total` suma dos equipos, así que su soporte útil es mayor.
-    return maximum * 2 if side == "total" else maximum
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -92,7 +74,8 @@ def main() -> int:
         phi = float(dispersions[metric])
         for side in SIDES:
             ladder = audit_ladder(
-                rows, metric, side, phi, _maximum(metric, side),
+                rows, metric, side, phi,
+                maximum_line(metric, side, LADDER_MAXIMUMS),
                 correlation=float(
                     config.get("correlations", {}).get(metric, 0.0)))
             cells.extend(ladder)

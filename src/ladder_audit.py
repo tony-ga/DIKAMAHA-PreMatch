@@ -51,6 +51,36 @@ VERDICT_BASE_RATE = "base_rate_driven"
 VERDICT_MISCALIBRATED = "miscalibrated"
 VERDICT_INSUFFICIENT = "insufficient_sample"
 
+# Sólo estos dos veredictos son publicables: la línea está calibrada y su
+# fiabilidad -por ventaja del modelo o por tasa base- está medida.
+PUBLISHABLE_VERDICTS = frozenset({VERDICT_EDGE, VERDICT_BASE_RATE})
+
+# Qué escalera corresponde a cada métrica del artefacto de Fase 84A. El
+# nombre ya codifica el periodo -"corners_first_half" es la primera mitad-,
+# así que el máximo se elige por métrica base y mitad. Compartido entre el
+# script de auditoría (`scripts/run_ladder_audit.py`) y el runtime que expone
+# la escalera auditada, para que nunca puedan divergir sobre qué rango audita
+# cada métrica.
+METRIC_LADDERS: dict[str, tuple[str, str]] = {
+    "corners": ("corners", "full_match"),
+    "corners_first_half": ("corners", "half"),
+    "shots": ("shots", "full_match"),
+    "shots_on_target": ("shots_on_target", "full_match"),
+    "yellow_cards": ("yellow_cards", "full_match"),
+    "yellow_cards_first_half": ("yellow_cards", "half"),
+}
+
+
+def maximum_line(metric: str, side: str, ladder_maximums: dict[str, dict[str, int]]) -> int:
+    """Umbral entero máximo a auditar o exponer para esa métrica y lado.
+
+    Una línea `total` suma dos equipos, así que su soporte útil es mayor.
+    """
+
+    base, period = METRIC_LADDERS[metric]
+    maximum = ladder_maximums[base][period]
+    return maximum * 2 if side == "total" else maximum
+
 
 def over_probability(mean: float, phi: float, threshold: int) -> float:
     """Probabilidad de superar un umbral entero bajo la NB del runtime."""

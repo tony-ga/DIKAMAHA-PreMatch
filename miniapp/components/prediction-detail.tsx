@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
+import { AuditedLadder } from "@/components/audited-ladder";
 import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
@@ -118,6 +119,7 @@ export function PredictionDetail(props: Props) {
   const gridRows = Array.isArray(teamMarkets.bounded_market_grid_view)
     ? teamMarkets.bounded_market_grid_view.map(record)
     : [];
+  const auditedRows = teamMarkets.audited_market_ladder_view;
   const periods = [
     { key: "first_half", label: "Primer tiempo" },
     { key: "second_half", label: "Segundo tiempo" },
@@ -223,6 +225,7 @@ export function PredictionDetail(props: Props) {
             </div>
           </article>
         ) : null}
+        <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} />
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
       </div>
     </>

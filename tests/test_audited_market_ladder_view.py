@@ -1,0 +1,125 @@
+"""Pruebas de la escalera auditada expuesta en el runtime real.
+
+Distinta de `bounded_market_grid_view` -tres líneas centradas en P(over)≈50%,
+sin medir si están calibradas-, esta vista sólo publica lo que
+`scripts/run_ladder_audit.py` verificó contra el histórico real. Estas
+pruebas usan `ArtifactTeamCountMarketProvider` de verdad, no una
+reimplementación: la lección de Fase 118 es que un módulo puede estar
+perfectamente probado en aislamiento y no llegar nunca a ejecutarse porque la
+composición real no lo conectó.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from src.ladder_reliability_view import LadderReliabilityView
+from src.metric_coverage import MetricCoverage
+from src.team_count_market_runtime import ArtifactTeamCountMarketProvider
+from src.universal_prematch import UniversalPrematchEngine, UpcomingMatchInput
+
+
+def _request(league: str = "esp.1", match_id: int = 990100) -> UpcomingMatchInput:
+    return UpcomingMatchInput(
+        league_slug=league, home_team_id=94, away_team_id=86,
+        kickoff_ts="2030-01-10T20:00:00+00:00", match_id=match_id)
+
+
+def test_healthy_league_exposes_an_audited_ladder() -> None:
+    """Usa el artefacto real del repositorio, sin mocks."""
+
+    shadow = UniversalPrematchEngine().predict(
+        _request()).experimental_team_markets
+
+    assert shadow is not None
+    rows = shadow["audited_market_ladder_view"]
+    assert len(rows) > 0
+    for row in rows:
+        assert row["lines"]
+        for line in row["lines"]:
+            assert line["reliability"] in ("model_edge", "base_rate_driven")
+            assert 0.0 <= line["observed_rate_historical"] <= 1.0
+            assert line["sample_size"] > 0
+
+
+def test_every_line_is_monotonically_ordered_and_bounded() -> None:
+    """La probabilidad de superar una línea nunca crece con la línea."""
+
+    shadow = UniversalPrematchEngine().predict(
+        _request()).experimental_team_markets
+
+    for row in shadow["audited_market_ladder_view"]:
+        lines = sorted(row["lines"], key=lambda item: item["line"])
+        probabilities = [line["over_probability"] for line in lines]
+        assert all(0.0 <= value <= 1.0 for value in probabilities)
+        assert all(
+            earlier >= later
+            for earlier, later in zip(probabilities, probabilities[1:]))
+
+
+def test_coverage_suppression_also_applies_to_the_audited_ladder() -> None:
+    """`esp.2` no tiene córners ni tiros reales: no deben aparecer aquí."""
+
+    shadow = UniversalPrematchEngine().predict(
+        _request("esp.2", 990101)).experimental_team_markets
+
+    metrics = {row["metric"] for row in shadow["audited_market_ladder_view"]}
+    assert "corners" not in metrics
+    assert "shots" not in metrics
+
+
+def test_missing_reliability_artifact_yields_an_empty_view(
+    tmp_path: Path,
+) -> None:
+    """Sin evidencia de fiabilidad, no se publica ninguna línea -no todas."""
+
+    provider = ArtifactTeamCountMarketProvider(
+        reliability=LadderReliabilityView(tmp_path / "no_existe.json"))
+    engine = UniversalPrematchEngine(team_market_provider=provider)
+
+    shadow = engine.predict(_request(match_id=990102)).experimental_team_markets
+
+    assert shadow["audited_market_ladder_view"] == []
+
+
+def test_missing_coverage_artifact_never_suppresses_the_audited_ladder(
+    tmp_path: Path,
+) -> None:
+    """Sin mapa de cobertura, la vista auditada no se vacía por eso."""
+
+    provider = ArtifactTeamCountMarketProvider(
+        coverage=MetricCoverage(tmp_path / "no_existe.json"))
+    engine = UniversalPrematchEngine(team_market_provider=provider)
+
+    shadow = engine.predict(_request(match_id=990103)).experimental_team_markets
+
+    assert len(shadow["audited_market_ladder_view"]) > 0
+
+
+def test_unavailable_payload_includes_the_empty_field() -> None:
+    """El fallback de degradación total declara el campo, no lo omite."""
+
+    payload = ArtifactTeamCountMarketProvider.unavailable("test_reason")
+
+    assert payload["audited_market_ladder_view"] == []
+
+
+def test_second_half_is_not_claimed_as_audited() -> None:
+    """La vista sólo cubre lo que se auditó: Fase 84A, no Fase 88/Markov.
+
+    Ningún grupo de la escalera auditada debe declarar `period ==
+    "second_half"`: ese periodo lo modela Markov, no auditado en esta ronda.
+    """
+
+    shadow = UniversalPrematchEngine().predict(
+        _request(match_id=990104)).experimental_team_markets
+
+    periods = {row["period"] for row in shadow["audited_market_ladder_view"]}
+    assert "second_half" not in periods
+
+
+# Version: 1.0.0
+# Created: 2026-08-12

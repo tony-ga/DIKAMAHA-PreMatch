@@ -49,6 +49,11 @@ COPY artifacts/phase_122_confidence_reliability/eligibility.json artifacts/phase
 # mercados sin datos reales vuelven a publicarse en silencio. Mismo modo de
 # fallo que ya ocurrió con eligibility.json de Fase 122.
 COPY artifacts/metric_coverage/coverage_map.json /app/artifacts/metric_coverage/coverage_map.json
+# La escalera auditada falla CERRADO por diseño: sin este artefacto no se
+# publica ninguna línea (correcto). Pero si el artefacto simplemente no
+# llegó a la imagen por descuido, ese "correcto" es indistinguible de un
+# defecto de empaquetado silencioso, así que igual necesita guardarse aquí.
+COPY artifacts/ladder_audit/ladder_reliability.json /app/artifacts/ladder_audit/ladder_reliability.json
 
 RUN addgroup --system app && adduser --system --ingroup app app \
     && mkdir -p /app/data /data \

@@ -22,6 +22,8 @@ import joblib
 import numpy as np
 
 from src.artifact_integrity import artifact_hash_matches
+from src.ladder_audit import METRIC_LADDERS, maximum_line
+from src.ladder_reliability_view import LadderReliabilityView
 from src.market_calibration import ArtifactMarketCalibrationProvider
 from src.metric_coverage import MetricCoverage
 from src.team_count_markets import (
@@ -396,6 +398,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         markov_artifact_path: Path | None = None,
         calibration_provider: ArtifactMarketCalibrationProvider | None = None,
         coverage: MetricCoverage | None = None,
+        reliability: LadderReliabilityView | None = None,
     ) -> None:
         """Carga y valida configuración y modelos locales."""
 
@@ -409,6 +412,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         self._calibration_provider = (
             calibration_provider or ArtifactMarketCalibrationProvider())
         self._coverage = coverage or MetricCoverage()
+        self._reliability = reliability or LadderReliabilityView()
 
     def _load(self) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
         """Carga artefactos únicamente tras verificar su integridad."""
@@ -567,11 +571,17 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         combined_enabled = sorted(set(enabled) | set(markov))
         combined_enabled, ladders = self._drop_uncovered(
             request, combined_enabled, ladders)
+        league = str(getattr(request, "league_slug", "") or "")
+        absent_metrics = (
+            self._coverage.absent_metrics(league) if league else frozenset())
+        audited_ladder = _audited_market_ladder_view(
+            expected, baseline_expected, config["dispersions"],
+            config.get("correlations"), self._reliability, absent_metrics)
         return self._payload(
             request, source, matches, expected, baseline_expected,
             probabilities, baselines,
             combined_enabled, markov_expected, ladders, config["dispersions"],
-            markov_meta, calibrated)
+            markov_meta, calibrated, audited_ladder)
 
     def _drop_uncovered(
         self, request: Any, enabled: list[str], ladders: list[dict[str, Any]],
@@ -644,6 +654,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         dispersions: dict[str, float],
         markov_meta: dict[str, Any],
         calibrated_markets: list[str],
+        audited_ladder: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Compone el bloque público de inferencia shadow."""
 
@@ -658,6 +669,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
             "distributional_market_view": ladders,
             "recommended_market_view": _recommendations(ladders),
             "bounded_market_grid_view": _bounded_market_grid(ladders),
+            "audited_market_ladder_view": audited_ladder,
             "global_market_view": _global_market_view(
                 expected, baseline_expected, dispersions),
             "user_market_view": _user_market_view(
@@ -688,6 +700,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
             "distributional_market_view": [],
             "recommended_market_view": [],
             "bounded_market_grid_view": [],
+            "audited_market_ladder_view": [],
             "global_market_view": [],
             "audit": {"official_output_unchanged": True,
                       "target_match_data_used": False},
@@ -905,6 +918,80 @@ def _count_distributional_view(
             "baseline_model": "phase84a_league_venue_negative_binomial",
         })
         output.append(row)
+    return output
+
+
+def _audited_market_ladder_view(
+    expected: dict[str, dict[str, float]],
+    baseline: dict[str, dict[str, float]],
+    dispersions: dict[str, float],
+    correlations: dict[str, float] | None,
+    reliability: LadderReliabilityView,
+    absent_metrics: frozenset[str],
+) -> list[dict[str, Any]]:
+    """Expone la escalera completa, filtrada y etiquetada por fiabilidad real.
+
+    A diferencia de `bounded_market_grid_view` -tres líneas centradas en
+    P(over)≈50%, sin medir si esas líneas están calibradas- esta vista sólo
+    incluye líneas que `scripts/run_ladder_audit.py` verificó contra el
+    histórico real: calibradas y con ventaja medida (del modelo o de la tasa
+    base), con intervalo de confianza bootstrap por partido completo. Una
+    línea ausente del artefacto de auditoría, o auditada como mal calibrada,
+    no aparece aquí.
+
+    Cubre exactamente las seis métricas de Fase 84A -córners, tiros, tiros a
+    puerta y tarjetas, completas y de primera mitad-, no los mercados de
+    segunda mitad de Fase 88/Markov: ese modelo no se auditó en esta ronda y
+    mezclar ambos sin distinguir el origen habría sido la misma clase de
+    certeza inventada que esta auditoría existe para evitar.
+    """
+
+    if not reliability.available():
+        return []
+    output = []
+    for spec_metric, (base_metric, period) in METRIC_LADDERS.items():
+        if spec_metric in absent_metrics:
+            continue
+        for side in ("home", "away", "total"):
+            mean = _side_rate(expected, spec_metric, side)
+            base_mean = _side_rate(baseline, spec_metric, side)
+            phi = _combined_phi(
+                spec_metric, side, expected, dispersions, correlations)
+            base_phi = _combined_phi(
+                spec_metric, side, baseline, dispersions, correlations)
+            ladder = _ladder(
+                base_metric, period,
+                negative_binomial_distribution(mean, phi),
+                negative_binomial_distribution(base_mean, base_phi))
+            lines = _audited_lines(spec_metric, side, ladder, reliability)
+            if not lines:
+                continue
+            output.append({
+                "key": f"{side}_{spec_metric}", "metric": base_metric,
+                "team_side": side, "period": period,
+                "expected_count": float(mean), "lines": lines,
+                "source_model": "phase84a_negative_binomial_audited",
+            })
+    return output
+
+
+def _audited_lines(
+    metric: str, side: str, ladder: list[dict[str, float]],
+    reliability: LadderReliabilityView,
+) -> list[dict[str, Any]]:
+    """Filtra una escalera cruda a sólo sus líneas publicables y las etiqueta."""
+
+    output = []
+    for line in ladder:
+        cell = reliability.verdict(metric, side, line["line"])
+        if cell is None:
+            continue
+        output.append({
+            **line,
+            "reliability": str(cell["verdict"]),
+            "observed_rate_historical": float(cell["observed_rate"]),
+            "sample_size": int(cell["sample"]),
+        })
     return output
 
 
