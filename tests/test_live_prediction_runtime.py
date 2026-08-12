@@ -265,6 +265,56 @@ def test_observed_live_presentation_aggregates_teams_and_ignores_annulled() -> N
     assert result["automatic_refresh_recommended_seconds"] == 15
 
 
+def test_observed_live_presentation_prefers_boxscore_over_sparse_events() -> None:
+    """Reporte real: 1-1 con 0 tiros porque el Core API sólo listaba goles.
+
+    `summary.boxscore` trae conteos oficiales por equipo incluso cuando
+    `plays` sólo publica los eventos más notables (goles, tarjetas, cambios).
+    """
+
+    snapshot = {
+        **_snapshot(),
+        "score_home": 2, "score_away": 1,
+        "events": [
+            {"event_id": "1", "event_type": "goal", "event_type_raw": "goal", "team_id": 1, "period": 1, "match_clock_seconds": 60, "text": "Goal", "annulled": False},
+        ],
+        "boxscore_aggregate": {
+            "home": {"shots": 7, "shots_on_target": 2, "shots_blocked": 1, "shots_off_target": 4, "corners": 0, "fouls": 7, "yellow_cards": 0, "red_cards": 0, "offsides": 1, "saves": 2, "penalties": 0},
+            "away": {"shots": 11, "shots_on_target": 3, "shots_blocked": 2, "shots_off_target": 6, "corners": 2, "fouls": 9, "yellow_cards": 1, "red_cards": 0, "offsides": 0, "saves": 2, "penalties": 0},
+        },
+    }
+
+    result = _observed_live_presentation(snapshot)
+    statistics = result["observed_live_statistics"]
+
+    assert statistics["source"] == "provider_boxscore_aggregate"
+    assert statistics["home"]["goals"] == 2, "el marcador sigue viniendo del scoreboard, no del boxscore"
+    assert statistics["home"]["shots"] == 7
+    assert statistics["home"]["shots_on_target"] == 2
+    assert statistics["away"]["shots"] == 11
+    assert statistics["away"]["corners"] == 2
+    assert result["recent_actions"][0]["event_id"] == "1", "la cronología sigue viniendo de events, no del boxscore"
+
+
+def test_observed_live_presentation_ignores_incomplete_boxscore() -> None:
+    """Un boxscore sin ambos equipos no debe reemplazar conteos parciales pero reales."""
+
+    snapshot = {
+        **_snapshot(),
+        "events": [
+            {"event_id": "1", "event_type": "corner", "event_type_raw": "corner", "team_id": 1, "period": 1, "match_clock_seconds": 60, "text": "Corner", "annulled": False},
+        ],
+        "boxscore_aggregate": {"home": {"shots": 7}},
+    }
+
+    result = _observed_live_presentation(snapshot)
+    statistics = result["observed_live_statistics"]
+
+    assert statistics["source"] == "provider_play_by_play"
+    assert statistics["home"]["corners"] == 1
+    assert statistics["home"]["shots"] == 0
+
+
 def test_match_dynamics_applies_signed_weights_and_centered_smoothing() -> None:
     """Orienta local/visitante y suaviza cinco minutos sin usar el futuro."""
 

@@ -297,9 +297,32 @@ class EspnLiveMatchFollower:
             situation_payload = situation_result.payload
         except (EspnConnectorError, EspnResourceUnavailable):
             situation_payload = None
+        # El Core API de plays a veces sólo publica goles/tarjetas/cambios sin
+        # caer al fallback de summary (`_fallbackEndpoint` sigue None porque la
+        # lista no está vacía, sólo incompleta) -visto en vivo en la Supercopa
+        # de Europa 2026: 5 plays reales, ninguno de tiro/córner/falta, con un
+        # marcador que exige docenas. `summary.boxscore` sí trae esos conteos
+        # oficiales por equipo, así que se consulta siempre y se degrada en
+        # silencio si el proveedor falla.
+        summary_payload: dict[str, Any] | None = None
+        summary_receipt: LiveCaptureReceipt | None = None
+        try:
+            summary_result = self.connector.summary_fetch_result(event_id, use_cache=False)
+            summary_receipt = self.raw_store.store(
+                resource="summary_boxscore",
+                endpoint=summary_result.source_url or f"{SITE_BASE}/{league}/summary",
+                params={"event": event_id},
+                result=summary_result, league_slug=league, event_id=event_id,
+                poll_sequence=self._poll_sequence,
+            )
+            summary_payload = summary_result.payload
+        except (EspnConnectorError, EspnResourceUnavailable):
+            summary_payload = None
         receipts = [scoreboard_receipt, event_receipt, plays_receipt]
         if situation_receipt is not None:
             receipts.append(situation_receipt)
+        if summary_receipt is not None:
+            receipts.append(summary_receipt)
         fetched_at = max(_parse_ts(receipt.fetched_at) for receipt in receipts)
         return normalize_live_snapshot(
             league_slug=league,
@@ -307,6 +330,7 @@ class EspnLiveMatchFollower:
             event_payload=event_result.payload,
             plays_payload=plays_result.payload,
             situation_payload=situation_payload,
+            summary_payload=summary_payload,
             source_fetched_at=fetched_at,
             raw_receipts=receipts,
             poll_sequence=self._poll_sequence,
@@ -339,6 +363,7 @@ def normalize_live_snapshot(
     event_payload: dict[str, Any],
     plays_payload: dict[str, Any],
     situation_payload: dict[str, Any] | None,
+    summary_payload: dict[str, Any] | None = None,
     source_fetched_at: datetime,
     raw_receipts: list[LiveCaptureReceipt],
     poll_sequence: int,
@@ -439,6 +464,7 @@ def normalize_live_snapshot(
         "score_away": _score(away),
         "events": events,
         "situation": situation_payload,
+        "boxscore_aggregate": _boxscore_aggregate(summary_payload, home_id, away_id),
         "poll_sequence": int(poll_sequence),
         "raw_receipts": [asdict(receipt) for receipt in raw_receipts],
         "event_payload_hash": _stable_hash(event_payload),
@@ -447,6 +473,68 @@ def normalize_live_snapshot(
     }
     payload["source_hash"] = _stable_hash(payload)
     return payload
+
+
+_BOXSCORE_STAT_FIELDS = {
+    "totalShots": "shots", "shotsOnTarget": "shots_on_target",
+    "blockedShots": "shots_blocked", "wonCorners": "corners",
+    "yellowCards": "yellow_cards", "redCards": "red_cards",
+    "foulsCommitted": "fouls", "offsides": "offsides", "saves": "saves",
+    "penaltyKickShots": "penalties",
+}
+
+
+def _boxscore_aggregate(
+    summary_payload: dict[str, Any] | None, home_id: int, away_id: int,
+) -> dict[str, dict[str, int]] | None:
+    """Extrae conteos oficiales agregados por equipo desde `summary.boxscore`.
+
+    El Core API de plays no siempre publica granularidad de tiro/córner/falta
+    -visto en vivo en la Supercopa de Europa 2026: la lista de plays no
+    estaba vacía (así que el fallback interno de `plays_fetch_result` nunca
+    se activaba), pero sólo traía goles, tarjetas y cambios, con 0 tiros
+    contra un marcador de goles reales. `summary.boxscore` sí publica esos
+    conteos oficiales por equipo -Fase 87 ya usa esta misma fuente para
+    settlement-, así que se consulta siempre en `_poll_event` y se usa aquí
+    sin depender de si `plays` cayó a su propio fallback.
+    """
+
+    teams = (summary_payload or {}).get("boxscore", {}).get("teams") if isinstance(summary_payload, dict) else None
+    if not isinstance(teams, list):
+        return None
+    by_side: dict[str, dict[str, int]] = {}
+    for entry in teams:
+        if not isinstance(entry, dict):
+            continue
+        team = entry.get("team") if isinstance(entry.get("team"), dict) else {}
+        team_id_raw = team.get("id")
+        if team_id_raw is None or not str(team_id_raw).isdigit():
+            continue
+        team_id = int(team_id_raw)
+        side = "home" if team_id == home_id else "away" if team_id == away_id else None
+        if side is None:
+            continue
+        stats: dict[str, int] = {}
+        for row in entry.get("statistics", []):
+            if not isinstance(row, dict):
+                continue
+            field = _BOXSCORE_STAT_FIELDS.get(str(row.get("name") or ""))
+            if field is None:
+                continue
+            try:
+                stats[field] = int(float(str(row.get("displayValue"))))
+            except (TypeError, ValueError):
+                continue
+        by_side[side] = stats
+    if "home" not in by_side or "away" not in by_side:
+        return None
+    for side, stats in by_side.items():
+        shots = stats.get("shots")
+        on_target = stats.get("shots_on_target")
+        blocked = stats.get("shots_blocked", 0)
+        if shots is not None and on_target is not None:
+            stats["shots_off_target"] = max(0, shots - on_target - blocked)
+    return by_side
 
 
 def live_inference_payload(

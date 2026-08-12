@@ -3202,6 +3202,72 @@ reconstrucción real de `reconstruct_live_prior` contra el snapshot activo
 para PSG-Aston Villa, Supercopa de España y Copa Intercontinental FIFA con
 IDs de equipo reales.
 
+DEC-176
+Fecha: 2026-08-12
+Problema: auditoría completa pedida por el usuario de cada menú de la vista
+live tras DEC-175: "Datos del partido / Acciones observadas" mostraba PSG
+2-1 Aston Villa con 0 tiros, 0 córners y 0 faltas para ambos equipos -
+incoherente con dos goles reales-. Causa raíz verificada contra el partido
+real en vivo: el Core API de ESPN (`.../events/{id}/competitions/{id}/plays`)
+no publica granularidad de tiro/córner/falta para `uefa.super_cup`; sólo
+devuelve 4-5 "plays" (goles, tarjetas, cambios), sin caer al fallback interno
+de `plays_fetch_result` porque la lista no está vacía, sólo incompleta.
+`_observed_live_presentation` sólo contaba desde esa lista de eventos, así
+que todo lo que ESPN no clasificó como "play" quedaba en cero. El resto de
+menús (predicción oficial, componentes del motor, mercados córners/tiros
+restantes, benchmark del proveedor) se auditaron contra el mismo partido real
+y no tenían el mismo problema: los cinco calculan a partir de los lambdas ya
+corregidos por DEC-175 y de los pocos eventos reales (goles/tarjetas) que sí
+llegan completos, no de un conteo exhaustivo de jugadas.
+Opciones: (a) aceptar el hueco como limitación de cobertura editorial de
+ESPN para esta competición, sin cambio de código; (b) estimar tiros/córners
+a partir de intensidad de presión u otro proxy, inventando un número que
+ESPN no confirma; (c) usar `summary.boxscore` -estadísticas oficiales
+agregadas por equipo que ESPN sí publica siempre para el evento, incluso
+cuando `plays` es escaso- como fuente para el panel de observados. Fase 87 ya
+usa esta misma fuente para settlement (DEC-106), así que no es una fuente
+nueva sin precedente en el proyecto.
+Decisión: (c). `EspnLiveMatchFollower._poll_event` ahora consulta siempre
+`summary_fetch_result` (se degrada en silencio si el proveedor falla, igual
+que `situation`) y el snapshot normalizado incluye `boxscore_aggregate`. En
+`_observed_live_presentation`, cuando ese campo trae ambos equipos, sus
+conteos (tiros, tiros a puerta, tiros bloqueados/fuera derivados, córners,
+tarjetas, faltas, fueras de juego, atajadas, penales) reemplazan a los
+derivados de eventos; goles sigue viniendo del marcador y sustituciones de
+eventos, que sí llegan completos. El payload declara
+`observed_live_statistics.source`: `provider_boxscore_aggregate` o
+`provider_play_by_play`, visible para quien consuma el contrato.
+Motivo: boxscore es la fuente oficial agregada que ESPN publica para
+prácticamente todo evento con cobertura de estadísticas, independiente de
+cuántos "plays" individuales haya clasificado; usar goles del marcador y
+tiros/córners/faltas del boxscore es más honesto que mostrar ceros que
+implican "cero tiros en 63 minutos con dos goles", una imposibilidad física
+visible para cualquier usuario. La cronología ("Acciones recientes") y el
+gráfico de presión siguen derivándose de `events` sin cambios: necesitan
+marca de tiempo por jugada, que el boxscore agregado no tiene, y ESPN
+realmente no publica más que goles/tarjetas/cambios con tiempo para esta
+competición - no hay más granularidad que extraer ahí.
+Estado: congelada
+Impacto en contratos/fases: no modifica los mercados oficiales de
+predicción (1X2, periods, next_event, exact_score) ni el gate causal de
+DEC-175; sólo enriquece el panel de presentación
+`observed_live_statistics`, ya declarado no-feature del modelo. Un fallo del
+fetch de `summary` degrada a la fuente anterior sin bloquear la predicción.
+Evidencia requerida: 6 pruebas nuevas (4 en
+`tests/test_espn_live_follower.py`: mapeo de campos boxscore→esquema DIKAMAHA
+con derivación de `shots_off_target`, equipo ajeno al fixture ignorado,
+degradación con summary ausente/malformado, poll completo con
+`summary_fetch_result` fallando sin romper el ciclo; 2 en
+`tests/test_live_prediction_runtime.py`: boxscore completo reemplaza
+conteos dispersos, boxscore incompleto se ignora); suite Python completa 792
+aprobadas/8 omitidas sin regresiones; verificado en vivo contra
+`uefa.super_cup` 401873624 (PSG 2-1 Aston Villa, minuto 63): estadísticas
+pasaron de 0 tiros/0 córners/0 faltas a 8 tiros/0 córners/8 faltas (PSG) y 13
+tiros/2 córners/11 faltas (Villa), coherente con el marcador real; mercados
+de córners/tiros restantes, tarjetas de componentes del motor (Poisson,
+CTMC, hazard, Elo, Hawkes) y el benchmark externo del proveedor confirmados
+con datos reales del mismo partido, sin cambios necesarios.
+
 ```text
 DEC-NNN
 Fecha:

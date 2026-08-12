@@ -673,6 +673,11 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
             "minute": max(1, int(clock_seconds // 60) + 1),
             "text": str(event.get("text") or "")[:500],
         })
+    boxscore = snapshot.get("boxscore_aggregate")
+    used_boxscore = isinstance(boxscore, dict) and "home" in boxscore and "away" in boxscore
+    if used_boxscore:
+        for side in ("home", "away"):
+            stats[side].update(boxscore[side])
     for row in stats.values():
         row["shots"] = (
             row["shots_on_target"] + row["shots_off_target"]
@@ -684,7 +689,10 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "observed_live_statistics": {
-            "source": "provider_play_by_play",
+            "source": (
+                "provider_boxscore_aggregate" if used_boxscore
+                else "provider_play_by_play"
+            ),
             "as_of": str(snapshot["source_fetched_at"]),
             "home": stats["home"],
             "away": stats["away"],
