@@ -9,16 +9,19 @@ Created: 2026-07-29
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.prematch_raw_store import RawResponse
 
+LOGGER = logging.getLogger(__name__)
 DEFAULT_LEDGER = Path("data/phase_100/raw_responses.sqlite")
 
 
@@ -73,17 +76,33 @@ class FixtureContextService:
         self._repository = repository
 
     def context(self, league: str, event_id: str) -> dict[str, Any]:
-        """Devuelve ficha reconciliada o ausencia explícita de snapshots."""
+        """Devuelve ficha reconciliada o ausencia explícita de snapshots.
 
-        rows = self._repository.rows(league, event_id)
-        if not rows:
+        El ledger Fase 100 es un artefacto de auditoría local (`data/`, fuera
+        de git y de la imagen Docker por diseño, igual que `phase_72/73/86`);
+        en producción el archivo nunca existe. Antes eso llegaba como
+        `sqlite3.OperationalError: unable to open database file` sin capturar
+        y tumbaba la petición con un 500. Es una ausencia de dato legítima,
+        exactamente la misma que un ledger presente pero vacío, así que
+        degrada a la misma respuesta explícita en vez de propagar la
+        excepción.
+        """
+
+        try:
+            rows = self._repository.rows(league, event_id)
+            if not rows:
+                return _unavailable(league, event_id)
+            payloads, sources = _latest(rows)
+            summary = payloads.get("summary", {})
+            competition = _competition(summary)
+            teams = _teams(competition)
+            related = _before(self._repository.context_rows(league, _team_ids(teams)), competition.get("date"))
+            context_payloads, context_sources = _latest(related)
+        except DBAPIError as error:
+            LOGGER.warning(
+                "fixture_context_ledger_unavailable league=%s event_id=%s "
+                "error=%s", league, event_id, type(error.orig).__name__)
             return _unavailable(league, event_id)
-        payloads, sources = _latest(rows)
-        summary = payloads.get("summary", {})
-        competition = _competition(summary)
-        teams = _teams(competition)
-        related = _before(self._repository.context_rows(league, _team_ids(teams)), competition.get("date"))
-        context_payloads, context_sources = _latest(related)
         return {
             "status": "available", "schema_version": "fixture_context_v1",
             "display_only": True, "model_feature": False,

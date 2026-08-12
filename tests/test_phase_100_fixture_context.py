@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from src.dikamaha_service import create_app
-from src.espn_fixture_context import FixtureContextService
+from src.espn_fixture_context import (
+    FixtureContextService, SqlAlchemyFixtureContextRepository,
+)
 
 
 class _Row:
@@ -75,6 +80,81 @@ def test_context_endpoint_uses_injected_raw_snapshot_service() -> None:
     response = TestClient(app).get("/v1/explorer/fixture/context", params={"league": "mex.1", "event_id": "10"})
     assert response.status_code == 200
     assert response.json()["competition"]["name"] == "Liga MX"
+
+
+class _BrokenRepository:
+    """Simula el ledger de auditoría ausente en producción.
+
+    `data/phase_100/raw_responses.sqlite` está fuera de git y de la imagen
+    Docker por diseño (mismo patrón que `phase_72/73/86`), así que en
+    producción el archivo nunca existe y SQLite falla con
+    `OperationalError: unable to open database file` al primer intento de
+    lectura.
+    """
+
+    def rows(self, _league: str, _event: str) -> list[Any]:
+        """Reproduce el fallo real de abrir un archivo inexistente."""
+
+        raise OperationalError(
+            "SELECT", {}, sqlite3.OperationalError("unable to open database file"))
+
+    def context_rows(self, _league: str, _team_ids: list[str]) -> list[Any]:
+        """No debe alcanzarse: `rows()` falla primero."""
+
+        raise AssertionError("context_rows no debe llamarse si rows() falla")
+
+
+def test_missing_ledger_degrades_to_unavailable_instead_of_crashing() -> None:
+    """Un ledger ausente es una ausencia de dato, no un error de servidor.
+
+    Antes de esta corrección, `OperationalError` se propagaba sin capturar y
+    la ruta HTTP devolvía 500 para todo fixture, siempre, en producción.
+    """
+
+    result = FixtureContextService(_BrokenRepository()).context("mex.1", "10")  # type: ignore[arg-type]
+    assert result["status"] != "available"
+    assert result == FixtureContextService(_EmptyRepository()).context("mex.1", "10")  # type: ignore[arg-type]
+
+
+def test_context_endpoint_never_returns_500_for_a_missing_ledger() -> None:
+    """El endpoint HTTP responde 200 con ausencia explícita, no 500."""
+
+    app = create_app()
+    app.state.fixture_context = FixtureContextService(_BrokenRepository())  # type: ignore[arg-type]
+    response = TestClient(app).get(
+        "/v1/explorer/fixture/context", params={"league": "mex.1", "event_id": "10"})
+    assert response.status_code == 200
+    assert response.json()["status"] != "available"
+
+
+def test_sqlite_repository_over_a_missing_directory_reports_unavailable(
+    tmp_path: Path,
+) -> None:
+    """Prueba de extremo a extremo con un motor SQLite real, no simulado.
+
+    Reproduce exactamente el defecto de producción: apunta a una ruta cuyo
+    directorio padre no existe, igual que `/app/data/phase_100/` en el
+    contenedor, donde sólo `/app/data` se crea.
+    """
+
+    target = tmp_path / "no_creado" / "raw_responses.sqlite"
+    repository = SqlAlchemyFixtureContextRepository(f"sqlite+pysqlite:///{target}")
+    result = FixtureContextService(repository).context("mex.1", "10")
+    assert result["status"] != "available"
+
+
+class _EmptyRepository:
+    """Ledger presente pero sin snapshots capturados para este fixture."""
+
+    def rows(self, _league: str, _event: str) -> list[Any]:
+        """No hay filas: mismo resultado que debe producir un ledger roto."""
+
+        return []
+
+    def context_rows(self, _league: str, _team_ids: list[str]) -> list[Any]:
+        """No se alcanza cuando `rows()` está vacío."""
+
+        return []
 
 
 # Version: 1.0.0

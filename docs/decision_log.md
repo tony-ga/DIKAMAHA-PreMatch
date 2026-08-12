@@ -2591,6 +2591,65 @@ tablas se crean solas; las columnas compilan a JSONB en PostgreSQL y JSON en
 SQLite; y contra un PostgreSQL real el congelado es idempotente y los registros
 sobreviven a la reconstrucción del repositorio en un proceso nuevo.
 
+DEC-165
+Fecha: 2026-08-12
+Problema: dos defectos reales de producción, encontrados con métricas de
+Railway y no por inspección de código. (1) Un pico medido a los 8 vCPU del
+límite del contenedor coincidió con `/v1/upcoming` y `/v1/live` tardando 9-18s
+(normalmente milisegundos) y dos llamadas a `/v1/predict/upcoming` agotando el
+timeout de 30s del servidor y devolviendo 504, sin relación causal alguna con
+el catálogo. Causa: ningún endpoint de catálogo cacheaba nada, así que cada
+cliente (Mini App, bot, worker, varios usuarios) disparaba su propio barrido
+completo de hasta 63 ligas en ESPN al mismo tiempo, y esa contención de CPU
+robaba tiempo a predicciones concurrentes. (2) `/v1/explorer/fixture/context`
+devolvía 500 para todo fixture: el ledger que lee (`data/phase_100/
+raw_responses.sqlite`, 147 MB) está en `data/`, excluido de git y de la imagen
+Docker por diseño desde siempre, igual que `phase_72/73/86`; en producción el
+directorio nunca existe y SQLite fallaba con `OperationalError: unable to open
+database file` sin capturar.
+Opciones para (1): (a) subir `inference_timeout_seconds`, que no habría
+evitado los 504 medidos porque el retraso era cola de espera por CPU, no
+cómputo lento — un timeout mayor sólo tarda más en fallar igual; (b) cachear
+los catálogos con TTL corto y single-flight, atacando la causa real de
+contención. Opciones para (2): (a) empaquetar el archivo de 147 MB en la
+imagen, revirtiendo el patrón deliberado que excluye `data/` y casi duplicando
+el tamaño de imagen; (b) degradar con la misma respuesta explícita
+`_unavailable(...)` que ya existe para un ledger presente pero vacío.
+Decisión: (1b) y (2b). `AsyncPredictionCache` (ya usado por `/v1/predict/
+upcoming`) se reutiliza para `/v1/upcoming` (TTL 45s) y `/v1/live` (TTL 15s),
+por debajo del refresco de cliente ya documentado en Fase 115 (60s y 20s), así
+que cachear no envejece el dato más de lo que el usuario ya tolera; un fallo
+no se cachea, sólo el resultado exitoso. `FixtureContextService.context()`
+captura `DBAPIError` alrededor de las lecturas del repositorio y devuelve
+`_unavailable(...)`, que el frontend ya sabe presentar como "Contexto aún no
+publicado" sin alterar la predicción. Además, `dikamahaRequest` en la Mini App
+gana un parámetro `idempotent` explícito: sólo `/v1/predict/upcoming` y
+`/v1/predict/live/fixture` lo activan, porque calculan y no mutan nada; con
+él, un 504/503/429 transitorio se reintenta igual que ya ocurre para GET, en
+vez de mostrar "sin predicción" ante una falla de un único intento. Ninguna
+ruta de mutación (favoritos, alertas, suscripciones) pasa por `dikamahaRequest`
+hoy, así que el valor por defecto permanece `false` como salvaguarda.
+Motivo: la causa medida de (1) era cola de espera por CPU compartida entre
+catálogo y predicción, no una predicción individual lenta; cachear el
+catálogo ataca esa causa sin tocar el motor de predicción ni su contrato. Para
+(2), el ledger de Fase 100 es explícitamente `display_only`, `model_feature:
+false` — enriquece la ficha visual (sede, árbitros, transmisiones,
+posiciones), nunca alimenta al modelo — así que su ausencia es una ausencia de
+dato legítima, exactamente igual a un ledger vacío, y debe tratarse con la
+misma respuesta que ya existe para ese caso, no con un 500.
+Estado: congelada
+Impacto en contratos/fases: no modifica probabilidades, causalidad, el router
+ni ningún contrato de mercado. `/v1/upcoming` y `/v1/live` conservan su forma
+de respuesta exacta; sólo se vuelven servidos desde caché con single-flight
+dentro de su ventana de TTL. `/v1/explorer/fixture/context` deja de poder
+devolver 500 por un ledger ausente; su contrato de éxito no cambia.
+Evidencia requerida: dos peticiones idénticas al catálogo comparten un único
+barrido real y un fallo no queda cacheado (verificado con motor SQLite real,
+no sólo doble de prueba, para el caso del ledger ausente); un POST marcado
+idempotente se reintenta ante 503 transitorio y uno sin marcar no; ninguna
+mutación existente pasa por el nuevo parámetro; 690 pruebas Python aprobadas/8
+omitidas, 23 Vitest, 31 Playwright, typecheck y build Next aprobados.
+
 ```text
 DEC-NNN
 Fecha:

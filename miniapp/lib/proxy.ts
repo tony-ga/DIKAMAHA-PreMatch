@@ -19,14 +19,16 @@ export async function proxyGet(request: NextRequest, path: string) {
   }
 }
 
-export async function proxyPost(request: NextRequest, path: string) {
+export async function proxyPost(
+  request: NextRequest, path: string, idempotent = false,
+) {
   try {
     await authorizeRequest(request, true);
     const body = await request.json();
     const payload = await dikamahaRequest(path, {
       method: "POST",
       body: JSON.stringify(body),
-    });
+    }, idempotent);
     return NextResponse.json(payload);
   } catch (error) {
     if (error instanceof DikamahaError) {

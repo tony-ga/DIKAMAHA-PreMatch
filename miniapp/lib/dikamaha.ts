@@ -29,11 +29,20 @@ function upstreamReason(payload: unknown): string | null {
 export async function dikamahaRequest(
   path: string,
   options: RequestInit = {},
+  // Sólo para llamadas POST que no mutan nada río abajo (hoy, únicamente
+  // /v1/predict/upcoming y /v1/predict/live/fixture: calculan, no escriben).
+  // Existe por una incidencia real: un pico de contención de CPU tras un
+  // despliegue hizo que dos predicciones agotaran el timeout del servidor y
+  // devolvieran 504 sin ningún reintento, porque antes sólo los GET se
+  // reintentaban. Nunca marcar así una ruta que crea, borra o modifica algo
+  // (favoritos, alertas, suscripciones): un reintento ciego ahí sí sería
+  // peligroso.
+  idempotent = false,
 ): Promise<unknown> {
   if (!path.startsWith("/v1/")) throw new Error("dikamaha_path_rejected");
   const config = env();
   const method = String(options.method ?? "GET").toUpperCase();
-  const attempts = method === "GET" ? 3 : 1;
+  const attempts = method === "GET" || idempotent ? 3 : 1;
   let lastStatus = 503;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {

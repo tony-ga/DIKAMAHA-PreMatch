@@ -63,4 +63,28 @@ describe("authenticated BFF to DIKAMAHA connection", () => {
     await expect(dikamahaRequest("/v1/explorer/leagues")).resolves.toMatchObject({ count: 1 });
     expect(requests.length - before).toBe(3);
   });
+
+  // Existe por una incidencia real: un pico de contención tras un despliegue
+  // hizo que /v1/predict/upcoming devolviera 504, y como sólo los GET se
+  // reintentaban, el usuario veía "sin predicción" ante lo que era una falla
+  // transitoria de un único intento.
+  it("retries a POST marked idempotent, like a prediction compute", async () => {
+    const before = requests.length;
+    failuresRemaining = 2;
+    const { dikamahaRequest } = await import("@/lib/dikamaha");
+    await expect(dikamahaRequest(
+      "/v1/predict/upcoming", { method: "POST", body: "{}" }, true,
+    )).resolves.toMatchObject({ count: 1 });
+    expect(requests.length - before).toBe(3);
+  });
+
+  it("never retries a POST that is not explicitly marked idempotent", async () => {
+    const before = requests.length;
+    failuresRemaining = 2;
+    const { dikamahaRequest, DikamahaError } = await import("@/lib/dikamaha");
+    await expect(dikamahaRequest(
+      "/v1/predict/upcoming", { method: "POST", body: "{}" },
+    )).rejects.toBeInstanceOf(DikamahaError);
+    expect(requests.length - before).toBe(1);
+  });
 });

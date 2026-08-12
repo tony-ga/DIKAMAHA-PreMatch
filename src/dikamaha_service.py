@@ -898,6 +898,15 @@ def create_app(
         settlement_store if settlement_store is not None else _settlement_store())
     app.state.metrics = MetricsStore()
     app.state.upcoming_cache = AsyncPredictionCache()
+    # TTL corto y por debajo del refresco de cliente documentado en Fase 115
+    # (Mini App: 60s para próximos, 20s para en vivo), así que cachear no
+    # envejece el dato más de lo que el usuario ya tolera. Existe porque un
+    # pico real de CPU al 100% de los 8 vCPUs del contenedor coincidió con
+    # varios clientes (Mini App, bot, worker) recalculando el mismo barrido de
+    # 63 ligas en ESPN al mismo tiempo tras un despliegue, y esa contención
+    # hizo que predicciones sin relación agotaran su timeout de 30s.
+    app.state.upcoming_catalog_cache = AsyncPredictionCache(ttl_seconds=45.0)
+    app.state.live_catalog_cache = AsyncPredictionCache(ttl_seconds=15.0)
     app.state.high_probability_view = HighProbabilityView()
     app.state.request_gate = RequestGate(
         effective.max_concurrent_requests,
@@ -962,19 +971,28 @@ def create_app(
             raise _error("external_calls_disabled")
         selected = leagues or ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 20)
-        try:
+        key = json.dumps(
+            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
+
+        async def calculate() -> dict[str, Any]:
+            """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
+
             fixtures = await _infer_with_timeout(
                 _upcoming_catalog, (selected, bounded, date),
                 effective.inference_timeout_seconds * 5
             )
+            return {
+                "fixtures": fixtures, "count": len(fixtures), "status": "ok",
+                "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
+                "date_count": len(_upcoming_dates(datetime.now(timezone.utc), date)),
+            }
+
+        try:
+            return await app.state.upcoming_catalog_cache.get_or_compute(
+                key, calculate)
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
-        return {
-            "fixtures": fixtures, "count": len(fixtures), "status": "ok",
-            "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
-            "date_count": len(_upcoming_dates(datetime.now(timezone.utc), date)),
-        }
 
     @app.get("/v1/high-probability", tags=["inference"])
     async def high_probability(
@@ -1054,12 +1072,22 @@ def create_app(
         if not selected:
             selected = ",".join(
                 str(row["slug"]) for row in app.state.data_explorer.leagues())
-        try:
+        bounded = min(max(int(limit), 1), 20)
+        key = json.dumps(
+            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
+
+        async def calculate() -> dict[str, Any]:
+            """Ejecuta el descubrimiento live real sólo cuando la caché expira."""
+
             return await _infer_with_timeout(
                 lambda values: app.state.live_runtime.list_active(*values),
-                (selected, min(max(int(limit), 1), 20), date),
+                (selected, bounded, date),
                 effective.inference_timeout_seconds * 6,
             )
+
+        try:
+            return await app.state.live_catalog_cache.get_or_compute(
+                key, calculate)
         except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo live: %s", exc)
             raise _error("live_catalog_unavailable") from exc
