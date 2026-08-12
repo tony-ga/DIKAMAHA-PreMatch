@@ -17,16 +17,21 @@
     "shots_on_target_total_over_7_5"
   ],
   "features_strictly_prior": true,
+  "gate_passed_pending_bootstrap_audit": [
+    "corners_total_over_9_5",
+    "first_half_corners_over_4_5",
+    "home_shots_over_10_5"
+  ],
   "goal_model_modified": false,
   "market_gates": {
     "away_corners_over_4_5": true,
     "away_shots_over_10_5": true,
     "cards_total_over_2_5": false,
-    "corners_total_over_9_5": false,
+    "corners_total_over_9_5": true,
     "first_half_cards_over_1_5": false,
-    "first_half_corners_over_4_5": false,
+    "first_half_corners_over_4_5": true,
     "home_corners_over_4_5": true,
-    "home_shots_over_10_5": false,
+    "home_shots_over_10_5": true,
     "red_card_yes": false,
     "shots_on_target_total_over_7_5": true,
     "shots_total_over_22_5": false

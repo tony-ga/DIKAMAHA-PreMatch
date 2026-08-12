@@ -3043,6 +3043,55 @@ Evidencia requerida: suite completa 714 pruebas Python aprobadas/8 omitidas
 sin regresiones. Verificación en producción pendiente del próximo ciclo real
 de Fase 123 tras este despliegue.
 
+DEC-173
+Fecha: 2026-08-12
+Problema: la auditoría de modelos matemáticos (objetivo nuevo del usuario,
+`docs/objetivo_auditoria_modelos_v1.md`) midió que la dispersión NB global de
+córners de Fase 84A (`0.966`) se estimó mezclando ligas reales con ligas cuyo
+proveedor no publica córners -almacenadas como cero, guard ya desplegado en
+DEC previo del mismo día-. Efecto verificado: para un equipo sano con 8.39
+córners esperados, P(over 4.5) declaraba 57.5% cuando el ajuste limpio da
+71.3%. Toda liga servida recibía probabilidades menos seguras de lo que sus
+propios datos justifican, no sólo las ligas ya suprimidas.
+Opciones: (a) dejar la dispersión contaminada, confiando en que el guard de
+cobertura ya oculta el síntoma más grave; (b) reajustar dispersión y modelos
+Poisson excluyendo filas contaminadas -por liga para córners, por observación
+puntual (`shots==0`) para el resto del bloque de tiros-, reutilizando sin
+duplicar el pipeline original de Fase 84A; (c) además de reajustar, promover
+automáticamente cualquier línea que el gate de Fase 84A apruebe con los datos
+limpios.
+Decisión: (b). `scripts/repair_team_count_coverage_bias.py` reajusta los
+siete modelos de conteo -mismos features causales, mismo split walk-forward,
+mismo solver- excluyendo 4,737 filas de córners (ligas ausentes) y 1,281 de
+tiros/tiros a puerta (bloque de estadísticas no recibido) del entrenamiento y
+la puntuación. Publica sobre el mismo artefacto que sirve producción
+(`artifacts/phase_84a_team_count_markets/`), mismo contrato, hashes
+regenerados. (c) se descarta explícitamente: tres líneas
+(`corners_total_over_9_5`, `first_half_corners_over_4_5`,
+`home_shots_over_10_5`) pasan el gate de punto con datos limpios pero NO se
+promueven -quedan en `audit.json:gate_passed_pending_bootstrap_audit`-, porque
+el criterio de esta auditoría exige calibración + intervalo de confianza
+bootstrap sobre tasa base, no una comparación de punto sin IC. Los cuatro
+mercados ya aprobados se verificaron pasando el mismo gate de forma
+independiente sobre datos limpios antes de publicar; ninguno se degradó.
+Motivo: (a) deja el sesgo activo en las ligas sanas, que es la mayoría del
+tráfico real; (c) habría promovido mercados nuevos con el mismo tipo de
+evidencia débil -gate de punto sin IC- que el propio objetivo de auditoría
+existe para dejar de aceptar como criterio de éxito.
+Estado: congelada
+Impacto en contratos/fases: no modifica `APPROVED_MARKETS` en
+`src/team_count_market_runtime.py`; el contrato servido (4 mercados) es
+idéntico al de antes de la reparación, sólo con probabilidades mejor
+calibradas. No reabre Fase 84A ni cambia su clasificación histórica en
+`docs/00_roadmap_actual.md`. Fase 84A original queda preservada en el
+historial de git, no en un directorio paralelo.
+Evidencia requerida: `tests/test_repair_team_count_coverage_bias.py` (8
+pruebas, incluida una que ancla un bug real de precedencia de operadores en
+Python encontrado durante el desarrollo -`A if C else X | Y` dejaba todos los
+mercados "total" con muestra cero de forma silenciosa-); suite completa 739
+Python aprobadas/8 omitidas sin regresiones tras publicar el artefacto
+reajustado.
+
 ```text
 DEC-NNN
 Fecha:

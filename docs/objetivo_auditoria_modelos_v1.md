@@ -214,9 +214,63 @@ Entregado:
 - 15 pruebas nuevas de cobertura y guard, más 1 de imagen Docker. Suite
   completa: 730 aprobadas / 8 omitidas.
 
-Pendiente de esta reparación: la dispersión global de córners (`0.966`) sigue
-estimada sobre datos contaminados y debe reestimarse excluyendo las ligas sin
-cobertura antes de auditar la escalera completa.
+### Reestimación de dispersión y modelos, excluyendo datos contaminados (2026-08-12)
+
+`scripts/repair_team_count_coverage_bias.py` reajusta los siete modelos de
+conteo de Fase 84A -Poisson regularizado + dispersión NB, mismo pipeline,
+mismos features causales, mismo split walk-forward- excluyendo del
+entrenamiento y la puntuación las filas contaminadas: ligas `absent` para
+córners (ausencia sistémica) y observaciones puntuales con `shots == 0` para
+cualquier métrica del mismo bloque de estadísticas (córners, tiros, tiros a
+puerta), incluso en ligas con cobertura sana. Las tarjetas nunca se filtran.
+
+Filas de entrenamiento excluidas por métrica: córners y córners 1ª mitad
+4,737 (de un total mayor, ligas enteras); tiros y tiros a puerta 1,281
+(observaciones puntuales); tarjetas 0.
+
+**Dispersión de córners: `0.966` (contaminada) → `0.376` (limpia).** El efecto
+no es sutil: para un equipo con 8.39 córners esperados en `esp.1` (liga sana,
+sin cambio en la media, sólo en la dispersión), P(over 4.5) pasa de 57.5% a
+71.3%. La dispersión contaminada hacía la distribución artificialmente ancha
+-mezclar "siempre cero" con "media 8" infla la varianza compartida-, así que
+**todas las ligas sanas venían recibiendo probabilidades menos seguras de lo
+que sus propios datos justifican**, no sólo las ligas rotas.
+
+Hallazgo adicional del reajuste: con datos limpios, tres líneas que antes no
+superaban el gate ahora sí lo hacen -`corners_total_over_9_5`,
+`first_half_corners_over_4_5`, `home_shots_over_10_5`-. **No se promovieron.**
+El gate de Fase 84A es una comparación de punto sin intervalo de confianza;
+promover exige el criterio de esta auditoría (calibración + IC bootstrap
+sobre tasa base). Quedan registradas en
+`audit.json:gate_passed_pending_bootstrap_audit` como candidatas para la
+auditoría de escalera completa, no como mercados servidos. Los cuatro
+mercados ya aprobados (`home_corners_over_4_5`, `away_corners_over_4_5`,
+`away_shots_over_10_5`, `shots_on_target_total_over_7_5`) siguen pasando el
+gate de forma independiente sobre datos limpios -ninguno se degradó-.
+
+Publicado sobre el mismo artefacto que sirve producción
+(`artifacts/phase_84a_team_count_markets/`), mismo contrato y hashes
+regenerados; Fase 84A original queda preservada en el historial de git. 8
+pruebas nuevas en `tests/test_repair_team_count_coverage_bias.py`, incluida
+una que ancla un bug real de precedencia de operadores en Python encontrado
+durante el desarrollo (`A if C else X | Y` no agrupa como parece; dejaba
+todos los mercados "total" con muestra cero de forma silenciosa). Suite
+completa: 739 aprobadas / 8 omitidas.
+
+Limitación aceptada y no resuelta aquí: los features de historial acumulado
+por equipo (Fase 74) siguen construidos sobre el corpus original, que
+todavía mezcla partidos de ligas contaminadas al calcular perfiles rolling.
+El efecto práctico es mínimo porque el guard de cobertura ya suprime toda
+salida de córners para esas ligas, así que ningún usuario ve una predicción
+basada en ese historial contaminado; el residuo teórico -coeficientes
+compartidos del modelo pudiendo verse influidos por esas filas antes de
+excluirlas del entrenamiento- ya no aplica, porque ahora se excluyen del
+ajuste, no sólo de la salida. Purgar el historial acumulado en sí exigiría
+reconstruir el corpus de Fase 74, fuera de alcance de esta reparación.
+
+Pendiente para continuar: con la dispersión ya corregida, la auditoría de la
+escalera completa (0.5 al máximo) es ahora la siguiente etapa -antes habría
+medido sobre una base sesgada.
 
 ## Qué NO promete este objetivo
 
