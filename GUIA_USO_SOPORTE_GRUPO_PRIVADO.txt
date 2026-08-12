@@ -1,0 +1,248 @@
+DIKAMAHA PREMIUM
+GUIA DE USO Y SOPORTE
+======================================================================
+
+Bienvenido a DIKAMAHA Premium, la plataforma privada de análisis y
+predicciones de fútbol pre-match y en vivo.
+
+IMPORTANTE
+----------
+• El acceso está limitado a usuarios autorizados.
+• Las predicciones son información estadística y analítica.
+• No constituyen recomendación financiera, apuesta ni garantía de resultado.
+• DIKAMAHA no publica stakes, Kelly, ROI ni ejecución de apuestas.
+
+
+1. ACCESO PRIVADO
+-----------------
+
+Si el bot muestra "ACCESO PREMIUM REQUERIDO":
+
+1) Abre el bot en Telegram.
+2) Envía el comando /whoami.
+3) Envía el número recibido directamente al administrador.
+4) Espera a que el administrador confirme el alta.
+5) Pulsa /start nuevamente.
+
+No envíes tokens, claves API, contraseñas ni capturas con información
+privada al grupo.
+
+
+2. BOT DE TELEGRAM
+------------------
+
+Comandos principales:
+
+/start
+    Abre el menú principal.
+
+/help
+    Muestra la ayuda completa y las opciones disponibles.
+
+/whoami
+    Muestra tu ID de Telegram para solicitar o verificar acceso.
+
+/partidos
+    Abre el catálogo de próximos partidos.
+
+/menu
+    Abre nuevamente el menú de navegación.
+
+/en_vivo
+    Lista los partidos que están activos y permite consultar las
+    probabilidades del motor live oficial.
+
+/modelos
+    Muestra los modelos operativos, su función y su estado.
+
+/estado
+    Comprueba la disponibilidad general del servicio DIKAMAHA.
+
+/buscar_equipo liga consulta
+    Busca un equipo por nombre dentro de una liga.
+    Ejemplo: /buscar_equipo la_liga Real Madrid
+
+/partido liga YYYYMMDD Equipo A | Equipo B
+    Busca un partido por nombres y genera su predicción pre-match.
+    Ejemplo: /partido la_liga 20260815 Real Madrid | Barcelona
+
+/predict liga home_id away_id kickoff_iso [match_id]
+    Consulta avanzada usando los identificadores exactos del partido.
+
+
+3. PREDICCIONES PRE-MATCH
+-------------------------
+
+Desde el menú:
+
+1) Pulsa "Próximos y predicciones".
+2) Elige "Todos los próximos", una liga o una fecha.
+3) Selecciona el partido.
+4) Pulsa "Ver predicción".
+5) Consulta los periodos 1T, 2T y tiempo completo.
+
+La vista puede incluir:
+• Probabilidades 1X2.
+• Goles esperados y distribución de marcadores.
+• Over/Under y BTTS cuando estén publicados.
+• Mercados estadísticos experimentales, siempre identificados como shadow.
+• Contexto informativo del partido.
+• Estadísticas, eventos, clasificación, sede, transmisión y jugadores
+  cuando el proveedor los publique.
+
+La predicción pre-match utiliza información disponible antes del inicio.
+No se recalcula usando el resultado final del partido.
+
+
+4. PARTIDOS EN VIVO
+-------------------
+
+Desde el menú pulsa "Partidos en vivo" o utiliza /en_vivo.
+
+Al abrir un partido se muestran:
+• Equipos, escudos, marcador y reloj.
+• Estado del encuentro y periodo actual.
+• Goles, tiros, tiros al arco, corners, faltas y tarjetas cuando estén
+  disponibles.
+• Eventos recientes y próximo evento publicado.
+• Probabilidades 1T, 2T y tiempo completo.
+• Probabilidad de gol en los próximos minutos.
+• Intensidades restantes y distribución de goles.
+• Timestamp y antigüedad del snapshot.
+
+El motor live oficial combina Poisson dinámico, CTMC, Hazard/Cox, Elo
+dinámico y Hawkes como residual. Markov queda como fallback automático si
+el motor principal no puede calcular una actualización válida.
+
+La Mini App refresca automáticamente aproximadamente cada 15–25 segundos.
+En el bot puede utilizarse "Actualizar" o "Actualizar partido" para forzar
+una nueva consulta.
+
+ESPN Predictor y Pickcenter se muestran como referencias externas separadas;
+no sustituyen ni modifican las probabilidades DIKAMAHA.
+
+
+5. MINI APP / DASHBOARD
+-----------------------
+
+La Mini App se abre desde el botón "Abrir dashboard" del bot o desde el
+botón de menú de Telegram.
+
+Dirección actual:
+https://telegram-miniapp-production-cbab.up.railway.app
+
+Secciones principales:
+• Dashboard: resumen general.
+• En vivo: partidos activos y detalle live.
+• Próximos: catálogo y predicciones pre-match.
+• Equipos y jugadores: búsqueda, plantillas y perfiles publicados.
+• Mercados: apertura, cierre y live publicados, aislados del cálculo
+  analítico.
+• Modelos: inventario de modelos oficiales y experimentales.
+• Suscripciones: alertas configurables, si están habilitadas para tu cuenta.
+• Ayuda y configuración.
+
+La Mini App conserva la sesión de Telegram y requiere que el usuario esté
+en la lista privada de acceso.
+
+
+6. ALERTAS Y SUSCRIPCIONES
+--------------------------
+
+Cuando la función esté habilitada, se pueden configurar alertas para:
+• Inicio de partido.
+• Cambio de marcador.
+• Cambio de estado live.
+• Cambio importante de probabilidad.
+• Cambio de estado del modelo.
+• Aparición o desaparición de un partido live.
+• Mercados experimentales shadow.
+
+Las alertas shadow siempre se identifican como experimentales. Las reglas
+tienen límites, cooldown y deduplicación para evitar mensajes repetidos.
+
+
+7. PROBLEMAS FRECUENTES
+-----------------------
+
+No aparecen próximos partidos
+    Pulsa "Actualizar", vuelve a /start y revisa la liga o la fecha.
+    Si continúa, reporta la liga, fecha y hora de consulta.
+
+No aparece una predicción
+    Verifica que seleccionaste "Ver predicción" y no sólo el partido.
+    Si el error continúa, reporta los nombres de ambos equipos y la liga.
+
+No aparece un partido en vivo
+    La fuente puede tardar en publicar el evento o no tener cobertura para
+    esa competición. Pulsa actualizar y revisa de nuevo después de unos
+    segundos.
+
+La Mini App queda cargando
+    Cierra y vuelve a abrirla desde "Abrir dashboard". Comprueba que
+    Telegram tenga conexión y que tu usuario esté autorizado.
+
+El buscador no encuentra un equipo
+    Prueba con una parte corta del nombre, sin caracteres especiales, y
+    selecciona primero la liga correcta.
+
+Los nombres aparecen como Local o Visitante
+    Actualiza la vista y vuelve a abrir la predicción. Si persiste, repórtalo
+    indicando el partido, la liga y la pantalla exacta.
+
+Se muestran datos no publicados
+    Algunos campos dependen de la cobertura del proveedor. DIKAMAHA muestra
+    "no publicado" o "no disponible" cuando no existe una fuente válida.
+
+
+8. COMO REPORTAR UNA INCIDENCIA
+-------------------------------
+
+Envía al administrador un mensaje con esta información:
+
+• Usuario de Telegram o ID, nunca tokens ni claves.
+• Nombre de la función: próximos, equipos, predicción, live, modelos, etc.
+• Liga y nombres exactos de los equipos.
+• Fecha y hora aproximada del problema.
+• Pasos realizados antes del error.
+• Mensaje de error visible o captura recortada.
+• Dispositivo: Android, iPhone, Telegram Desktop o navegador.
+• Si el error ocurre en bot, Mini App o ambos.
+
+Plantilla rápida:
+
+INCIDENCIA DIKAMAHA
+Función:
+Partido/liga:
+Fecha y hora:
+Dispositivo:
+Bot o Mini App:
+Pasos:
+Resultado esperado:
+Resultado observado:
+Captura o mensaje:
+
+
+9. ESTADO DEL SERVICIO
+----------------------
+
+Para una comprobación rápida:
+• Usa /estado en el bot.
+• Revisa si el menú responde.
+• En la Mini App, recarga la sección afectada.
+
+Si varios usuarios tienen el mismo problema, no abras múltiples reportes.
+Indica que es una incidencia general para que el administrador revise los
+logs y el despliegue de Railway.
+
+
+10. REGLAS DEL GRUPO
+--------------------
+
+• No compartas enlaces privados fuera del grupo autorizado.
+• No publiques tokens, API keys, contraseñas ni datos de sesión.
+• No confundas una probabilidad con una garantía.
+• Reporta errores con datos reproducibles y sin información sensible.
+• Respeta a los demás miembros y evita spam de solicitudes repetidas.
+
+Gracias por utilizar DIKAMAHA Premium.

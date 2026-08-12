@@ -2818,6 +2818,68 @@ la última liquidación real sí publica, el mismo día calendario local en la
 inmensa mayoría de los casos; el replay en el mismo instante es idempotente;
 695 pruebas Python aprobadas/8 omitidas.
 
+DEC-169
+Fecha: 2026-08-12
+Problema: durante una reconciliación de higiene de repositorio se encontraron,
+sin trackear en git y sin ninguna entrada previa en `status.md` ni en este
+registro, un script (`scripts/run_phase_110_extended_reliability_evaluation.py`,
+fechado 2026-07-30) y tres directorios de artefactos
+(`artifacts/phase_110_extended_reliability_evaluation`,
+`artifacts/phase_111_parlay_strategy_analysis`,
+`artifacts/phase_112_market_calibration_thresholds`) que alimentaban un
+documento en la raíz del repositorio,
+`REPORTE_COMPLETO_FIABILIDAD.{md,pdf,txt}`. El reporte declaraba "Estrategias
+de Apuesta", ROI por mercado y bin de confianza, una tabla de "Top 10
+estrategias por ROI", análisis de parleys con "ROI +84%", y una "ESTRATEGIA
+RECOMENDADA PRINCIPAL" con "ROI ponderado probable: +35% a +50% sobre stake
+total". Ninguna Fase 110/111/112 existe en `docs/00_roadmap_actual.md`; el
+único "Fase 110" documentado en el sistema es la cohorte de 1,270 partidos que
+Fase 122 reutiliza como datos, no un análisis de apuestas. Este contenido
+contradice directamente DEC-005/DEC-desarrollo del contrato Markov v4 (Hawkes y
+ROI fuera de alcance), la Fase 83 congelada ("Cuotas, ROI, Kelly y drawdown
+sólo después de aprobar probabilidades", bloqueada por Fase 82, que a su vez
+sigue bloqueada) y la promesa pública que el propio proyecto distribuye a sus
+usuarios en `GUIA_USO_SOPORTE_GRUPO_PRIVADO.txt`: "DIKAMAHA no publica stakes,
+Kelly, ROI ni ejecución de apuestas."
+Opciones: (a) formalizar Fases 110-112 y publicar el reporte, lo que exige
+primero revertir la Fase 83 congelada -inaceptable sin una decisión explícita
+y separada que reabra esa política-; (b) conservar el análisis fuera del
+repositorio para uso privado, sin mencionarlo en la documentación oficial;
+(c) eliminar el reporte y el script generador, dejando constancia del
+incidente en este registro como evidencia preservada, sin promoción ni
+publicación, consistente con la regla de preservar evidencia negativa/fuera de
+alcance sin dejarla ambigua.
+Decisión: (c). Se eliminaron `REPORTE_COMPLETO_FIABILIDAD.md`,
+`REPORTE_COMPLETO_FIABILIDAD.pdf`, `REPORTE_COMPLETO_FIABILIDAD.txt` y
+`scripts/run_phase_110_extended_reliability_evaluation.py` del árbol de
+trabajo. Ninguno de los cuatro archivos había sido commiteado nunca, así que
+no hay historial de git que purgar. Los directorios de artefactos
+`artifacts/phase_110_extended_reliability_evaluation`,
+`artifacts/phase_111_parlay_strategy_analysis` y
+`artifacts/phase_112_market_calibration_thresholds` quedan fuera de esta
+decisión -no se tocaron- porque `artifacts/*` ya está excluido de git por
+`.gitignore` desde Fase 108 y su alcance no fue parte de la aprobación
+explícita del usuario; si el usuario decide más adelante purgarlos también,
+requiere una decisión separada.
+Motivo: el proyecto ya cerró esta pregunta en DEC-005 y en la definición de
+Fase 83; no hay evidencia nueva que justifique reabrirla, y publicar contenido
+de ROI/apuesta -incluso sin intención de difusión pública inmediata- expone al
+producto al mismo riesgo que la Fase 83 fue diseñada para prevenir: comunicar
+ventaja económica antes de que las probabilidades subyacentes tengan
+promoción formal. El usuario, al decidir el cierre del producto (ver plan de
+cierre del proyecto), eligió expresamente no reabrir el programa de
+investigación ni sus extensiones no autorizadas.
+Estado: congelada
+Impacto en contratos/fases: no reabre ni modifica Fase 83 ni Fase 82; no
+introduce Fases 110-112 al roadmap oficial. El único "Fase 110" válido sigue
+siendo la referencia de cohorte usada por Fase 122 en `status.md`. Ningún
+mercado, calibrador ni endpoint fue tocado por este incidente ni por su
+resolución.
+Evidencia requerida: `git status` en `futbol_predictor` ya no muestra los
+cuatro archivos eliminados como untracked; no existe commit histórico que los
+contenga; esta entrada documenta el incidente para que no se repita sin una
+decisión explícita que reabra Fase 83.
+
 ```text
 DEC-NNN
 Fecha:

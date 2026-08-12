@@ -20,6 +20,7 @@ playwright-report/
 # Datos, cachés y estado local: se regeneran o contienen datos operativos.
 data/
 logs/
+tmp/
 
 # Evidencia histórica local; Git conserva sólo el runtime reproducible.
 artifacts/*
