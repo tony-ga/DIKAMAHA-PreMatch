@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from src.metric_coverage import (
     MetricCoverage,
     build_coverage_map,
@@ -152,5 +154,57 @@ def test_unknown_league_is_not_suppressed(tmp_path: Path) -> None:
     assert coverage.is_absent("liga.desconocida", "corners") is False
 
 
-# Version: 1.0.0
+def test_alias_detection_flags_a_league_that_duplicates_shots_on_target() -> None:
+    """Seis ligas nunca envian tiros totales: el pipeline copia shots_on_target.
+
+    100% de coincidencia en esas ligas frente a 0.4-0.5% en ligas sanas -donde
+    ocurre por azar en un partido con pocos tiros, todos a puerta.
+    """
+
+    aliased = [
+        {"league_slug": "eng.3",
+         "actual": {"shots": 1.0, "shots_on_target": 1.0, "corners": 5.0}}
+        for _ in range(60)
+    ]
+    coverage = build_coverage_map(aliased)
+
+    entry = coverage["leagues"]["eng.3"]["metrics"]["shots"]
+    assert entry["status"] == "absent"
+    assert entry["alias_rate"] == pytest.approx(1.0)
+
+
+def test_alias_detection_ignores_occasional_coincidence_in_a_healthy_league() -> None:
+    """Un partido real puede coincidir por azar; una liga sana no lo hace siempre."""
+
+    rows = [
+        {"league_slug": "esp.1",
+         "actual": {"shots": 11.0 + (index % 5), "shots_on_target": 4.0,
+                    "corners": 5.0}}
+        for index in range(200)
+    ]
+    # Fuerza una coincidencia ocasional, como ocurriria por azar.
+    rows[0]["actual"]["shots"] = rows[0]["actual"]["shots_on_target"]
+
+    coverage = build_coverage_map(rows)
+
+    entry = coverage["leagues"]["esp.1"]["metrics"]["shots"]
+    assert entry["status"] == "covered"
+    assert entry["alias_rate"] < 0.05
+
+
+def test_alias_status_never_overrides_an_already_absent_zero_rate() -> None:
+    """El chequeo de alias no debe reescribir un veredicto ya `absent` por ceros."""
+
+    rows = [
+        {"league_slug": "eng.5",
+         "actual": {"shots": 0.0, "shots_on_target": 0.0, "corners": 0.0}}
+        for _ in range(60)
+    ]
+
+    coverage = build_coverage_map(rows)
+
+    assert coverage["leagues"]["eng.5"]["metrics"]["shots"]["status"] == "absent"
+
+
+# Version: 1.1.0
 # Created: 2026-08-12

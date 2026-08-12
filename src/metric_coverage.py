@@ -8,11 +8,19 @@ el valor real ronda el 50%.
 
 La regla no puede ser "muchos ceros = dato ausente". Las tarjetas rojas son
 cero el 89% de las veces y eso es fútbol normal, no un fallo de datos.
-Este módulo separa los dos casos con dos criterios distintos:
+Este módulo separa los casos con tres criterios distintos:
 
-- **Ausencia por liga**: sólo para métricas cuyo cero es implausible en un
-  partido profesional (córners y tiros). Medido: las ligas sanas tienen 0-4%
-  de ceros y las afectadas 72-100%, sin zona intermedia poblada.
+- **Ausencia por liga (cero)**: sólo para métricas cuyo cero es implausible en
+  un partido profesional (córners y tiros). Medido: las ligas sanas tienen
+  0-4% de ceros y las afectadas 72-100%, sin zona intermedia poblada.
+- **Ausencia por liga (alias)**: seis ligas nunca reciben `shots`, pero en vez
+  de cero el proveedor -o el pipeline- copia ahí el valor de
+  `shots_on_target`. En esas ligas `shots == shots_on_target` el 98-100% de
+  las veces, frente a 0.4-0.5% en ligas sanas -donde ocurre por azar en
+  partidos con pocos tiros-. Sin este criterio esas filas aportaban una media
+  de ~1.3 tiros en vez de ~10-13, arrastrando también el ajuste de las ligas
+  sanas: era la causa real detrás de una subestimación sistemática de ~0.33
+  tiros por equipo que ninguna corrección de dispersión o prior podía quitar.
 - **Ausencia por observación**: `shots == 0` en un equipo-partido implica que
   el bloque de estadísticas de ese partido no llegó, de modo que córners y
   tiros a puerta de esa misma fila tampoco son fiables.
@@ -20,7 +28,7 @@ Este módulo separa los dos casos con dos criterios distintos:
 Las tarjetas -amarillas y rojas, completas o por mitad- nunca se marcan como
 ausentes por conteo: sus ceros son observaciones válidas.
 
-Version: 1.0.0
+Version: 1.1.0
 Created: 2026-08-12
 """
 
@@ -51,6 +59,13 @@ BLOCK_DEPENDENT = frozenset({
 # una métrica implausible. La separación medida es tan amplia (0-4% sanas
 # frente a 72-100% afectadas) que el umbral exacto no es delicado.
 ABSENT_THRESHOLD = 0.60
+
+# Métrica cuyo alias con otra se comprueba: si `shots` coincide con
+# `shots_on_target` en una fracción alta de observaciones, la liga nunca
+# recibió tiros totales reales. La separación medida (98-100% afectadas
+# frente a 0.4-0.5% sanas) es igual de amplia que la de ceros.
+ALIAS_CHECK = ("shots", "shots_on_target")
+ALIAS_THRESHOLD = 0.60
 
 # Por debajo de esta muestra no se emite veredicto: no hay evidencia para
 # afirmar ausencia ni cobertura.
@@ -83,16 +98,41 @@ def _league_verdicts(observations: list[dict[str, Any]]) -> dict[str, Any]:
     """Emite un veredicto por métrica dentro de una liga."""
 
     total = len(observations)
+    aliased_metric, alias_source = ALIAS_CHECK
+    alias_rate = _alias_rate(observations, aliased_metric, alias_source)
     metrics: dict[str, Any] = {}
     for metric in sorted({key for row in observations for key in row}):
         zeros = sum(1 for row in observations if float(row.get(metric, 0)) == 0)
         rate = zeros / total if total else 0.0
-        metrics[metric] = {
+        entry = {
             "observations": total,
             "zero_rate": rate,
             "status": _status(metric, rate, total),
         }
+        if metric == aliased_metric:
+            entry["alias_rate"] = alias_rate
+            if entry["status"] == "covered" and total >= MINIMUM_OBSERVATIONS:
+                entry["status"] = (
+                    "absent" if alias_rate >= ALIAS_THRESHOLD else "covered")
+        metrics[metric] = entry
     return {"observations": total, "metrics": metrics}
+
+
+def _alias_rate(
+    observations: list[dict[str, Any]], metric: str, reference: str,
+) -> float:
+    """Fracción de filas donde `metric` es idéntico a `reference`.
+
+    Un partido real puede coincidir por azar -pocos tiros, todos a puerta-,
+    pero no de forma sistemática. Ligas sanas lo hacen 0.4-0.5% de las veces;
+    ligas donde el proveedor duplica el campo lo hacen 98-100%.
+    """
+
+    matched = sum(
+        1 for row in observations
+        if metric in row and reference in row
+        and float(row[metric]) == float(row[reference]))
+    return matched / len(observations) if observations else 0.0
 
 
 def _status(metric: str, zero_rate: float, total: int) -> str:

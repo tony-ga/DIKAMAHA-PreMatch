@@ -4,494 +4,1039 @@
     "arg.1": {
       "metrics": {
         "corners": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.010416666666666666
+          "zero_rate": 0.014619883040935672
         },
         "corners_first_half": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.07291666666666667
+          "zero_rate": 0.08966861598440545
         },
         "red_cards": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.8645833333333334
+          "zero_rate": 0.854775828460039
         },
         "shots": {
-          "observations": 96,
+          "alias_rate": 0.0029239766081871343,
+          "observations": 1026,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.0341130604288499
         },
         "yellow_cards": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.0625
+          "zero_rate": 0.0594541910331384
         },
         "yellow_cards_first_half": {
-          "observations": 96,
+          "observations": 1026,
           "status": "covered",
-          "zero_rate": 0.4166666666666667
+          "zero_rate": 0.3762183235867446
         }
       },
-      "observations": 96
+      "observations": 1026
     },
     "bra.1": {
       "metrics": {
         "corners": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.005555555555555556
+          "zero_rate": 0.013853904282115869
         },
         "corners_first_half": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.08333333333333333
+          "zero_rate": 0.08816120906801007
         },
         "red_cards": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.8666666666666667
+          "zero_rate": 0.8790931989924433
         },
         "shots": {
-          "observations": 180,
+          "alias_rate": 0.0025188916876574307,
+          "observations": 794,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.03333333333333333
+          "zero_rate": 0.02644836272040302
         },
         "yellow_cards": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.07222222222222222
+          "zero_rate": 0.05919395465994962
         },
         "yellow_cards_first_half": {
-          "observations": 180,
+          "observations": 794,
           "status": "covered",
-          "zero_rate": 0.45555555555555555
+          "zero_rate": 0.4181360201511335
         }
       },
-      "observations": 180
+      "observations": 794
     },
     "chi.1": {
       "metrics": {
         "corners": {
-          "observations": 88,
+          "observations": 500,
           "status": "absent",
-          "zero_rate": 0.9090909090909091
+          "zero_rate": 0.984
         },
         "corners_first_half": {
-          "observations": 88,
+          "observations": 500,
           "status": "absent",
-          "zero_rate": 0.9090909090909091
+          "zero_rate": 0.984
         },
         "red_cards": {
-          "observations": 88,
+          "observations": 500,
           "status": "covered",
-          "zero_rate": 0.7613636363636364
+          "zero_rate": 0.782
         },
         "shots": {
-          "observations": 88,
-          "status": "covered",
-          "zero_rate": 0.23863636363636365
+          "alias_rate": 0.984,
+          "observations": 500,
+          "status": "absent",
+          "zero_rate": 0.26
         },
         "shots_on_target": {
-          "observations": 88,
+          "observations": 500,
           "status": "covered",
-          "zero_rate": 0.23863636363636365
+          "zero_rate": 0.26
         },
         "yellow_cards": {
-          "observations": 88,
+          "observations": 500,
           "status": "covered",
-          "zero_rate": 0.03409090909090909
+          "zero_rate": 0.046
         },
         "yellow_cards_first_half": {
-          "observations": 88,
+          "observations": 500,
           "status": "covered",
-          "zero_rate": 0.3977272727272727
+          "zero_rate": 0.376
         }
       },
-      "observations": 88
+      "observations": 500
     },
     "col.1": {
       "metrics": {
         "corners": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.010752688172043012
         },
         "corners_first_half": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.11475409836065574
+          "zero_rate": 0.1
         },
         "red_cards": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.7786885245901639
+          "zero_rate": 0.7849462365591398
         },
         "shots": {
-          "observations": 122,
+          "alias_rate": 0.0032258064516129032,
+          "observations": 930,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.02459016393442623
+          "zero_rate": 0.03655913978494624
         },
         "yellow_cards": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.09836065573770492
+          "zero_rate": 0.06129032258064516
         },
         "yellow_cards_first_half": {
-          "observations": 122,
+          "observations": 930,
           "status": "covered",
-          "zero_rate": 0.39344262295081966
+          "zero_rate": 0.3419354838709677
         }
       },
-      "observations": 122
+      "observations": 930
     },
     "concacaf.champions": {
       "metrics": {
         "corners": {
-          "observations": 20,
+          "observations": 122,
           "status": "covered",
-          "zero_rate": 0.25
+          "zero_rate": 0.06557377049180328
         },
         "corners_first_half": {
-          "observations": 20,
+          "observations": 122,
           "status": "covered",
-          "zero_rate": 0.5
+          "zero_rate": 0.1721311475409836
         },
         "red_cards": {
-          "observations": 20,
+          "observations": 122,
           "status": "covered",
-          "zero_rate": 0.95
+          "zero_rate": 0.9590163934426229
         },
         "shots": {
-          "observations": 20,
+          "alias_rate": 0.00819672131147541,
+          "observations": 122,
+          "status": "covered",
+          "zero_rate": 0.00819672131147541
+        },
+        "shots_on_target": {
+          "observations": 122,
+          "status": "covered",
+          "zero_rate": 0.03278688524590164
+        },
+        "yellow_cards": {
+          "observations": 122,
+          "status": "covered",
+          "zero_rate": 0.13934426229508196
+        },
+        "yellow_cards_first_half": {
+          "observations": 122,
+          "status": "covered",
+          "zero_rate": 0.5163934426229508
+        }
+      },
+      "observations": 122
+    },
+    "concacaf.gold": {
+      "metrics": {
+        "corners": {
+          "observations": 62,
+          "status": "covered",
+          "zero_rate": 0.016129032258064516
+        },
+        "corners_first_half": {
+          "observations": 62,
+          "status": "covered",
+          "zero_rate": 0.08064516129032258
+        },
+        "red_cards": {
+          "observations": 62,
+          "status": "covered",
+          "zero_rate": 0.9354838709677419
+        },
+        "shots": {
+          "alias_rate": 0.0,
+          "observations": 62,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 20,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.04838709677419355
         },
         "yellow_cards": {
-          "observations": 20,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.12903225806451613
         },
         "yellow_cards_first_half": {
-          "observations": 20,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.4
+          "zero_rate": 0.5483870967741935
         }
       },
-      "observations": 20
+      "observations": 62
+    },
+    "concacaf.nations.league": {
+      "metrics": {
+        "corners": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.0
+        },
+        "corners_first_half": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.0
+        },
+        "red_cards": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.875
+        },
+        "shots": {
+          "alias_rate": 0.0,
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.0
+        },
+        "shots_on_target": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.125
+        },
+        "yellow_cards": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.125
+        },
+        "yellow_cards_first_half": {
+          "observations": 8,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.375
+        }
+      },
+      "observations": 8
     },
     "conmebol.libertadores": {
       "metrics": {
         "corners": {
-          "observations": 22,
-          "status": "covered",
-          "zero_rate": 0.36363636363636365
+          "observations": 328,
+          "status": "absent",
+          "zero_rate": 0.9390243902439024
         },
         "corners_first_half": {
-          "observations": 22,
-          "status": "covered",
-          "zero_rate": 0.45454545454545453
+          "observations": 328,
+          "status": "absent",
+          "zero_rate": 0.9512195121951219
         },
         "red_cards": {
-          "observations": 22,
+          "observations": 328,
           "status": "covered",
-          "zero_rate": 0.8636363636363636
+          "zero_rate": 0.8780487804878049
         },
         "shots": {
-          "observations": 22,
+          "alias_rate": 0.006097560975609756,
+          "observations": 328,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 22,
+          "observations": 328,
           "status": "covered",
-          "zero_rate": 0.09090909090909091
+          "zero_rate": 0.3201219512195122
         },
         "yellow_cards": {
-          "observations": 22,
+          "observations": 328,
           "status": "covered",
-          "zero_rate": 0.045454545454545456
+          "zero_rate": 0.07621951219512195
         },
         "yellow_cards_first_half": {
-          "observations": 22,
+          "observations": 328,
           "status": "covered",
-          "zero_rate": 0.36363636363636365
+          "zero_rate": 0.39634146341463417
         }
       },
-      "observations": 22
+      "observations": 328
     },
     "conmebol.sudamericana": {
       "metrics": {
         "corners": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.08333333333333333
+          "zero_rate": 0.09580838323353294
         },
         "corners_first_half": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.16666666666666666
+          "zero_rate": 0.20359281437125748
         },
         "red_cards": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.9166666666666666
+          "zero_rate": 0.8622754491017964
         },
         "shots": {
-          "observations": 24,
+          "alias_rate": 0.0,
+          "observations": 334,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.08333333333333333
+          "zero_rate": 0.0688622754491018
         },
         "yellow_cards": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.125
+          "zero_rate": 0.08682634730538923
         },
         "yellow_cards_first_half": {
-          "observations": 24,
+          "observations": 334,
           "status": "covered",
-          "zero_rate": 0.5416666666666666
+          "zero_rate": 0.4880239520958084
         }
       },
-      "observations": 24
+      "observations": 334
     },
     "eng.1": {
       "metrics": {
         "corners": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.015625
+          "zero_rate": 0.015463917525773196
         },
         "corners_first_half": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.078125
+          "zero_rate": 0.125
         },
         "red_cards": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.9583333333333334
+          "zero_rate": 0.9432989690721649
         },
         "shots": {
-          "observations": 192,
+          "alias_rate": 0.005154639175257732,
+          "observations": 776,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.036458333333333336
+          "zero_rate": 0.03608247422680412
         },
         "yellow_cards": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.16145833333333334
+          "zero_rate": 0.16881443298969073
         },
         "yellow_cards_first_half": {
-          "observations": 192,
+          "observations": 776,
           "status": "covered",
-          "zero_rate": 0.6197916666666666
+          "zero_rate": 0.5914948453608248
         }
       },
-      "observations": 192
+      "observations": 776
     },
     "eng.2": {
       "metrics": {
         "corners": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.01937984496124031
+          "zero_rate": 0.014084507042253521
         },
         "corners_first_half": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.07751937984496124
+          "zero_rate": 0.09859154929577464
         },
         "red_cards": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.9418604651162791
+          "zero_rate": 0.9419014084507042
         },
         "shots": {
-          "observations": 258,
+          "alias_rate": 0.0017605633802816902,
+          "observations": 1136,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.027131782945736434
+          "zero_rate": 0.037852112676056336
         },
         "yellow_cards": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.12790697674418605
+          "zero_rate": 0.15845070422535212
         },
         "yellow_cards_first_half": {
-          "observations": 258,
+          "observations": 1136,
           "status": "covered",
-          "zero_rate": 0.5503875968992248
+          "zero_rate": 0.5871478873239436
         }
       },
-      "observations": 258
+      "observations": 1136
     },
     "eng.3": {
       "metrics": {
         "corners": {
-          "observations": 226,
+          "observations": 1138,
           "status": "absent",
           "zero_rate": 1.0
         },
         "corners_first_half": {
-          "observations": 226,
+          "observations": 1138,
           "status": "absent",
           "zero_rate": 1.0
         },
         "red_cards": {
-          "observations": 226,
+          "observations": 1138,
           "status": "covered",
-          "zero_rate": 0.9557522123893806
+          "zero_rate": 0.9349736379613357
         },
         "shots": {
-          "observations": 226,
-          "status": "covered",
-          "zero_rate": 0.28761061946902655
+          "alias_rate": 1.0,
+          "observations": 1138,
+          "status": "absent",
+          "zero_rate": 0.273286467486819
         },
         "shots_on_target": {
-          "observations": 226,
+          "observations": 1138,
           "status": "covered",
-          "zero_rate": 0.28761061946902655
+          "zero_rate": 0.273286467486819
         },
         "yellow_cards": {
-          "observations": 226,
+          "observations": 1138,
           "status": "covered",
-          "zero_rate": 0.12389380530973451
+          "zero_rate": 0.14147627416520211
         },
         "yellow_cards_first_half": {
-          "observations": 226,
+          "observations": 1138,
           "status": "covered",
-          "zero_rate": 0.5353982300884956
+          "zero_rate": 0.5834797891036907
         }
       },
-      "observations": 226
+      "observations": 1138
     },
     "eng.4": {
       "metrics": {
         "corners": {
-          "observations": 236,
+          "observations": 1150,
           "status": "absent",
           "zero_rate": 1.0
         },
         "corners_first_half": {
-          "observations": 236,
+          "observations": 1150,
           "status": "absent",
           "zero_rate": 1.0
         },
         "red_cards": {
-          "observations": 236,
+          "observations": 1150,
           "status": "covered",
-          "zero_rate": 0.9279661016949152
+          "zero_rate": 0.9208695652173913
         },
         "shots": {
-          "observations": 236,
-          "status": "covered",
-          "zero_rate": 0.2627118644067797
+          "alias_rate": 1.0,
+          "observations": 1150,
+          "status": "absent",
+          "zero_rate": 0.2843478260869565
         },
         "shots_on_target": {
-          "observations": 236,
+          "observations": 1150,
           "status": "covered",
-          "zero_rate": 0.2627118644067797
+          "zero_rate": 0.2843478260869565
         },
         "yellow_cards": {
-          "observations": 236,
+          "observations": 1150,
           "status": "covered",
-          "zero_rate": 0.11864406779661017
+          "zero_rate": 0.1373913043478261
         },
         "yellow_cards_first_half": {
-          "observations": 236,
+          "observations": 1150,
           "status": "covered",
-          "zero_rate": 0.5889830508474576
+          "zero_rate": 0.5530434782608695
         }
       },
-      "observations": 236
+      "observations": 1150
     },
     "eng.5": {
       "metrics": {
         "corners": {
-          "observations": 220,
+          "observations": 1152,
           "status": "absent",
           "zero_rate": 1.0
         },
         "corners_first_half": {
-          "observations": 220,
+          "observations": 1152,
           "status": "absent",
           "zero_rate": 1.0
         },
         "red_cards": {
-          "observations": 220,
+          "observations": 1152,
           "status": "covered",
-          "zero_rate": 0.8954545454545455
+          "zero_rate": 0.9244791666666666
         },
         "shots": {
-          "observations": 220,
-          "status": "covered",
-          "zero_rate": 0.2318181818181818
+          "alias_rate": 1.0,
+          "observations": 1152,
+          "status": "absent",
+          "zero_rate": 0.2517361111111111
         },
         "shots_on_target": {
-          "observations": 220,
+          "observations": 1152,
           "status": "covered",
-          "zero_rate": 0.2318181818181818
+          "zero_rate": 0.2517361111111111
         },
         "yellow_cards": {
-          "observations": 220,
+          "observations": 1152,
           "status": "covered",
-          "zero_rate": 0.1590909090909091
+          "zero_rate": 0.1371527777777778
         },
         "yellow_cards_first_half": {
-          "observations": 220,
+          "observations": 1152,
           "status": "covered",
-          "zero_rate": 0.5545454545454546
+          "zero_rate": 0.578125
         }
       },
-      "observations": 220
+      "observations": 1152
     },
     "eng.fa": {
       "metrics": {
         "corners": {
-          "observations": 60,
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.5343511450381679
+        },
+        "corners_first_half": {
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.583969465648855
+        },
+        "red_cards": {
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.916030534351145
+        },
+        "shots": {
+          "alias_rate": 0.3969465648854962,
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.08778625954198473
+        },
+        "shots_on_target": {
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.1183206106870229
+        },
+        "yellow_cards": {
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.22137404580152673
+        },
+        "yellow_cards_first_half": {
+          "observations": 262,
+          "status": "covered",
+          "zero_rate": 0.6259541984732825
+        }
+      },
+      "observations": 262
+    },
+    "eng.league_cup": {
+      "metrics": {
+        "corners": {
+          "observations": 196,
           "status": "absent",
-          "zero_rate": 0.7166666666666667
+          "zero_rate": 0.8163265306122449
+        },
+        "corners_first_half": {
+          "observations": 196,
+          "status": "absent",
+          "zero_rate": 0.8367346938775511
+        },
+        "red_cards": {
+          "observations": 196,
+          "status": "covered",
+          "zero_rate": 0.9591836734693877
+        },
+        "shots": {
+          "alias_rate": 0.02040816326530612,
+          "observations": 196,
+          "status": "covered",
+          "zero_rate": 0.00510204081632653
+        },
+        "shots_on_target": {
+          "observations": 196,
+          "status": "covered",
+          "zero_rate": 0.19387755102040816
+        },
+        "yellow_cards": {
+          "observations": 196,
+          "status": "covered",
+          "zero_rate": 0.23469387755102042
+        },
+        "yellow_cards_first_half": {
+          "observations": 196,
+          "status": "covered",
+          "zero_rate": 0.6122448979591837
+        }
+      },
+      "observations": 196
+    },
+    "eng.w.1": {
+      "metrics": {
+        "corners": {
+          "observations": 296,
+          "status": "absent",
+          "zero_rate": 0.6283783783783784
+        },
+        "corners_first_half": {
+          "observations": 296,
+          "status": "absent",
+          "zero_rate": 0.6655405405405406
+        },
+        "red_cards": {
+          "observations": 296,
+          "status": "covered",
+          "zero_rate": 0.9662162162162162
+        },
+        "shots": {
+          "alias_rate": 0.6114864864864865,
+          "observations": 296,
+          "status": "absent",
+          "zero_rate": 0.13851351351351351
+        },
+        "shots_on_target": {
+          "observations": 296,
+          "status": "covered",
+          "zero_rate": 0.16216216216216217
+        },
+        "yellow_cards": {
+          "observations": 296,
+          "status": "covered",
+          "zero_rate": 0.2635135135135135
+        },
+        "yellow_cards_first_half": {
+          "observations": 296,
+          "status": "covered",
+          "zero_rate": 0.6891891891891891
+        }
+      },
+      "observations": 296
+    },
+    "esp.1": {
+      "metrics": {
+        "corners": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.019736842105263157
+        },
+        "corners_first_half": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.10789473684210527
+        },
+        "red_cards": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.8842105263157894
+        },
+        "shots": {
+          "alias_rate": 0.003947368421052632,
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.0013157894736842105
+        },
+        "shots_on_target": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.02368421052631579
+        },
+        "yellow_cards": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.10526315789473684
+        },
+        "yellow_cards_first_half": {
+          "observations": 760,
+          "status": "covered",
+          "zero_rate": 0.5302631578947369
+        }
+      },
+      "observations": 760
+    },
+    "esp.2": {
+      "metrics": {
+        "corners": {
+          "observations": 916,
+          "status": "absent",
+          "zero_rate": 1.0
+        },
+        "corners_first_half": {
+          "observations": 916,
+          "status": "absent",
+          "zero_rate": 1.0
+        },
+        "red_cards": {
+          "observations": 916,
+          "status": "covered",
+          "zero_rate": 0.8679039301310044
+        },
+        "shots": {
+          "alias_rate": 1.0,
+          "observations": 916,
+          "status": "absent",
+          "zero_rate": 0.27292576419213976
+        },
+        "shots_on_target": {
+          "observations": 916,
+          "status": "covered",
+          "zero_rate": 0.27292576419213976
+        },
+        "yellow_cards": {
+          "observations": 916,
+          "status": "covered",
+          "zero_rate": 0.07751091703056769
+        },
+        "yellow_cards_first_half": {
+          "observations": 916,
+          "status": "covered",
+          "zero_rate": 0.4737991266375546
+        }
+      },
+      "observations": 916
+    },
+    "esp.super_cup": {
+      "metrics": {
+        "corners": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "corners_first_half": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "red_cards": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.8333333333333334
+        },
+        "shots": {
+          "alias_rate": 1.0,
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.25
+        },
+        "shots_on_target": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.25
+        },
+        "yellow_cards": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.3333333333333333
+        },
+        "yellow_cards_first_half": {
+          "observations": 12,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.9166666666666666
+        }
+      },
+      "observations": 12
+    },
+    "esp.w.1": {
+      "metrics": {
+        "corners": {
+          "observations": 522,
+          "status": "absent",
+          "zero_rate": 1.0
+        },
+        "corners_first_half": {
+          "observations": 522,
+          "status": "absent",
+          "zero_rate": 1.0
+        },
+        "red_cards": {
+          "observations": 522,
+          "status": "covered",
+          "zero_rate": 0.9444444444444444
+        },
+        "shots": {
+          "alias_rate": 1.0,
+          "observations": 522,
+          "status": "absent",
+          "zero_rate": 0.32375478927203066
+        },
+        "shots_on_target": {
+          "observations": 522,
+          "status": "covered",
+          "zero_rate": 0.32375478927203066
+        },
+        "yellow_cards": {
+          "observations": 522,
+          "status": "covered",
+          "zero_rate": 0.20689655172413793
+        },
+        "yellow_cards_first_half": {
+          "observations": 522,
+          "status": "covered",
+          "zero_rate": 0.6168582375478927
+        }
+      },
+      "observations": 522
+    },
+    "fifa.cwc": {
+      "metrics": {
+        "corners": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.03125
+        },
+        "corners_first_half": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.15625
+        },
+        "red_cards": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.8984375
+        },
+        "shots": {
+          "alias_rate": 0.015625,
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.0
+        },
+        "shots_on_target": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.0234375
+        },
+        "yellow_cards": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.2265625
+        },
+        "yellow_cards_first_half": {
+          "observations": 128,
+          "status": "covered",
+          "zero_rate": 0.578125
+        }
+      },
+      "observations": 128
+    },
+    "fifa.friendly.w": {
+      "metrics": {
+        "corners": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.5754716981132075
+        },
+        "corners_first_half": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.5943396226415094
+        },
+        "red_cards": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.9716981132075472
+        },
+        "shots": {
+          "alias_rate": 0.08018867924528301,
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.04245283018867924
+        },
+        "shots_on_target": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.19339622641509435
+        },
+        "yellow_cards": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.4386792452830189
+        },
+        "yellow_cards_first_half": {
+          "observations": 212,
+          "status": "covered",
+          "zero_rate": 0.7735849056603774
+        }
+      },
+      "observations": 212
+    },
+    "fifa.intercontinental_cup": {
+      "metrics": {
+        "corners": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.5
+        },
+        "corners_first_half": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.7
+        },
+        "red_cards": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "shots": {
+          "alias_rate": 0.0,
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.0
+        },
+        "shots_on_target": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.1
+        },
+        "yellow_cards": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.4
+        },
+        "yellow_cards_first_half": {
+          "observations": 10,
+          "status": "insufficient_evidence",
+          "zero_rate": 0.6
+        }
+      },
+      "observations": 10
+    },
+    "fifa.worldq.concacaf": {
+      "metrics": {
+        "corners": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.23484848484848486
+        },
+        "corners_first_half": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.2803030303030303
+        },
+        "red_cards": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.946969696969697
+        },
+        "shots": {
+          "alias_rate": 0.03787878787878788,
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.015151515151515152
+        },
+        "shots_on_target": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.06060606060606061
+        },
+        "yellow_cards": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.2196969696969697
+        },
+        "yellow_cards_first_half": {
+          "observations": 132,
+          "status": "covered",
+          "zero_rate": 0.5378787878787878
+        }
+      },
+      "observations": 132
+    },
+    "fifa.worldq.conmebol": {
+      "metrics": {
+        "corners": {
+          "observations": 60,
+          "status": "covered",
+          "zero_rate": 0.18333333333333332
         },
         "corners_first_half": {
           "observations": 60,
-          "status": "absent",
-          "zero_rate": 0.7333333333333333
+          "status": "covered",
+          "zero_rate": 0.25
         },
         "red_cards": {
           "observations": 60,
@@ -499,827 +1044,561 @@
           "zero_rate": 0.8833333333333333
         },
         "shots": {
+          "alias_rate": 0.016666666666666666,
           "observations": 60,
           "status": "covered",
-          "zero_rate": 0.11666666666666667
+          "zero_rate": 0.016666666666666666
         },
         "shots_on_target": {
           "observations": 60,
           "status": "covered",
-          "zero_rate": 0.18333333333333332
+          "zero_rate": 0.16666666666666666
         },
         "yellow_cards": {
           "observations": 60,
           "status": "covered",
-          "zero_rate": 0.11666666666666667
+          "zero_rate": 0.16666666666666666
         },
         "yellow_cards_first_half": {
           "observations": 60,
           "status": "covered",
-          "zero_rate": 0.5333333333333333
+          "zero_rate": 0.6
         }
       },
       "observations": 60
     },
-    "eng.league_cup": {
-      "metrics": {
-        "corners": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.3333333333333333
-        },
-        "corners_first_half": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.4444444444444444
-        },
-        "red_cards": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 1.0
-        },
-        "shots": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.0
-        },
-        "shots_on_target": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.0
-        },
-        "yellow_cards": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.16666666666666666
-        },
-        "yellow_cards_first_half": {
-          "observations": 18,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.3333333333333333
-        }
-      },
-      "observations": 18
-    },
-    "eng.w.1": {
-      "metrics": {
-        "corners": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.04285714285714286
-        },
-        "corners_first_half": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.12857142857142856
-        },
-        "red_cards": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.9571428571428572
-        },
-        "shots": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.0
-        },
-        "shots_on_target": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.08571428571428572
-        },
-        "yellow_cards": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.2571428571428571
-        },
-        "yellow_cards_first_half": {
-          "observations": 70,
-          "status": "covered",
-          "zero_rate": 0.6571428571428571
-        }
-      },
-      "observations": 70
-    },
-    "esp.1": {
-      "metrics": {
-        "corners": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.02112676056338028
-        },
-        "corners_first_half": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.09154929577464789
-        },
-        "red_cards": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.8661971830985915
-        },
-        "shots": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.0
-        },
-        "shots_on_target": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.014084507042253521
-        },
-        "yellow_cards": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.08450704225352113
-        },
-        "yellow_cards_first_half": {
-          "observations": 142,
-          "status": "covered",
-          "zero_rate": 0.5211267605633803
-        }
-      },
-      "observations": 142
-    },
-    "esp.2": {
-      "metrics": {
-        "corners": {
-          "observations": 174,
-          "status": "absent",
-          "zero_rate": 1.0
-        },
-        "corners_first_half": {
-          "observations": 174,
-          "status": "absent",
-          "zero_rate": 1.0
-        },
-        "red_cards": {
-          "observations": 174,
-          "status": "covered",
-          "zero_rate": 0.8850574712643678
-        },
-        "shots": {
-          "observations": 174,
-          "status": "covered",
-          "zero_rate": 0.2471264367816092
-        },
-        "shots_on_target": {
-          "observations": 174,
-          "status": "covered",
-          "zero_rate": 0.2471264367816092
-        },
-        "yellow_cards": {
-          "observations": 174,
-          "status": "covered",
-          "zero_rate": 0.06321839080459771
-        },
-        "yellow_cards_first_half": {
-          "observations": 174,
-          "status": "covered",
-          "zero_rate": 0.40804597701149425
-        }
-      },
-      "observations": 174
-    },
-    "esp.super_cup": {
-      "metrics": {
-        "corners": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 1.0
-        },
-        "corners_first_half": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 1.0
-        },
-        "red_cards": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.8333333333333334
-        },
-        "shots": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.16666666666666666
-        },
-        "shots_on_target": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.16666666666666666
-        },
-        "yellow_cards": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.5
-        },
-        "yellow_cards_first_half": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 1.0
-        }
-      },
-      "observations": 6
-    },
-    "esp.w.1": {
-      "metrics": {
-        "corners": {
-          "observations": 100,
-          "status": "absent",
-          "zero_rate": 1.0
-        },
-        "corners_first_half": {
-          "observations": 100,
-          "status": "absent",
-          "zero_rate": 1.0
-        },
-        "red_cards": {
-          "observations": 100,
-          "status": "covered",
-          "zero_rate": 0.95
-        },
-        "shots": {
-          "observations": 100,
-          "status": "covered",
-          "zero_rate": 0.3
-        },
-        "shots_on_target": {
-          "observations": 100,
-          "status": "covered",
-          "zero_rate": 0.3
-        },
-        "yellow_cards": {
-          "observations": 100,
-          "status": "covered",
-          "zero_rate": 0.14
-        },
-        "yellow_cards_first_half": {
-          "observations": 100,
-          "status": "covered",
-          "zero_rate": 0.67
-        }
-      },
-      "observations": 100
-    },
-    "fifa.friendly.w": {
-      "metrics": {
-        "corners": {
-          "observations": 64,
-          "status": "absent",
-          "zero_rate": 0.796875
-        },
-        "corners_first_half": {
-          "observations": 64,
-          "status": "absent",
-          "zero_rate": 0.796875
-        },
-        "red_cards": {
-          "observations": 64,
-          "status": "covered",
-          "zero_rate": 0.984375
-        },
-        "shots": {
-          "observations": 64,
-          "status": "covered",
-          "zero_rate": 0.03125
-        },
-        "shots_on_target": {
-          "observations": 64,
-          "status": "covered",
-          "zero_rate": 0.25
-        },
-        "yellow_cards": {
-          "observations": 64,
-          "status": "covered",
-          "zero_rate": 0.453125
-        },
-        "yellow_cards_first_half": {
-          "observations": 64,
-          "status": "covered",
-          "zero_rate": 0.796875
-        }
-      },
-      "observations": 64
-    },
-    "fifa.intercontinental_cup": {
-      "metrics": {
-        "corners": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.3333333333333333
-        },
-        "corners_first_half": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.6666666666666666
-        },
-        "red_cards": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 1.0
-        },
-        "shots": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.0
-        },
-        "shots_on_target": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.0
-        },
-        "yellow_cards": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.16666666666666666
-        },
-        "yellow_cards_first_half": {
-          "observations": 6,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.5
-        }
-      },
-      "observations": 6
-    },
-    "fifa.worldq.concacaf": {
-      "metrics": {
-        "corners": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.375
-        },
-        "corners_first_half": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.4583333333333333
-        },
-        "red_cards": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.875
-        },
-        "shots": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.0
-        },
-        "shots_on_target": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.041666666666666664
-        },
-        "yellow_cards": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.16666666666666666
-        },
-        "yellow_cards_first_half": {
-          "observations": 24,
-          "status": "covered",
-          "zero_rate": 0.7083333333333334
-        }
-      },
-      "observations": 24
-    },
     "fifa.worldq.uefa": {
       "metrics": {
         "corners": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.017241379310344827
+          "zero_rate": 0.007425742574257425
         },
         "corners_first_half": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.09482758620689655
+          "zero_rate": 0.0891089108910891
         },
         "red_cards": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.9224137931034483
+          "zero_rate": 0.9257425742574258
         },
         "shots": {
-          "observations": 116,
+          "alias_rate": 0.024752475247524754,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.008620689655172414
+          "zero_rate": 0.009900990099009901
         },
         "shots_on_target": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.06896551724137931
+          "zero_rate": 0.07673267326732673
         },
         "yellow_cards": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.1896551724137931
+          "zero_rate": 0.17326732673267325
         },
         "yellow_cards_first_half": {
-          "observations": 116,
+          "observations": 404,
           "status": "covered",
-          "zero_rate": 0.6379310344827587
+          "zero_rate": 0.5915841584158416
         }
       },
-      "observations": 116
+      "observations": 404
     },
     "fra.1": {
       "metrics": {
         "corners": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.020061728395061727
         },
         "corners_first_half": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.16363636363636364
+          "zero_rate": 0.12962962962962962
         },
         "red_cards": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.8181818181818182
+          "zero_rate": 0.8626543209876543
         },
         "shots": {
-          "observations": 110,
+          "alias_rate": 0.0030864197530864196,
+          "observations": 648,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.00909090909090909
+          "zero_rate": 0.024691358024691357
         },
         "yellow_cards": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.10909090909090909
+          "zero_rate": 0.10802469135802469
         },
         "yellow_cards_first_half": {
-          "observations": 110,
+          "observations": 648,
           "status": "covered",
-          "zero_rate": 0.5636363636363636
+          "zero_rate": 0.5138888888888888
         }
       },
-      "observations": 110
+      "observations": 648
     },
     "ger.1": {
       "metrics": {
         "corners": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.0234375
+          "zero_rate": 0.011075949367088608
         },
         "corners_first_half": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.09375
+          "zero_rate": 0.12183544303797468
         },
         "red_cards": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.90625
+          "zero_rate": 0.9113924050632911
         },
         "shots": {
-          "observations": 128,
+          "alias_rate": 0.0031645569620253164,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.0
+          "zero_rate": 0.0015822784810126582
         },
         "shots_on_target": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.0390625
+          "zero_rate": 0.03164556962025317
         },
         "yellow_cards": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.171875
+          "zero_rate": 0.1518987341772152
         },
         "yellow_cards_first_half": {
-          "observations": 128,
+          "observations": 632,
           "status": "covered",
-          "zero_rate": 0.53125
+          "zero_rate": 0.5632911392405063
         }
       },
-      "observations": 128
+      "observations": 632
     },
     "ita.1": {
       "metrics": {
         "corners": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.013157894736842105
+          "zero_rate": 0.021164021164021163
         },
         "corners_first_half": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.09868421052631579
+          "zero_rate": 0.1164021164021164
         },
         "red_cards": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.8947368421052632
+          "zero_rate": 0.8915343915343915
         },
         "shots": {
-          "observations": 152,
+          "alias_rate": 0.0,
+          "observations": 756,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.03289473684210526
+          "zero_rate": 0.0291005291005291
         },
         "yellow_cards": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.07236842105263158
+          "zero_rate": 0.1164021164021164
         },
         "yellow_cards_first_half": {
-          "observations": 152,
+          "observations": 756,
           "status": "covered",
-          "zero_rate": 0.4934210526315789
+          "zero_rate": 0.5304232804232805
         }
       },
-      "observations": 152
+      "observations": 756
     },
     "mex.1": {
       "metrics": {
         "corners": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.012755102040816327
+          "zero_rate": 0.00980392156862745
         },
         "corners_first_half": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.10714285714285714
+          "zero_rate": 0.09607843137254903
         },
         "red_cards": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.8239795918367347
+          "zero_rate": 0.8196078431372549
         },
         "shots": {
-          "observations": 392,
+          "alias_rate": 0.0029411764705882353,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.002551020408163265
+          "zero_rate": 0.000980392156862745
         },
         "shots_on_target": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.017857142857142856
+          "zero_rate": 0.024509803921568627
         },
         "yellow_cards": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.10204081632653061
+          "zero_rate": 0.08235294117647059
         },
         "yellow_cards_first_half": {
-          "observations": 392,
+          "observations": 1020,
           "status": "covered",
-          "zero_rate": 0.4413265306122449
+          "zero_rate": 0.4588235294117647
         }
       },
-      "observations": 392
+      "observations": 1020
     },
     "uefa.champions": {
       "metrics": {
         "corners": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.009433962264150943
+          "zero_rate": 0.01507537688442211
         },
         "corners_first_half": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.12264150943396226
+          "zero_rate": 0.13819095477386933
         },
         "red_cards": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.9056603773584906
+          "zero_rate": 0.8919597989949749
         },
         "shots": {
-          "observations": 106,
+          "alias_rate": 0.002512562814070352,
+          "observations": 398,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.018867924528301886
+          "zero_rate": 0.01507537688442211
         },
         "yellow_cards": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.14150943396226415
+          "zero_rate": 0.16080402010050251
         },
         "yellow_cards_first_half": {
-          "observations": 106,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.5
+          "zero_rate": 0.5603015075376885
         }
       },
-      "observations": 106
+      "observations": 398
     },
     "uefa.europa": {
       "metrics": {
         "corners": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.015625
+          "zero_rate": 0.017587939698492462
         },
         "corners_first_half": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.109375
+          "zero_rate": 0.12060301507537688
         },
         "red_cards": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.8828125
+          "zero_rate": 0.8969849246231156
         },
         "shots": {
-          "observations": 128,
+          "alias_rate": 0.002512562814070352,
+          "observations": 398,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.046875
+          "zero_rate": 0.022613065326633167
         },
         "yellow_cards": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.109375
+          "zero_rate": 0.11809045226130653
         },
         "yellow_cards_first_half": {
-          "observations": 128,
+          "observations": 398,
           "status": "covered",
-          "zero_rate": 0.5546875
+          "zero_rate": 0.5226130653266332
         }
       },
-      "observations": 128
+      "observations": 398
     },
     "uefa.europa.conf": {
       "metrics": {
         "corners": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.03048780487804878
+          "zero_rate": 0.024539877300613498
         },
         "corners_first_half": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.17073170731707318
+          "zero_rate": 0.15337423312883436
         },
         "red_cards": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.9146341463414634
+          "zero_rate": 0.8895705521472392
         },
         "shots": {
-          "observations": 164,
+          "alias_rate": 0.006134969325153374,
+          "observations": 326,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.042682926829268296
+          "zero_rate": 0.03374233128834356
         },
         "yellow_cards": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.09146341463414634
+          "zero_rate": 0.0736196319018405
         },
         "yellow_cards_first_half": {
-          "observations": 164,
+          "observations": 326,
           "status": "covered",
-          "zero_rate": 0.5609756097560976
+          "zero_rate": 0.5306748466257669
         }
       },
-      "observations": 164
+      "observations": 326
     },
     "uefa.nations": {
       "metrics": {
         "corners": {
-          "observations": 8,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.0
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.015625
         },
         "corners_first_half": {
-          "observations": 8,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.125
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.109375
         },
         "red_cards": {
-          "observations": 8,
-          "status": "insufficient_evidence",
-          "zero_rate": 0.875
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.9375
         },
         "shots": {
-          "observations": 8,
+          "alias_rate": 0.0,
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.0
+        },
+        "shots_on_target": {
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.015625
+        },
+        "yellow_cards": {
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.109375
+        },
+        "yellow_cards_first_half": {
+          "observations": 64,
+          "status": "covered",
+          "zero_rate": 0.53125
+        }
+      },
+      "observations": 64
+    },
+    "uefa.super_cup": {
+      "metrics": {
+        "corners": {
+          "observations": 2,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "corners_first_half": {
+          "observations": 2,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "red_cards": {
+          "observations": 2,
+          "status": "insufficient_evidence",
+          "zero_rate": 1.0
+        },
+        "shots": {
+          "alias_rate": 1.0,
+          "observations": 2,
           "status": "insufficient_evidence",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 8,
+          "observations": 2,
           "status": "insufficient_evidence",
           "zero_rate": 0.0
         },
         "yellow_cards": {
-          "observations": 8,
+          "observations": 2,
           "status": "insufficient_evidence",
-          "zero_rate": 0.125
+          "zero_rate": 0.0
         },
         "yellow_cards_first_half": {
-          "observations": 8,
+          "observations": 2,
           "status": "insufficient_evidence",
-          "zero_rate": 0.25
+          "zero_rate": 1.0
         }
       },
-      "observations": 8
+      "observations": 2
     },
     "uefa.wchampions": {
       "metrics": {
         "corners": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.010869565217391304
+          "zero_rate": 0.006493506493506494
         },
         "corners_first_half": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.07608695652173914
+          "zero_rate": 0.045454545454545456
         },
         "red_cards": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.9347826086956522
+          "zero_rate": 0.9415584415584416
         },
         "shots": {
-          "observations": 92,
+          "alias_rate": 0.01948051948051948,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.010869565217391304
+          "zero_rate": 0.006493506493506494
         },
         "shots_on_target": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.05434782608695652
+          "zero_rate": 0.05194805194805195
         },
         "yellow_cards": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.29347826086956524
+          "zero_rate": 0.3181818181818182
         },
         "yellow_cards_first_half": {
-          "observations": 92,
+          "observations": 154,
           "status": "covered",
-          "zero_rate": 0.6630434782608695
+          "zero_rate": 0.7207792207792207
         }
       },
-      "observations": 92
+      "observations": 154
     },
-    "usa.1": {
+    "uefa.weuro": {
       "metrics": {
         "corners": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.021739130434782608
+          "zero_rate": 0.0
         },
         "corners_first_half": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.1956521739130435
+          "zero_rate": 0.06451612903225806
         },
         "red_cards": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.8913043478260869
+          "zero_rate": 0.9032258064516129
         },
         "shots": {
-          "observations": 46,
+          "alias_rate": 0.0,
+          "observations": 62,
           "status": "covered",
           "zero_rate": 0.0
         },
         "shots_on_target": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.021739130434782608
+          "zero_rate": 0.03225806451612903
         },
         "yellow_cards": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.10869565217391304
+          "zero_rate": 0.24193548387096775
         },
         "yellow_cards_first_half": {
-          "observations": 46,
+          "observations": 62,
           "status": "covered",
-          "zero_rate": 0.391304347826087
+          "zero_rate": 0.6774193548387096
         }
       },
-      "observations": 46
+      "observations": 62
+    },
+    "usa.1": {
+      "metrics": {
+        "corners": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.019927536231884056
+        },
+        "corners_first_half": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.10416666666666667
+        },
+        "red_cards": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.9211956521739131
+        },
+        "shots": {
+          "alias_rate": 0.006340579710144928,
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.0
+        },
+        "shots_on_target": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.022644927536231884
+        },
+        "yellow_cards": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.11141304347826086
+        },
+        "yellow_cards_first_half": {
+          "observations": 1104,
+          "status": "covered",
+          "zero_rate": 0.5181159420289855
+        }
+      },
+      "observations": 1104
     }
   },
   "minimum_observations": 20,

@@ -21,7 +21,8 @@
     "cards_total_over_2_5",
     "corners_total_over_9_5",
     "first_half_corners_over_4_5",
-    "home_shots_over_10_5"
+    "home_shots_over_10_5",
+    "shots_total_over_22_5"
   ],
   "goal_model_modified": false,
   "market_gates": {
@@ -35,7 +36,7 @@
     "home_shots_over_10_5": true,
     "red_card_yes": false,
     "shots_on_target_total_over_7_5": true,
-    "shots_total_over_22_5": false
+    "shots_total_over_22_5": true
   },
   "player_markets_enabled": false,
   "router_modified": false,

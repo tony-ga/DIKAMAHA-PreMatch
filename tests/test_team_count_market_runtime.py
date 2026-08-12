@@ -250,11 +250,22 @@ def test_cambridge_barnet_exposes_probabilities_for_every_period(
 
     assert shadow is not None
     assert shadow["status"] == "experimental_shadow_not_promoted"
-    assert len(shadow["user_market_view"]) == 8
-    assert len(shadow["bounded_market_grid_view"]) == 21
+    # `eng.league_cup` quedó marcada sin cobertura real de córners (mapa de
+    # cobertura regenerado desde el corpus crudo, no desde una salida ya
+    # filtrada); el guard retira sus dos mercados de córners y conserva los
+    # cinco de tiros. Ver `src/metric_coverage.py` y DEC-173.
+    assert {row["key"] for row in shadow["user_market_view"]} == {
+        "away_shots_over_10_5", "away_shots_second_half_over_5_5",
+        "home_shots_first_half_over_5_5", "home_shots_second_half_over_5_5",
+        "shots_on_target_total_over_7_5",
+    }
+    assert len(shadow["bounded_market_grid_view"]) == 15
     assert {
         row["period"] for row in shadow["bounded_market_grid_view"]
     } == {"first_half", "second_half", "full_match"}
+    assert not any(
+        row["metric"] == "corners"
+        for row in shadow["bounded_market_grid_view"])
 
 
 # Version: 1.0.0

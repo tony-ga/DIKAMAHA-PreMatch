@@ -356,9 +356,68 @@ córners `home`/`away` en la zona media, y `shots home` 11.5–13.5. Ya no hay
 un patrón único que las explique; la siguiente iteración necesitaría
 diagnóstico línea a línea en vez de una corrección estructural.
 
-Pendiente para continuar: exponer en la Mini App las 324 líneas publicables
+### Cuarta corrección: alias de tiros y dependencia circular en el mapa de cobertura (2026-08-12)
+
+Al investigar las 26 líneas miscalibradas restantes, la hipótesis inicial de
+tendencia temporal resultó frágil al extrapolar (proyección con signo
+contrario al esperado para córners). Controlar por liga -en vez de por
+calendario- reveló la causa real: en seis ligas (`eng.3`, `eng.4`, `eng.5`,
+`esp.2`, `esp.w.1`, `chi.1`) **`shots` es exactamente igual a
+`shots_on_target` en 98-100% de las observaciones**, frente a 0.4-0.5% en
+ligas sanas -donde ocurre por azar en un partido con pocos tiros, todos a
+puerta-. El proveedor nunca envía tiros totales para esas ligas; el pipeline
+copió ahí el valor de tiros a puerta. Esas filas aportaban una media de ~1.3
+tiros en vez de ~10-13, arrastrando también el ajuste de las ligas sanas.
+
+`src/metric_coverage.py` incorpora esta segunda forma de ausencia por liga
+-alias, no cero- con el mismo umbral y la misma filosofía que ya usaba para
+córners. `shots_on_target` en esas ligas **no** se suprime: es el dato real,
+sólo `shots` (total) está contaminado.
+
+**Efecto colateral descubierto y corregido en el mismo commit**: el mapa de
+cobertura se generaba desde `team_predictions.json`, la salida YA filtrada
+del script de reparación -una dependencia circular real-. Una vez marcada
+`absent` una métrica, esa métrica desaparecía de las filas de esa liga en la
+salida, así que una segunda pasada del mapa de cobertura ya no encontraba la
+señal que la primera sí había encontrado. `scripts/run_metric_coverage_map.py`
+ahora lee directamente el corpus crudo de Fase 74, sin pasar por ninguna
+salida ya filtrada. Efecto: pasó de 33 a 39 ligas evaluables -con suficiente
+muestra ahora en el corpus completo- y detectó dos ligas más sin córners
+(`conmebol.libertadores`, `eng.league_cup`) que antes no tenían muestra
+suficiente en el split de confirmación por sí solo.
+
+Efecto de esta ronda sobre las 350 celdas:
+
+| | Anterior | Con alias + corpus crudo |
+| --- | ---: | ---: |
+| Publicables | 324 | **336** |
+| Con ventaja real | 94 | **101** |
+| Miscalibradas | 26 | **14** |
+
+El prior de tiros saltó de `9.229` a `11.619` al excluir las filas con alias
+-mucho más cerca de la media real (~9.9)-. Tiros mejoró de forma marcada: de
+3 a 21 líneas con ventaja real en el mercado `total`, de 12 a 21 en `home`, de
+16 a 27 en `away`.
+
+**Lo que queda (14 celdas) ya no comparte una causa estructural única.** Los
+gaps de calibración son pequeños (0.02-0.054, casi todos justo en el umbral)
+y el sesgo medio de córners **cambió de signo** entre esta ronda y la
+anterior (-0.067 → +0.227): el prior estimado desde `fit` no coincide
+exactamente con la realidad de `confirmation` porque son bloques
+cronológicos distintos, y ese desajuste no tiene una dirección fija -a veces
+sobra, a veces falta-. Es consistente con el límite estructural de un prior
+estático en un split walk-forward de tres bloques, no con un defecto de
+especificación nuevo. Corregirlo exigiría un prior que decae con el tiempo en
+vez de una constante fijada una sola vez, un cambio de arquitectura mayor
+frente al retorno ya decreciente de seguir iterando aquí.
+
+12 pruebas nuevas (alias, dependencia circular, regresión de Cambridge
+United-Barnet actualizada a la cobertura real). Suite completa: 762
+aprobadas / 8 omitidas.
+
+Pendiente para continuar: exponer en la Mini App las 336 líneas publicables
 etiquetadas por origen de fiabilidad (`model_edge` frente a
-`base_rate_driven`), suprimiendo las 26 miscalibradas.
+`base_rate_driven`), suprimiendo las 14 miscalibradas.
 
 ## Qué NO promete este objetivo
 

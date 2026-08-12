@@ -43,17 +43,32 @@ def _markets() -> list[str]:
 
 
 def test_league_without_corner_coverage_loses_only_corner_markets() -> None:
-    """`esp.2` no publica córners: se retiran esas líneas, no las demás."""
+    """`eng.league_cup` no publica córners pero sí tiros: sólo se retira lo que falta."""
+
+    provider = ArtifactTeamCountMarketProvider()
+
+    markets, ladders = provider._drop_uncovered(
+        _Request("eng.league_cup"), _markets(), _ladders())
+
+    assert not any("corners" in key for key in markets)
+    assert "away_shots_over_10_5" in markets
+    assert "shots_on_target_total_over_7_5" in markets
+    assert {row["metric"] for row in ladders} == {"shots", "yellow_cards"}
+
+
+def test_league_without_shots_data_also_loses_corners() -> None:
+    """`esp.2`: el proveedor nunca envía tiros totales -copia tiros a puerta,
+    detectado por alias- además de no publicar córners. `shots_on_target` es
+    el dato real y verdadero -el alias sólo contamina `shots`-, así que
+    sobrevive; sólo se retiran las líneas que dependen del bloque ausente."""
 
     provider = ArtifactTeamCountMarketProvider()
 
     markets, ladders = provider._drop_uncovered(
         _Request("esp.2"), _markets(), _ladders())
 
-    assert not any("corners" in key for key in markets)
-    assert "away_shots_over_10_5" in markets
-    assert "shots_on_target_total_over_7_5" in markets
-    assert {row["metric"] for row in ladders} == {"shots", "yellow_cards"}
+    assert markets == ["shots_on_target_total_over_7_5"]
+    assert {row["metric"] for row in ladders} == {"yellow_cards"}
 
 
 def test_corner_suppression_covers_every_period() -> None:
@@ -62,7 +77,7 @@ def test_corner_suppression_covers_every_period() -> None:
     provider = ArtifactTeamCountMarketProvider()
 
     _, ladders = provider._drop_uncovered(
-        _Request("esp.2"), _markets(), _ladders())
+        _Request("eng.league_cup"), _markets(), _ladders())
 
     assert not any(row["metric"] == "corners" for row in ladders)
 
