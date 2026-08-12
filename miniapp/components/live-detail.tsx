@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
-import { api, countLabel, edgeLabel, percentage, probabilityWidth, record } from "@/lib/client-api";
+import { api, countLabel, edgeLabel, percentage, probabilityWidth, record, unavailableReason } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
 import { EntityImage } from "@/components/entity-image";
 import { ProviderPredictor } from "@/components/provider-predictor";
@@ -16,6 +16,17 @@ const PressureChart = dynamic(() => import("@/components/pressure-chart"), { ssr
 type Props = { fixtureId: string; league: string };
 
 const LIVE_REFRESH_MS = 15_000;
+
+// Rechazos de contrato: el snapshot histórico o el fixture no van a cambiar
+// entre un refresco y el siguiente, así que seguir sondeando cada 15s sólo
+// repite el mismo 422 (visto en producción: ráfagas de una docena de intentos
+// para una Supercopa con historial insuficiente). `upstream_unavailable` y
+// errores de red sí son transitorios y conservan el auto-refresco.
+const TERMINAL_LIVE_ERRORS = new Set([
+  "league_history_below_minimum",
+  "unsupported_league",
+  "live_fixture_not_active",
+]);
 
 const STAT_ROWS = [
   ["goals", "Goles"],
@@ -225,7 +236,10 @@ export function LiveDetail({ fixtureId, league }: Props) {
       body: JSON.stringify({ league_slug: league, match_id: Number(fixtureId) }),
     }, csrfToken),
     enabled: Boolean(league && fixtureId),
-    refetchInterval: LIVE_REFRESH_MS,
+    refetchInterval: (activeQuery) => {
+      const code = activeQuery.state.error instanceof Error ? activeQuery.state.error.message : "";
+      return TERMINAL_LIVE_ERRORS.has(code) ? false : LIVE_REFRESH_MS;
+    },
     refetchOnWindowFocus: true,
   });
   const payload = query.data ?? {};
@@ -239,7 +253,10 @@ export function LiveDetail({ fixtureId, league }: Props) {
     : "—";
   const homeName = String(fixture.home_team_name ?? `Equipo ${String(fixture.home_team_id ?? "A")}`);
   const awayName = String(fixture.away_team_name ?? `Equipo ${String(fixture.away_team_id ?? "B")}`);
-  if (query.isError) return <StatePanel title="Predicción live no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>El snapshot fue rechazado o el partido ya no está activo.</StatePanel>;
+  if (query.isError) {
+    const { title, detail } = unavailableReason(query.error);
+    return <StatePanel title={title}>{detail}</StatePanel>;
+  }
   return (
     <>
       <PageHeader eyebrow={`${league} · AUTO 15 S`} title={`${homeName} vs ${awayName}`} action={

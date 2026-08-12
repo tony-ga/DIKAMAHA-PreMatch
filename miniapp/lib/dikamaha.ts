@@ -14,7 +14,17 @@ export class DikamahaError extends Error {
   }
 }
 
-/** Extrae el código de contrato de un error DIKAMAHA sin exponer el cuerpo. */
+/**
+ * Extrae el código de contrato de un error DIKAMAHA sin exponer el cuerpo.
+ *
+ * `detail.code` es una clasificación gruesa de tres valores para logs
+ * (`contract_validation_error`, `temporal_leakage`, `blocked_match_704766`);
+ * `detail.message` es la razón específica (`league_history_below_minimum`,
+ * `unsupported_league`...) que la interfaz necesita para explicar el fallo.
+ * Preferir `code` aquí descarta siempre la razón específica: todo 422 de
+ * contrato colapsaba en "contract_validation_error" y la interfaz nunca
+ * distinguía nada, aunque el backend sí lo reportara.
+ */
 function upstreamReason(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const detail = (payload as Record<string, unknown>).detail;
@@ -22,7 +32,7 @@ function upstreamReason(payload: unknown): string | null {
   if (!detail || typeof detail !== "object") return null;
   const code = (detail as Record<string, unknown>).code;
   const message = (detail as Record<string, unknown>).message;
-  const value = typeof code === "string" && code ? code : message;
+  const value = typeof message === "string" && message ? message : code;
   return typeof value === "string" && value ? value : null;
 }
 

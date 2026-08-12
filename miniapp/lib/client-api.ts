@@ -104,6 +104,55 @@ export function layerMarkets(value: unknown): Record<string, unknown> {
   return Object.keys(markets).length ? markets : layer;
 }
 
+/**
+ * Traduce el código de contrato de DIKAMAHA a una explicación concreta.
+ *
+ * Antes todo fallo mostraba "no cumple historia, identidad o cutoff causal",
+ * que mezcla tres causas distintas y no dice al usuario si el problema es suyo,
+ * del partido o del servicio. El caso más frecuente es una competición sin
+ * historial suficiente: la Supercopa de Europa, por ejemplo, tiene un único
+ * partido en el snapshot y el motor exige ocho de la misma competición.
+ * Compartida entre la vista pre-match y la vista live: ambas llaman al mismo
+ * contrato de predicción y pueden recibir los mismos códigos de rechazo.
+ */
+export function unavailableReason(error: unknown): { title: string; detail: string } {
+  const code = error instanceof Error ? error.message : "";
+  if (code === "league_history_below_minimum") {
+    return {
+      title: "Sin historial suficiente en esta competición",
+      detail:
+        "El modelo sólo predice con historial causal de la misma competición, " +
+        "y ésta no reúne los partidos mínimos en el snapshot. Ocurre en finales " +
+        "a partido único y torneos recién añadidos. No es un fallo del " +
+        "servicio: preferimos no publicar una probabilidad que no se sostiene.",
+    };
+  }
+  if (code === "unsupported_league") {
+    return {
+      title: "Competición no soportada",
+      detail: "Esta competición no forma parte del snapshot causal vigente.",
+    };
+  }
+  if (code === "live_fixture_not_active") {
+    return {
+      title: "El partido ya no está en vivo",
+      detail:
+        "El proveedor de datos dejó de reportarlo como activo; probablemente " +
+        "ya terminó. Vuelve al listado para ver los partidos en curso.",
+    };
+  }
+  if (code === "upstream_unavailable") {
+    return {
+      title: "Servicio no disponible",
+      detail: "No se pudo consultar el motor de predicción. Vuelve a intentarlo.",
+    };
+  }
+  return {
+    title: "Predicción no disponible",
+    detail: "El fixture no cumple historia, identidad o cutoff causal.",
+  };
+}
+
 export function queryString(values: Record<string, string | number | undefined>): string {
   const parameters = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {

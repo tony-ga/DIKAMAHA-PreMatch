@@ -7,10 +7,21 @@ let server: Server;
 let baseUrl = "";
 const requests: Array<{ path: string; key: string | undefined }> = [];
 let failuresRemaining = 0;
+let nextContractRejection: string | null = null;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
     requests.push({ path: request.url ?? "", key: request.headers["x-dikamaha-key"] as string | undefined });
+    if (nextContractRejection) {
+      const message = nextContractRejection;
+      nextContractRejection = null;
+      response.writeHead(422, { "Content-Type": "application/json" });
+      // Misma forma que `_error()` en dikamaha_service.py: `code` es una
+      // clasificación gruesa de tres valores para logs, `message` es la
+      // razón específica del rechazo.
+      response.end(JSON.stringify({ detail: { code: "contract_validation_error", message } }));
+      return;
+    }
     if (failuresRemaining > 0) {
       failuresRemaining -= 1;
       response.writeHead(503, { "Content-Type": "application/json" });
@@ -86,5 +97,21 @@ describe("authenticated BFF to DIKAMAHA connection", () => {
       "/v1/predict/upcoming", { method: "POST", body: "{}" },
     )).rejects.toBeInstanceOf(DikamahaError);
     expect(requests.length - before).toBe(1);
+  });
+
+  // Reporte real: Paris Saint-Germain vs Aston Villa (Supercopa de Europa) no
+  // mostraba ninguna predicción live. La API sí distinguía la razón exacta
+  // (`league_history_below_minimum`), pero `upstreamReason` prefería el
+  // código grueso de tres valores sobre el mensaje específico, así que todo
+  // 422 de contrato llegaba a la interfaz como "contract_validation_error" y
+  // nunca se distinguía nada.
+  it("surfaces the specific rejection reason instead of the coarse error bucket", async () => {
+    nextContractRejection = "league_history_below_minimum";
+    const { dikamahaRequest, DikamahaError } = await import("@/lib/dikamaha");
+    await expect(dikamahaRequest(
+      "/v1/predict/live/fixture", { method: "POST", body: "{}" },
+    )).rejects.toMatchObject(
+      new DikamahaError(422, "dikamaha_request_failed", "league_history_below_minimum"),
+    );
   });
 });
