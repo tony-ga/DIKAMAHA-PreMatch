@@ -60,6 +60,9 @@ artifacts/phase_106_probability_repair/*
 artifacts/phase_122_confidence_reliability/*
 !artifacts/phase_122_confidence_reliability/eligibility.json
 !artifacts/phase_122_confidence_reliability/hashes.json
+!artifacts/metric_coverage/
+artifacts/metric_coverage/*
+!artifacts/metric_coverage/coverage_map.json
 !artifacts/phase_114_live_markov_hawkes_v1/
 artifacts/phase_114_live_markov_hawkes_v1/*
 !artifacts/phase_114_live_markov_hawkes_v1/audit.json

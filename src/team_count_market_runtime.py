@@ -23,6 +23,7 @@ import numpy as np
 
 from src.artifact_integrity import artifact_hash_matches
 from src.market_calibration import ArtifactMarketCalibrationProvider
+from src.metric_coverage import MetricCoverage
 from src.team_count_markets import (
     negative_binomial_distribution,
     negative_binomial_over_probability,
@@ -375,6 +376,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         self, artifact_path: Path | None = None,
         markov_artifact_path: Path | None = None,
         calibration_provider: ArtifactMarketCalibrationProvider | None = None,
+        coverage: MetricCoverage | None = None,
     ) -> None:
         """Carga y valida configuración y modelos locales."""
 
@@ -387,6 +389,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         self._matches_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._calibration_provider = (
             calibration_provider or ArtifactMarketCalibrationProvider())
+        self._coverage = coverage or MetricCoverage()
 
     def _load(self) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
         """Carga artefactos únicamente tras verificar su integridad."""
@@ -542,11 +545,49 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         calibrated = self._apply_market_calibration(
             request, matches, probabilities)
         combined_enabled = sorted(set(enabled) | set(markov))
+        combined_enabled, ladders = self._drop_uncovered(
+            request, combined_enabled, ladders)
         return self._payload(
             request, source, matches, expected, baseline_expected,
             probabilities, baselines,
             combined_enabled, markov_expected, ladders, config["dispersions"],
             markov_meta, calibrated)
+
+    def _drop_uncovered(
+        self, request: Any, enabled: list[str], ladders: list[dict[str, Any]],
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """Retira los mercados cuya métrica esa liga no publica.
+
+        El proveedor no entrega córners para varias competiciones servidas
+        (`esp.2`, `eng.3-5`, `esp.w.1`, `chi.1`, `eng.fa`, `fifa.friendly.w`)
+        y el pipeline los almacenó como cero, de modo que el modelo aprendió
+        ~0.18 córners esperados y la salida llegaba a declarar "menos de 4.5:
+        99.99%" sobre un evento que ronda el 50%. Sin cobertura real es más
+        honesto no publicar la línea que publicar una certeza inventada.
+
+        Suprime la métrica completa -todos los periodos- porque una liga que
+        no publica córners tampoco los publica por mitad. Las tarjetas nunca
+        entran aquí: sus ceros son observaciones válidas, no datos ausentes.
+        """
+
+        league = str(getattr(request, "league_slug", "") or "")
+        if not league:
+            return enabled, ladders
+        absent = {
+            name.replace("_first_half", "")
+            for name in self._coverage.absent_metrics(league)}
+        if not absent:
+            return enabled, ladders
+        kept_markets = [
+            key for key in enabled
+            if MARKET_METADATA.get(key, (None,))[0] not in absent]
+        kept_ladders = [
+            row for row in ladders if str(row.get("metric")) not in absent]
+        LOGGER.info(
+            "metric_coverage_suppressed league=%s metrics=%s markets=%d ladders=%d",
+            league, sorted(absent), len(enabled) - len(kept_markets),
+            len(ladders) - len(kept_ladders))
+        return kept_markets, kept_ladders
 
     def _apply_market_calibration(
         self, request: Any, matches: list[dict[str, Any]],

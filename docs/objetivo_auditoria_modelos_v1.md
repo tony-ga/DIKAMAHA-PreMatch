@@ -174,6 +174,50 @@ Consecuencias para el objetivo:
 Orden de trabajo corregido: reparar cobertura → reestimar dispersión →
 auditar escalera completa → exponer.
 
+### Reparación aplicada (2026-08-12)
+
+Auditadas las siete métricas por liga, no sólo córners. El resultado obligó a
+distinguir dos fallos distintos, porque una regla única los habría confundido:
+
+| Métrica | Patrón | Veredicto |
+| --- | --- | --- |
+| `corners`, `corners_first_half` | 72–100% ceros en 8 ligas vs 0–4% en las sanas | ausencia **total por liga** |
+| `shots`, `shots_on_target` | 12–30% ceros en esas ligas vs **0%** en las sanas | ausencia **parcial por partido** |
+| `yellow_cards`, `yellow_cards_first_half` | 3–66% ceros, sin separación entre ligas | ceros **legítimos** |
+| `red_cards` | 76–100% ceros, media global 0.12 | ceros **legítimos** |
+
+Un umbral ingenuo de "muchos ceros = dato ausente" habría suprimido el mercado
+de tarjetas rojas, que es cero el 89% de las veces por razones normales del
+fútbol. Por eso el criterio de ausencia sólo se aplica a métricas cuyo cero es
+implausible en un partido profesional.
+
+Entregado:
+
+- `src/metric_coverage.py`: veredicto por liga (ausencia de métrica) y por
+  observación (`shots == 0` delata que el bloque de estadísticas del proveedor
+  no llegó, invalidando córners y tiros a puerta de esa misma fila).
+- `scripts/run_metric_coverage_map.py` + artefacto
+  `artifacts/metric_coverage/coverage_map.json`, construido desde el
+  walk-forward real de Fase 84A. Ocho ligas quedan marcadas sin córners:
+  `chi.1`, `eng.3`, `eng.4`, `eng.5`, `eng.fa`, `esp.2`, `esp.w.1`,
+  `fifa.friendly.w`. `esp.super_cup` queda `insufficient_evidence` (n=6): el
+  guard no afirma ausencia sin muestra.
+- `ArtifactTeamCountMarketProvider._drop_uncovered`: retira mercados y
+  escaleras de la métrica no cubierta, en todos los periodos, dejando intactas
+  las demás métricas de esa misma liga.
+- **Degradación abierta deliberada**: sin artefacto, o ante liga desconocida,
+  no se suprime nada. Suprimir exige evidencia positiva de que el dato falta.
+- Ese fail-open crea un riesgo conocido: si el mapa no viaja en la imagen
+  Docker, el fallo vuelve en silencio -exactamente lo que ocurrió con
+  `eligibility.json` de Fase 122-. Cubierto con `COPY` en el Dockerfile y una
+  prueba de regresión sobre el manifiesto.
+- 15 pruebas nuevas de cobertura y guard, más 1 de imagen Docker. Suite
+  completa: 730 aprobadas / 8 omitidas.
+
+Pendiente de esta reparación: la dispersión global de córners (`0.966`) sigue
+estimada sobre datos contaminados y debe reestimarse excluyendo las ligas sin
+cobertura antes de auditar la escalera completa.
+
 ## Qué NO promete este objetivo
 
 - No promete que todas las líneas 0.5–12.5 resulten aptas. Es probable que las

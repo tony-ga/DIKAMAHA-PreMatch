@@ -75,6 +75,21 @@ def test_dockerfile_copies_the_phase_122_eligibility_artifact() -> None:
             f"el Dockerfile no copia {name} de Fase 122")
 
 
+def test_dockerfile_copies_the_metric_coverage_map() -> None:
+    """El guard de cobertura falla abierto: sin el mapa, el bug vuelve mudo.
+
+    Si `coverage_map.json` no viaja en la imagen, `MetricCoverage.is_absent`
+    devuelve `False` para todo y los mercados sin datos reales -córners en
+    `esp.2`, `eng.3-5`, etc.- se vuelven a publicar con certezas inventadas,
+    sin ningún error visible. Es el mismo modo de fallo silencioso que ya
+    afectó a `eligibility.json` de Fase 122.
+    """
+
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    assert "artifacts/metric_coverage/coverage_map.json" in dockerfile, (
+        "el Dockerfile no copia el mapa de cobertura de métricas")
+
+
 def test_ledger_path_is_writable_by_the_runtime_user() -> None:
     """El ledger no puede apuntar a un punto de montaje ajeno al usuario `app`.
 

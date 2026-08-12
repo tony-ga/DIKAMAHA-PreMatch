@@ -45,6 +45,10 @@ COPY artifacts/phase_88_team_market_markov/config.json artifacts/phase_88_team_m
 COPY artifacts/phase_106_probability_repair/calibrator.json artifacts/phase_106_probability_repair/hashes.json /app/artifacts/phase_106_probability_repair/
 COPY artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json /app/artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 COPY artifacts/phase_122_confidence_reliability/eligibility.json artifacts/phase_122_confidence_reliability/hashes.json /app/artifacts/phase_122_confidence_reliability/
+# El guard de cobertura falla abierto: si este mapa no llega a la imagen, los
+# mercados sin datos reales vuelven a publicarse en silencio. Mismo modo de
+# fallo que ya ocurrió con eligibility.json de Fase 122.
+COPY artifacts/metric_coverage/coverage_map.json /app/artifacts/metric_coverage/coverage_map.json
 
 RUN addgroup --system app && adduser --system --ingroup app app \
     && mkdir -p /app/data /data \
