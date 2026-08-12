@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <Link href="/settings" className="user-chip" aria-label="Abrir ajustes">
           <span className="status-dot" />
-          {user?.firstName ?? "Usuario"}
+          <span className="user-chip-name">{user?.firstName ?? "Usuario"}</span>
         </Link>
       </header>
       <main className="content">{children}</main>

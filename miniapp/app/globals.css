@@ -75,9 +75,19 @@ button { color: inherit; }
   background: rgba(9, 20, 19, 0.82);
   backdrop-filter: blur(18px);
 }
-.wordmark { font-weight: 800; letter-spacing: 0.14em; font-size: 0.88rem; }
-.wordmark-dot, .status-dot { display: inline-block; border-radius: 999px; background: var(--mint); box-shadow: 0 0 12px var(--mint); }
+.wordmark { font-weight: 800; letter-spacing: 0.14em; font-size: 0.88rem; flex-shrink: 0; }
+.wordmark-dot, .status-dot { display: inline-block; border-radius: 999px; background: var(--mint); box-shadow: 0 0 12px var(--mint); flex-shrink: 0; }
 .wordmark-dot { width: 7px; height: 7px; margin-right: 6px; }
+/* Ítems flex por defecto se niegan a encoger por debajo del ancho de su
+   contenido (`min-width: auto`). Sin `min-width: 0` aquí, un nombre real de
+   Telegram más largo que el usado en pruebas empuja este chip más allá del
+   ancho del dispositivo, y como la barra está fija y presente desde el primer
+   pintado, WebKit calcula el zoom inicial de la página a partir de ese
+   desbordamiento — el usuario tiene que alejar el zoom manualmente para ver
+   la app completa. `max-width` evita además que un nombre muy largo se coma
+   toda la barra. */
+.user-chip { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.75rem; min-width: 0; max-width: 42vw; }
+.user-chip-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .status-dot { width: 6px; height: 6px; }
 .user-chip { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.75rem; }
 .content { width: min(100%, 820px); margin: 0 auto; padding: 18px; }

@@ -17,9 +17,19 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  // Sin `maximumScale`: fijarlo en 1 impedía ampliar con los dedos, que es un
-  // requisito de accesibilidad y además el recurso natural del usuario cuando
-  // una tabla no cabe. iOS lo ignora desde iOS 10, así que sólo perjudicaba.
+  // Se quitó una vez por accesibilidad (impedía el pellizco manual) y hubo
+  // que restaurarlo: un reporte real desde un iPhone 12 Pro mostró la app
+  // abriendo ya zoomeada, con el borde derecho cortado, hasta que el usuario
+  // alejaba el zoom con dos dedos — el patrón exacto del WebView de Telegram
+  // calculando mal su escala inicial cuando `maximum-scale` está ausente. Sin
+  // este valor, WebKit puede "ajustar a lo que ve" en el primer pintado (antes
+  // de que React termine de hidratar) y quedarse en ese zoom aunque el layout
+  // real quepa perfecto a escala 1. Este es un WebView embebido en Telegram,
+  // no un sitio abierto: el usuario ya cuenta con el zoom del sistema (Zoom /
+  // Texto más grande de iOS) si necesita ampliar algo, así que el costo de
+  // accesibilidad es mucho menor que el beneficio de que la app abra completa
+  // sin ajuste manual.
+  maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#091413",
 };

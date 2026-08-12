@@ -29,7 +29,7 @@ const PREDICTION = {
   },
 };
 
-async function stub(page: Page) {
+async function stub(page: Page, firstName = "Marco") {
   await page.route("https://telegram.org/js/**", (route) => route.fulfill({
     status: 200,
     contentType: "application/javascript",
@@ -38,7 +38,7 @@ async function stub(page: Page) {
   await page.route("**/api/session/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ user: { id: 42, firstName: "Marco" }, csrfToken: "t" }),
+    body: JSON.stringify({ user: { id: 42, firstName }, csrfToken: "t" }),
   }));
   await page.route("**/api/predict/upcoming", (route) => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify(PREDICTION),
@@ -101,11 +101,65 @@ for (const device of DEVICES) {
   });
 }
 
-test("the layout never blocks pinch zoom", async ({ page }) => {
+/**
+ * Reporte real de un iPhone 12 Pro: la app abría zoomeada de más y había que
+ * alejar el zoom con dos dedos para ver la pantalla completa; el nombre de
+ * usuario en la cabecera ("• ga…") aparecía cortado en el borde derecho.
+ *
+ * Todas las pruebas anteriores usaban `firstName: "Marco"` (5 caracteres), que
+ * nunca desborda, así que ninguna atrapó esto. `.user-chip` es un ítem flex
+ * dentro de `.topbar` sin `min-width: 0`; por defecto un ítem flex se niega a
+ * encoger por debajo del ancho de su contenido, así que un nombre real de
+ * Telegram más largo empuja el chip más allá del ancho del dispositivo. Como
+ * la barra está fija y presente desde el primer pintado (antes de que
+ * cualquier dato cargue), ese desbordamiento es precisamente el tipo de causa
+ * que hace que WebKit calcule un zoom inicial mayor que 1 en la carga.
+ */
+for (const device of DEVICES) {
+  test(`header fits ${device.name} (${device.width}px) with a long Telegram name`, async ({ page }) => {
+    await page.setViewportSize({ width: device.width, height: device.height });
+    // Sin espacios: el caso que más exige, porque no hay punto de quiebre
+    // natural para envolver la línea, sólo truncar.
+    await stub(page, "Wolfeschlegelsteinhausenbergerdorff");
+
+    await page.goto("/");
+    await expect(page.getByRole("link", { name: "Abrir ajustes" })).toBeVisible();
+
+    const result = await overflow(page);
+    expect(result.offenders).toEqual([]);
+    expect(result.documentScrollWidth).toBeLessThanOrEqual(device.width);
+  });
+}
+
+test("truncates a long Telegram name instead of letting it overflow", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await stub(page, "Wolfeschlegelsteinhausenbergerdorff");
+  await page.goto("/");
+
+  const chip = page.getByRole("link", { name: "Abrir ajustes" });
+  const box = await chip.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  await expect(page.locator(".user-chip-name")).toHaveCSS("text-overflow", "ellipsis");
+});
+
+/**
+ * `maximum-scale=1` es intencional en este WebView embebido en Telegram, no
+ * un descuido de accesibilidad. Se probó SIN él y produjo un reporte real de
+ * un iPhone 12 Pro: la app abría ya zoomeada de más, con el borde derecho
+ * cortado, hasta pellizcar para alejar. Sin `maximum-scale`, WebKit puede
+ * fijar la escala inicial según lo que ve en el primer pintado (antes de que
+ * React termine de hidratar) y quedarse ahí aunque el layout real quepa
+ * perfecto a escala 1. `user-scalable=no` sigue sin usarse: no bloquea el
+ * pellizco del usuario, sólo evita que el WebView elija mal el punto de
+ * partida.
+ */
+test("pins the initial scale without blocking manual zoom", async ({ page }) => {
   await stub(page);
   await page.goto("/");
   const content = await page.locator('meta[name="viewport"]').getAttribute("content");
   expect(content).toContain("width=device-width");
-  expect(content).not.toContain("maximum-scale");
+  expect(content).toContain("initial-scale=1");
+  expect(content).toContain("maximum-scale=1");
   expect(content).not.toContain("user-scalable=no");
 });
