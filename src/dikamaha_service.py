@@ -1509,6 +1509,7 @@ async def _call_with_timeout(request: Request, call_next: Any, config: ServiceCo
     try:
         multiplier = 7.0 if request.url.path in {
             "/v1/live", "/v1/upcoming", "/v1/explorer/teams",
+            "/v1/high-probability",
         } else 4.0 if request.url.path in {
             "/v1/predict/live/fixture", "/v1/provider/predictor",
             "/v1/provider/markets",

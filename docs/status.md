@@ -38,17 +38,33 @@ Implementada. Ver `DEC-171`. Paso 3 del plan de cierre del proyecto.
   oficial; no decide gate ni promoción, sólo publica la cifra comparable
   contra la tasa declarada por el gate v2 post-hoc de Fase 122.
 
-Estado: `implemented_pending_first_prospective_cohort`. El código está
-completo y probado, pero no se ha desplegado ni ejecutado en producción
-todavía: `total_frozen`/`total_settled` arrancan en cero. Gates: 12 pruebas
-nuevas en `tests/test_phase_123_high_probability_prospective.py`, suite
-completa 702 Python aprobadas/8 omitidas sin regresiones. Despliegue a
-Railway pendiente de aprobación del usuario.
+Estado: `railway_deployed_first_cycle_fixed`. Desplegado dentro del proceso
+que ya corre `TelegramChannelService` en el contenedor de `DIKAMAHA-PreMatch`
+-decisión del usuario de no crear un servicio Railway nuevo-, con su propio
+ciclo cada `HIGH_PROBABILITY_PROSPECTIVE_POLL_SECONDS` (1800s por defecto),
+aislado en un `try/except` amplio para que un fallo nunca tumbe el canal ni
+la API. Gates: 12 pruebas en `tests/test_phase_123_high_probability_prospective.py`,
+5 en `tests/test_phase_123_channel_publisher_integration.py`, suite completa
+714 Python aprobadas/8 omitidas sin regresiones.
+
+El primer ciclo real en producción falló con `PredictionGatewayError`. Ver
+`DEC-172`: la causa no era Fase 123, sino que `/v1/high-probability` nunca se
+agregó a la lista de rutas con timeout extendido (7x) en `_call_with_timeout`
+pese a barrer el mismo catálogo multi-liga que `/v1/live`/`/v1/upcoming` -el
+servidor se cortaba a sí mismo con 504 antes de terminar el barrido,
+probablemente afectando también a usuarios reales de `/mayor-probabilidad`
+en la Mini App, no sólo a la cohorte prospectiva-. Corregido con una línea
+en `src/dikamaha_service.py:1510-1511` y anclado con
+`tests/test_high_probability_timeout_allowlist.py` (2 pruebas nuevas).
 
 Limitación aceptada: si un fixture de un pick del menú nunca llega a
 liquidarse en `prediction_settlements` -por ejemplo, si el publicador del
 canal no lo escaneó ese día-, ese pick queda pendiente indefinidamente sin
 tope de espera, igual que Fase 121 acepta para el resumen diario.
+
+Verificación pendiente: confirmar en logs de producción que el próximo ciclo
+real (hasta 30 minutos tras este despliegue) complete con
+`phase123_cycle_completed` en vez de `phase123_cycle_failed`.
 
 ## Fase 122 — Menú de mayor probabilidad
 

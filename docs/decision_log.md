@@ -2999,6 +2999,50 @@ regresiones tras el refactor de `_shadow_verdicts`. Sin cohorte real todavía:
 el runner no se ha ejecutado en producción, así que `total_frozen`/
 `total_settled` están en cero hasta el primer despliegue.
 
+DEC-172
+Fecha: 2026-08-12
+Problema: al desplegar Fase 123 y observar su primer ciclo real contra
+producción, los primeros intentos fallaron con `PredictionGatewayError`. El
+mensaje original sólo exponía el tipo de excepción, siempre idéntico sin
+importar la causa; tras añadir detalle temporal (status code + `detail` de
+la respuesta, revertido después) la causa real quedó confirmada: `504`,
+`code: inference_timeout`. `_call_with_timeout` (`src/dikamaha_service.py:1506
+-1521`) envuelve cada request con un timeout que depende de la ruta -7x el
+`inference_timeout_seconds` configurado para `/v1/live`, `/v1/upcoming` y
+`/v1/explorer/teams`, que barren catálogos multi-liga; 4x para las rutas
+live/proveedor; 1x por defecto para todo lo demás-. `/v1/high-probability`
+(Fase 122) barre el mismo tipo de catálogo multi-liga que `/v1/live`/
+`/v1/upcoming` -hasta 63 ligas tras Fase 120-, pero nunca se agregó a la
+lista de 7x cuando se construyó Fase 122, así que el propio servidor se
+cortaba a sí mismo con 504 antes de terminar el barrido. No es un defecto de
+Fase 123 ni de autenticación: el endpoint público ya fallaba así para
+cualquier llamador real, incluida la Mini App (`/mayor-probabilidad`).
+Opciones: (a) dejarlo como está y que Fase 123 siga reintentando cada 30
+minutos con la expectativa de que algún barrido termine antes del timeout;
+(b) aumentar `DIKAMAHA_INFERENCE_TIMEOUT_SECONDS` globalmente, afectando el
+timeout de todas las rutas por igual; (c) agregar `/v1/high-probability` al
+mismo grupo de multiplicador 7x que ya usan `/v1/live`/`/v1/upcoming`, por
+hacer el mismo tipo de trabajo.
+Decisión: (c). Una línea en `_call_with_timeout`: `/v1/high-probability` se
+agrega al conjunto de rutas con multiplicador 7.0.
+Motivo: (a) deja un defecto de producción activo sin corregir, afectando a
+usuarios reales del menú de mayor probabilidad, no sólo a la cohorte
+prospectiva de Fase 123. (b) es un cambio más amplio e innecesario -afecta
+timeouts de rutas que no tienen este problema-, cuando el patrón correcto ya
+existe en el propio archivo para exactamente este tipo de endpoint.
+Estado: congelada
+Impacto en contratos/fases: no modifica ninguna probabilidad, mercado, gate
+ni el contrato de `/v1/high-probability`; sólo cambia cuánto tiempo el
+servidor espera antes de cortar la respuesta. No reabre Fase 122 ni su gate
+v2. `tests/test_high_probability_timeout_allowlist.py` (2 pruebas nuevas)
+ancla que `/v1/high-probability` recibe el mismo multiplicador que
+`/v1/upcoming` y que una ruta no listada conserva el multiplicador por
+defecto, para que esta clase de omisión no se repita silenciosamente en un
+endpoint futuro.
+Evidencia requerida: suite completa 714 pruebas Python aprobadas/8 omitidas
+sin regresiones. Verificación en producción pendiente del próximo ciclo real
+de Fase 123 tras este despliegue.
+
 ```text
 DEC-NNN
 Fecha:
