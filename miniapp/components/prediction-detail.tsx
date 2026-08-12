@@ -9,17 +9,12 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
 import { useAuth } from "@/components/providers";
-import { api, countLabel, edgeLabel, percentage, probabilityWidth, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
+import { api, percentage, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
 import { PredictionAnalytics } from "@/components/prediction-analytics";
 import { ProviderPredictor } from "@/components/provider-predictor";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
-
-const metricLabels: Record<string, string> = {
-  shots: "Tiros", shots_on_target: "Tiros a puerta", corners: "Córners",
-  yellow_cards: "Tarjetas amarillas", red_cards: "Tarjetas rojas", goals: "Goles",
-};
 
 type Props = {
   fixtureId: string;
@@ -73,19 +68,7 @@ export function PredictionDetail(props: Props) {
   const homeLogo = String(fixture.home_team_logo || catalogFixture?.home_team_logo || "");
   const awayLogo = String(fixture.away_team_logo || catalogFixture?.away_team_logo || "");
   const teamMarkets = record(payload.experimental_team_markets);
-  const probabilities = record(teamMarkets.probabilities);
-  const marketRows = Array.isArray(teamMarkets.user_market_view)
-    ? teamMarkets.user_market_view.map(record)
-    : [];
-  const gridRows = Array.isArray(teamMarkets.bounded_market_grid_view)
-    ? teamMarkets.bounded_market_grid_view.map(record)
-    : [];
   const auditedRows = teamMarkets.audited_market_ladder_view;
-  const periods = [
-    { key: "first_half", label: "Primer tiempo" },
-    { key: "second_half", label: "Segundo tiempo" },
-    { key: "full_match", label: "Partido completo" },
-  ];
   const outcomeValues = [
     { name: homeName, value: Number(payload.probability_home ?? 0), color: "var(--mint)" },
     { name: "Empate", value: Number(payload.probability_draw ?? 0), color: "var(--signal)" },
@@ -122,70 +105,6 @@ export function PredictionDetail(props: Props) {
           />
         </article>
         <FixtureContext league={props.league} eventId={props.fixtureId} />
-        <article className="model-card">
-          <div className="model-card-header"><h3>Mercados de equipo</h3><ShadowBadge /></div>
-          <div className="stack" style={{ marginTop: 14 }}>
-            {marketRows.length ? periods.map((period) => {
-              const rows = marketRows.filter((row) => row.period === period.key);
-              if (!rows.length) return null;
-              return (
-                <section className="period-market" key={period.key}>
-                  <p className="eyebrow">{period.label}</p>
-                  {rows.map((row, index) => (
-                    <div className="market-probability" key={`${period.key}-${String(row.metric)}-${String(row.team_side)}-${index}`}>
-                      <div><span>{row.team_side === "home" ? homeName : awayName} · {metricLabels[String(row.metric)] ?? String(row.metric).replaceAll("_", " ")} · más de {String(row.line)}</span><strong>{percentage(row.probability)}</strong></div>
-                      <i><b className={row.team_side === "home" ? "home" : "away"} style={{ width: probabilityWidth(row.probability) }} /></i>
-                    </div>
-                  ))}
-                </section>
-              );
-            }) : Object.entries(probabilities).map(([key, value]) => (
-              <div className="subscription-row" key={key}><span>{key.replaceAll("home", homeName).replaceAll("away", awayName).replaceAll("_", " ")}</span><strong>{percentage(value)}</strong></div>
-            ))}
-          </div>
-        </article>
-        {gridRows.length ? (
-          <article className="model-card">
-            <div className="model-card-header"><h3>Rejilla adaptativa por periodo</h3><ShadowBadge /></div>
-            <p className="ladder-caption">Líneas centradas en el 50% según la distribución causal de cada equipo. Varían por partido y periodo.</p>
-            <div className="stack" style={{ marginTop: 14 }}>
-              {periods.map((period) => {
-                const rows = gridRows.filter((row) => row.period === period.key);
-                if (!rows.length) return null;
-                return (
-                  <section className="period-market" key={`grid-${period.key}`}>
-                    <p className="eyebrow">{period.label}</p>
-                    {rows.map((row, index) => {
-                      const lines = Array.isArray(row.lines) ? row.lines.map(record) : [];
-                      if (!lines.length) return null;
-                      const side = row.team_side === "home" ? "home" : "away";
-                      const teamName = row.team_side === "home" ? homeName : awayName;
-                      const metric = metricLabels[String(row.metric)] ?? String(row.metric).replaceAll("_", " ");
-                      return (
-                        <div className="ladder-group" key={`${period.key}-${String(row.key)}-${index}`}>
-                          <div className="ladder-head">
-                            <span>{teamName} · {metric}</span>
-                            <strong>μ {countLabel(row.expected_count)}</strong>
-                          </div>
-                          {lines.map((line, lineIndex) => (
-                            <div className="market-probability" key={`${String(row.key)}-${String(line.line)}-${lineIndex}`}>
-                              <div>
-                                <span>Más de {String(line.line)} · Menos {percentage(line.under_probability)}</span>
-                                <strong>{percentage(line.over_probability)}</strong>
-                              </div>
-                              <i><b className={side} style={{ width: probabilityWidth(line.over_probability) }} /></i>
-                              <small className="ladder-edge">vs baseline {edgeLabel(line.over_probability, line.baseline_over_probability)}</small>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </section>
-                );
-              })}
-            </div>
-          </article>
-        ) : null}
         <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} />
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
       </div>

@@ -129,7 +129,7 @@ test("applies Telegram light theme and renders the empty live state", async ({ p
   await expect(page.getByText("No hay partidos activos")).toBeVisible();
 });
 
-test("renders first half, second half and full-match pre-match markets", async ({ page }) => {
+test("renders provider predictor, market movement and match analytics for a pre-match fixture", async ({ page }) => {
   await page.unroute("**/api/provider/predictor**");
   await page.route("**/api/provider/predictor**", (route) => route.fulfill({
     status: 200,
@@ -150,70 +150,15 @@ test("renders first half, second half and full-match pre-match markets", async (
       expected_away_goals: 1.08,
       lambda_home: 1.42,
       lambda_away: 1.08,
-      experimental_team_markets: {
-        user_market_view: [
-          { period: "first_half", team_side: "home", metric: "shots", line: 5.5, probability: 0.61 },
-          { period: "second_half", team_side: "away", metric: "shots", line: 5.5, probability: 0.58 },
-          { period: "full_match", team_side: "home", metric: "corners", line: 4.5, probability: 0.63 },
-        ],
-      },
     }),
   }));
   await page.goto("/predictions/401880614?league=eng.league_cup&home=351&away=280&kickoff=2030-01-10T20%3A00%3A00Z");
   await expect(page.getByRole("heading", { name: "Cambridge United vs Barnet" })).toBeVisible();
-  await expect(page.getByText("Primer tiempo")).toBeVisible();
-  await expect(page.getByText("Segundo tiempo")).toBeVisible();
-  await expect(page.getByText("Partido completo")).toBeVisible();
   await expect(page.getByText("Goles esperados por equipo")).toBeVisible();
   await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Predictor del proveedor" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Movimiento del mercado" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "+130" })).toBeVisible();
-});
-
-test("renders an adaptive market grid with distinct lines per period", async ({ page }) => {
-  const ladder = (line: number, over: number, base: number) => ({
-    line, over_probability: over, under_probability: 1 - over,
-    baseline_over_probability: base, baseline_under_probability: 1 - base,
-  });
-  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      fixture: { home_team_name: "Cambridge United", away_team_name: "Barnet" },
-      probability_home: 0.4, probability_draw: 0.3, probability_away: 0.3,
-      probability_over_2_5: 0.55, probability_btts: 0.52,
-      expected_home_goals: 1.42, expected_away_goals: 1.08,
-      lambda_home: 1.42, lambda_away: 1.08,
-      experimental_team_markets: {
-        user_market_view: [
-          { period: "full_match", team_side: "home", metric: "corners", line: 4.5, probability: 0.63 },
-        ],
-        bounded_market_grid_view: [
-          {
-            key: "home_corners_first_half", metric: "corners", team_side: "home",
-            period: "first_half", expected_count: 2.6, most_likely_count: 2,
-            lines: [ladder(1.5, 0.71, 0.66), ladder(2.5, 0.48, 0.44), ladder(3.5, 0.27, 0.25)],
-            status: "experimental_shadow_not_promoted",
-          },
-          {
-            key: "home_corners_second_half", metric: "corners", team_side: "home",
-            period: "second_half", expected_count: 3.4, most_likely_count: 3,
-            lines: [ladder(2.5, 0.69, 0.62), ladder(3.5, 0.46, 0.41), ladder(4.5, 0.25, 0.23)],
-            status: "experimental_shadow_not_promoted",
-          },
-        ],
-      },
-    }),
-  }));
-  await page.goto("/predictions/401880614?league=eng.league_cup&home=351&away=280&kickoff=2030-01-10T20%3A00%3A00Z");
-  const grid = page.locator("article.model-card").filter({ hasText: "Rejilla adaptativa por periodo" });
-  await expect(grid).toBeVisible();
-  await expect(grid.getByText("μ 2.6")).toBeVisible();
-  await expect(grid.getByText("μ 3.4")).toBeVisible();
-  await expect(grid.getByText("Más de 1.5", { exact: false })).toBeVisible();
-  await expect(grid.getByText("Más de 4.5", { exact: false })).toBeVisible();
-  await expect(grid.getByText("vs baseline +7.0 pp", { exact: false })).toBeVisible();
 });
 
 test("renders the audited ladder with reliability labels and an expand toggle", async ({ page }) => {
@@ -317,9 +262,17 @@ test("recovers Cruzeiro and Mirassol names when prediction payload only has ids"
       lambda_away: 0.94,
       model: "selective_dc_kalman_official",
       experimental_team_markets: {
-        user_market_view: [
-          { period: "full_match", team_side: "home", metric: "shots", line: 10.5, probability: 0.64 },
-          { period: "full_match", team_side: "away", metric: "corners", line: 3.5, probability: 0.57 },
+        audited_market_ladder_view: [
+          {
+            key: "home_shots", metric: "shots", team_side: "home", period: "full_match",
+            expected_count: 12.3,
+            lines: [{ line: 10.5, over_probability: 0.64, reliability: "model_edge", observed_rate_historical: 0.6, sample_size: 500 }],
+          },
+          {
+            key: "away_corners", metric: "corners", team_side: "away", period: "full_match",
+            expected_count: 4.1,
+            lines: [{ line: 3.5, over_probability: 0.57, reliability: "model_edge", observed_rate_historical: 0.55, sample_size: 500 }],
+          },
         ],
       },
     }),
@@ -330,8 +283,10 @@ test("recovers Cruzeiro and Mirassol names when prediction payload only has ids"
   await expect(page.getByRole("heading", { name: "Cruzeiro vs Mirassol" })).toBeVisible();
   await expect(page.getByLabel("Gráfica comparativa de probabilidades")).toBeVisible();
   await expect(page.getByText("Comparativa matemática del partido")).toBeVisible();
-  await expect(page.getByText("Cruzeiro · Tiros · más de 10.5")).toBeVisible();
-  await expect(page.getByText("Mirassol · Córners · más de 3.5")).toBeVisible();
+  await expect(page.getByText("Cruzeiro · Tiros")).toBeVisible();
+  await expect(page.getByText("Mirassol · Córners")).toBeVisible();
+  await expect(page.getByText("Más de 10.5", { exact: false })).toBeVisible();
+  await expect(page.getByText("Más de 3.5", { exact: false })).toBeVisible();
   await expect(page.getByText(/Local 2022|Visitante 9169/)).toHaveCount(0);
 });
 

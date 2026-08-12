@@ -6,6 +6,22 @@
 confirmación prospectiva real, congelando los picks del menú antes del
 kickoff y liquidándolos después contra el resultado verificado.
 
+## Corrección de presentación — un solo bloque de mercados de equipo en pre-match
+
+Ver `DEC-178`. El detalle pre-match de la Mini App (`prediction-detail.tsx`)
+mostraba tres bloques sobre el mismo dato -córners/tiros/tarjetas por equipo-
+con niveles de evidencia distintos: "Mercados de equipo" (líneas fijas de
+Fase 84A/88/89), "Rejilla adaptativa por periodo" (Markov de Fase 88, sin
+auditar) y "Escalera auditada" (Fase 84A reparado, calibrado y con doble
+ventaja bootstrap medida celda por celda, ver
+`docs/objetivo_auditoria_modelos_v1.md`). Se retiran los dos primeros de esta
+pantalla y queda sólo la escalera auditada, la única con calibración y
+fiabilidad verificadas contra histórico real. Sin cambios de backend ni de
+contrato: `user_market_view` y `bounded_market_grid_view` siguen sirviéndose
+intactos para "Resultados de hoy" (DEC-177) y el menú de Fase 123. Gates:
+typecheck, build Next, 45 Vitest y 41 Playwright aprobados (2 pruebas de
+`navigation.spec.ts` migradas a lo que sigue existiendo).
+
 ## Fase 123 — Validación prospectiva del menú de mayor probabilidad
 
 Implementada. Ver `DEC-171`. Paso 3 del plan de cierre del proyecto.

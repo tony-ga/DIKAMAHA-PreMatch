@@ -3325,6 +3325,66 @@ entre mercados; 4 aserciones E2E existentes migradas de buscar ✅/❌ a
 "Acierto"/"Fallo"; typecheck, build Next y suite completa de Playwright (42)
 y Vitest (45) sin regresiones.
 
+DEC-178
+Fecha: 2026-08-12
+Problema: el detalle pre-match de la Mini App mostraba tres bloques distintos
+sobre el mismo tipo de dato -córners, tiros y tarjetas por equipo/periodo-:
+"Mercados de equipo" (`user_market_view`, líneas fijas de Fase 84A/88/89),
+"Rejilla adaptativa por periodo" (`bounded_market_grid_view`, líneas
+centradas en P(over)≈50% de Fase 102/117 sobre Markov de Fase 88) y
+"Escalera auditada" (`audited_market_ladder_view`, Fase 84A reparado y
+auditado con `scripts/run_ladder_audit.py`). El usuario pidió verificar cuál
+de los tres es estadísticamente más riguroso y adaptativo por partido, y
+dejar sólo ése.
+Opciones: (a) mantener los tres, dejando que el usuario compare manualmente;
+(b) elegir uno y ocultar los otros dos en el frontend sin tocar los modelos
+ni las rutas que los sirven; (c) eliminar del backend los mercados
+descartados.
+Decisión: (b). Se conserva únicamente "Escalera auditada"
+(`audited-ladder.tsx`) en `prediction-detail.tsx`; se retiran los bloques de
+"Mercados de equipo" y "Rejilla adaptativa por periodo" y las variables
+(`marketRows`, `gridRows`, `probabilities`, `periods`, `metricLabels`) e
+imports (`countLabel`, `edgeLabel`, `probabilityWidth`) que sólo ellos
+usaban. `user_market_view` y `bounded_market_grid_view` siguen
+calculándose y sirviéndose en `/api/predict/upcoming` sin cambios -Fase 102
+(DEC-156), Fase 93 (DEC-112) y su liquidación en `/v1/track-record/daily`
+(shadow_verdicts, DEC-177) no se tocan-, sólo dejan de renderizarse en este
+componente. Fase 117 ("rejilla adaptativa" en vivo, `live-detail.tsx`) es un
+motor distinto para partidos en curso y no forma parte de este cambio: usa
+las mismas palabras pero ninguna de sus cabeceras coincide con las tres que
+el usuario describió, todas exclusivas del detalle pre-match.
+Motivo: `docs/objetivo_auditoria_modelos_v1.md` (Etapa 3, mismo día) ya
+documentó que la rejilla adaptativa sale de Markov de Fase 88 sin auditar en
+esa ronda, mientras que la escalera auditada mide 350 celdas con calibración
+por tramos, doble ventaja con IC bootstrap (contra el lado mayoritario y
+contra Brier de liga), corrige sesgos reales de prior/dispersión/correlación
+encontrados en el proceso, distingue `model_edge` de `base_rate_driven`, y
+degrada **cerrado**: sin evidencia medida de que una línea es fiable, no la
+publica. "Mercados de equipo" usa el mismo modelo NB reparado de Fase 84A
+pero sólo las líneas fijas que aprobó el gate original de esa fase -una
+comparación de punto sin intervalo de confianza-, más débil que el protocolo
+de esta auditoría. Mostrar los tres bloques a la vez sobre el mismo tipo de
+dato con niveles de evidencia distintos es exactamente la "certeza inventada"
+que la auditoría del mismo día existe para evitar; dejar sólo el más
+riguroso resuelve eso sin esperar a que Fase 88 se audite con el mismo
+protocolo. Se descartó (c) porque `user_market_view` sigue siendo la fuente
+de liquidación real de "Resultados de hoy" (DEC-177) y del menú de Fase 123;
+retirarlo del backend habría roto esas dos rutas sin necesidad, cuando el
+pedido era sólo sobre lo que ve el usuario en esta pantalla.
+Estado: congelada
+Impacto en contratos/fases: ningún cambio de backend, modelo ni contrato;
+`/api/predict/upcoming` sigue devolviendo los tres campos sin modificar.
+Fase 93 (DEC-112) y Fase 102 (DEC-156) permanecen intactas como fuente de
+otras superficies (liquidación diaria, menú de mayor probabilidad); sólo se
+retira su presentación duplicada en `prediction-detail.tsx`.
+Evidencia requerida: typecheck y build Next aprobados; 45 Vitest sin
+regresiones; 41 Playwright aprobados (2 pruebas de `navigation.spec.ts`
+reescritas porque afirmaban texto de los bloques retirados: una ahora
+verifica sólo lo que sigue existiendo -predictor del proveedor, movimiento
+de mercado, comparativa matemática-, y la otra -recuperación de nombres reales
+desde IDs- se migró a verificar la propagación de nombre en la escalera
+auditada en vez de en "Mercados de equipo").
+
 ```text
 DEC-NNN
 Fecha:
