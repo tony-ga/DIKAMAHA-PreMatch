@@ -2763,6 +2763,61 @@ reinicio del servicio dejó sin revisar se recupera en el primer ciclo
 posterior aunque "hoy" ya haya avanzado varios días; 694 pruebas Python
 aprobadas/8 omitidas.
 
+DEC-168
+Fecha: 2026-08-12
+Problema: el usuario pidió explícitamente que el resumen diario se publique
+30 minutos después del último partido, no 3 horas. DEC-167 (el mismo día,
+horas antes) ya había reemplazado la hora fija de las 09:00 por un disparo
+dependiente del último kickoff congelado del día más `SETTLEMENT_DELAY`
+(3h) -la misma ventana que `_results` exige para reconciliar cada partido
+individual. Reducir esa constante compartida a 30 minutos habría sido
+incorrecto de dos formas distintas: (1) medida desde el KICKOFF, 30 minutos
+no alcanzan para que un partido siquiera termine (90' + descuentos); (2)
+`SETTLEMENT_DELAY` también protege la liquidación individual en `_results`,
+así que tocarla habría adelantado el intento de reconciliación de CADA
+partido a los 30 minutos de su propio kickoff, muy antes de que el marcador
+de ESPN pueda estar completo.
+Opciones: (a) reinterpretar literalmente "30 minutos" como
+`kickoff + 30min`, técnicamente lo que se pidió pero fácticamente absurdo;
+(b) estimar una duración fija de partido (por ejemplo 2h) más 30 minutos de
+margen, todavía una adivinanza sin dato real detrás; (c) anclar los 30
+minutos al instante real en que el sistema YA confirmó ese partido como
+final y reconciliado -el campo `settled_at` que `_seal_settlement` escribe
+en el momento exacto de la liquidación, no una estimación.
+Decisión: (c). `_daily_track_record` deja de usar el último `kickoff_ts` del
+día más `SETTLEMENT_DELAY`; ahora exige que TODOS los fixtures congelados de
+ese día tengan settlement (comparación exacta de conjuntos de
+`fixture_key`, no sólo "al menos uno") y publica cuando
+`now >= max(settled_at del día) + DAILY_DIGEST_DELAY (30 min)`. Se agrega la
+constante `DAILY_DIGEST_DELAY`; `SETTLEMENT_DELAY` no se toca, sigue
+intacta protegiendo `_results`. De paso se corrigió un defecto real
+encontrado al escribir las pruebas: SQLite no conserva el offset de
+`DateTime(timezone=True)` al leer `settled_at` -mismo defecto que Fase 121
+ya documentó para `kickoff_ts`-, así que se normaliza con el helper `_utc`
+ya existente antes de comparar.
+Motivo: "íntegro" (DEC-158/DEC-161) exige a todos los partidos del día, no
+sólo a los que ya liquidaron; publicar en cuanto el ÚLTIMO KICKOFF cumplía
+su ventana -el diseño de DEC-167- podía disparar antes de que un partido
+más temprano, pero con reconciliación lenta de ESPN, hubiera terminado de
+liquidarse. Anclarse en `settled_at` en vez de en una estimación desde el
+kickoff hace que "30 minutos después del último partido" sea literalmente
+cierto: el último partido en quedar confirmado, no una suposición sobre
+cuánto dura un partido de fútbol.
+Estado: congelada
+Impacto en contratos/fases: refina el disparador de DEC-167 sin tocar su
+contenido, principio de "nunca ocultar un fallo", ni el contrato de
+`/v1/track-record/daily`. `SETTLEMENT_DELAY` y `_results` quedan
+exactamente igual. Limitación aceptada y documentada en el propio código: un
+partido cuyo marcador nunca llega a reconciliarse deja ese día sin publicar
+de forma indefinida; no se agregó un tope de espera porque no se pidió y
+"íntegro" es la prioridad ya fijada por DEC-158/DEC-161.
+Evidencia requerida: un día con un partido liquidado y otro todavía
+pendiente no publica pase el tiempo que pase; un día completo pero a menos
+de 30 minutos de su última liquidación tampoco; a los 30 minutos exactos de
+la última liquidación real sí publica, el mismo día calendario local en la
+inmensa mayoría de los casos; el replay en el mismo instante es idempotente;
+695 pruebas Python aprobadas/8 omitidas.
+
 ```text
 DEC-NNN
 Fecha:

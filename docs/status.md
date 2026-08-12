@@ -221,13 +221,18 @@ Implementada. Ver `DEC-161`.
   cada día calendario local — partido a partido, con ✅/❌ por los tres
   mercados oficiales y el conteo agregado de 1X2 al inicio —, bajo la clave
   de idempotencia `track_record_daily:{fecha}`, separada de
-  `track_record:{semana}` de Fase 118. **Actualizado por `DEC-167`**: ya no
-  espera a las 09:00 del día siguiente para resumir el día anterior; publica
-  el mismo día, en cuanto el último kickoff congelado de ese día supera su
-  propia ventana de liquidación (`kickoff + 3h`, la misma que exige
-  `_results`). Recorre todos los días con predicciones congeladas en cada
-  ciclo, no sólo "hoy", así que también recupera un día que un reinicio del
-  servicio hubiera dejado sin publicar;
+  `track_record:{semana}` de Fase 118. **Actualizado por `DEC-167`+`DEC-168`**:
+  ya no espera a las 09:00 del día siguiente para resumir el día anterior.
+  Publica cuando el día está completo — settlement para cada fixture
+  congelado ese día, comparación exacta de `fixture_key` — y ya pasaron 30
+  minutos desde `settled_at` del último partido en confirmarse (el instante
+  real que `_seal_settlement` escribe, no una estimación desde el kickoff);
+  `SETTLEMENT_DELAY` (3h) sigue intacta donde protege la liquidación
+  individual en `_results`. Recorre todos los días con predicciones
+  congeladas en cada ciclo, no sólo "hoy", así que también recupera un día
+  que un reinicio del servicio hubiera dejado sin publicar. Limitación
+  aceptada: un partido cuyo marcador nunca reconcilia deja ese día sin
+  publicar de forma indefinida, sin tope de espera;
 - la Mini App muestra "Resultados de hoy" en `/historial`, por encima del
   historial acumulado existente, calculando la fecha de hoy en el cliente
   igual que ya hace `markets/page.tsx`;

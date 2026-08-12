@@ -169,15 +169,26 @@ def _settlement_repository() -> SqlAlchemySettlementRepository:
     return SqlAlchemySettlementRepository(factory)
 
 
-def _settlement(index: int, *, hit: bool, kickoff_local: datetime) -> SettlementRecord:
-    """Construye un veredicto liquidado con kickoff normalizado a UTC."""
+def _settlement(
+    index: int, *, hit: bool, kickoff_local: datetime,
+    settled_at: datetime | None = None,
+) -> SettlementRecord:
+    """Construye un veredicto liquidado con kickoff normalizado a UTC.
+
+    `fixture_key` usa el mismo esquema `liga:match_id` que
+    `_freeze_prediction_for`, no un identificador arbitrario: el nuevo
+    disparador de `_daily_track_record` (DEC-168) exige que la clave de cada
+    settlement coincida exactamente con la de su predicción congelada para
+    considerar el día completo.
+    """
 
     actual = "Local" if hit else "Visitante"
     kickoff_utc = kickoff_local.astimezone(timezone.utc)
     return SettlementRecord(
-        fixture_key=f"daily-fixture-{index}", league_slug="mex.1",
+        fixture_key=f"mex.1:{2000 + index}", league_slug="mex.1",
         match_id=2000 + index, competition_id="c",
-        kickoff_ts=kickoff_utc, settled_at=kickoff_utc + timedelta(hours=3),
+        kickoff_ts=kickoff_utc,
+        settled_at=settled_at or (kickoff_utc + timedelta(hours=3)),
         home_team_name="Puebla", away_team_name="Guadalajara",
         score_home=2 if hit else 0, score_away=0 if hit else 2,
         prediction_hash=f"{index:064d}",
@@ -335,12 +346,12 @@ def _freeze_prediction_for(
 ) -> None:
     """Siembra en `ChannelRepository` el fixture que respalda un settlement.
 
-    El nuevo disparador de `_daily_track_record` lee el último kickoff
-    congelado por día directamente de `ChannelRepository.predictions()`, no
-    del almacén de settlements; en producción ambos siempre coinciden porque
-    `_results` sólo liquida fixtures que ya pasaron por `freeze`, pero estas
-    pruebas siembran el settlement por separado, así que necesitan sembrar
-    también la predicción congelada correspondiente.
+    El nuevo disparador de `_daily_track_record` exige que cada predicción
+    congelada de un día tenga un settlement con la MISMA `fixture_key` antes
+    de considerar ese día completo; en producción ambos siempre coinciden
+    porque `_results` sólo liquida fixtures que ya pasaron por `freeze`, pero
+    estas pruebas siembran el settlement por separado, así que necesitan
+    sembrar también la predicción congelada correspondiente.
     """
 
     fixture = {
@@ -355,9 +366,11 @@ def _freeze_prediction_for(
         kickoff_local.astimezone(timezone.utc) - timedelta(hours=6))
 
 
-def test_daily_track_record_publishes_the_same_day_once_the_last_kickoff_settles() -> None:
-    """DEC-167: el aviso diario nunca oculta un fallo (hereda DEC-161) y se
-    dispara el mismo día calendario local, no al día siguiente a las 09:00.
+def test_daily_track_record_publishes_the_same_day_30_minutes_after_the_last_match() -> None:
+    """DEC-168: el aviso sale 30 minutos después de que el sistema confirma
+    el último partido del día -no una estimación desde el kickoff, el
+    `settled_at` real que `_seal_settlement` ya escribió-, y hereda de
+    DEC-161 que nunca oculta un fallo.
     """
 
     gateway, transport = _Gateway(), _Transport()
@@ -375,10 +388,10 @@ def test_daily_track_record_publishes_the_same_day_once_the_last_kickoff_settles
         "2026-07-29")
     publisher = TelegramChannelPublisher(
         gateway, repository, transport, settlements=settlements)
-    # Último kickoff 20:00 CDMX + 3h de liquidación = 23:00 CDMX, el mismo 29
-    # de julio (05:00 UTC del 30). El aviso se publica esa misma noche, no a
-    # las 09:00 del día siguiente.
-    now = datetime(2026, 7, 30, 5, 5, tzinfo=timezone.utc)
+    # El segundo partido (kickoff 20:00 CDMX) liquida a las 3h por defecto de
+    # _settlement: 05:00 UTC del 30. +30 min = 05:30 UTC. El aviso sale esa
+    # misma noche local (29 de julio), no a las 09:00 del día siguiente.
+    now = datetime(2026, 7, 30, 5, 35, tzinfo=timezone.utc)
 
     counts = publisher.run_cycle(now)
 
@@ -403,8 +416,8 @@ def test_daily_track_record_replay_is_idempotent() -> None:
         "2026-07-29")
     publisher = TelegramChannelPublisher(
         gateway, repository, transport, settlements=settlements)
-    # Kickoff 10:00 CDMX + 3h = 13:00 CDMX = 19:00 UTC; justo después.
-    now = datetime(2026, 7, 29, 19, 5, tzinfo=timezone.utc)
+    # settled_at por defecto = kickoff (16:00 UTC) + 3h = 19:00 UTC; +30 min.
+    now = datetime(2026, 7, 29, 19, 35, tzinfo=timezone.utc)
 
     first = publisher.run_cycle(now)
     second = publisher.run_cycle(now)
@@ -414,8 +427,40 @@ def test_daily_track_record_replay_is_idempotent() -> None:
     assert sum(1 for m in transport.messages if "RESULTADOS DEL DÍA" in m) == 1
 
 
-def test_daily_track_record_waits_for_the_settlement_window_to_close() -> None:
-    """No publica antes de que el último kickoff cumpla su ventana de +3h."""
+def test_daily_track_record_waits_for_every_match_of_the_day_to_settle() -> None:
+    """"Íntegro" exige a todos los partidos del día, no sólo a los liquidados.
+
+    Un partido congelado y liquidado no basta si otro partido del mismo día
+    sigue pendiente: publicar de todos modos dejaría el resumen incompleto de
+    forma permanente, porque la clave de idempotencia no vuelve a intentarlo.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    repository = _repository()
+    settlements = _settlement_repository()
+    settlements.add_if_absent(_settlement(0, hit=True, kickoff_local=datetime(
+        2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ)))
+    _freeze_prediction_for(
+        repository, 0, datetime(2026, 7, 29, 10, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
+    # Un segundo partido del mismo día está congelado pero aún sin liquidar.
+    _freeze_prediction_for(
+        repository, 1, datetime(2026, 7, 29, 20, 0, tzinfo=MEXICO_TZ),
+        "2026-07-29")
+    publisher = TelegramChannelPublisher(
+        gateway, repository, transport, settlements=settlements)
+    # Mucho después de que el primer partido liquidó; el segundo sigue sin
+    # settlement, así que el día no se considera completo pase lo que pase.
+    now = datetime(2026, 7, 31, 12, 0, tzinfo=timezone.utc)
+
+    counts = publisher.run_cycle(now)
+
+    assert counts["track_record_daily"] == 0
+    assert not any("RESULTADOS DEL DÍA" in m for m in transport.messages)
+
+
+def test_daily_track_record_waits_30_minutes_after_the_day_becomes_complete() -> None:
+    """El día ya está completo, pero aún no pasan los 30 min de DEC-168."""
 
     gateway, transport = _Gateway(), _Transport()
     repository = _repository()
@@ -427,10 +472,10 @@ def test_daily_track_record_waits_for_the_settlement_window_to_close() -> None:
         "2026-07-29")
     publisher = TelegramChannelPublisher(
         gateway, repository, transport, settlements=settlements)
-    # Kickoff 10:00 CDMX + 3h = 13:00 CDMX = 19:00 UTC; una hora antes.
-    before_ready = datetime(2026, 7, 29, 18, 0, tzinfo=timezone.utc)
+    # settled_at = 19:00 UTC; sólo 10 minutos después, no los 30 exigidos.
+    now = datetime(2026, 7, 29, 19, 10, tzinfo=timezone.utc)
 
-    counts = publisher.run_cycle(before_ready)
+    counts = publisher.run_cycle(now)
 
     assert counts["track_record_daily"] == 0
     assert not any("RESULTADOS DEL DÍA" in m for m in transport.messages)

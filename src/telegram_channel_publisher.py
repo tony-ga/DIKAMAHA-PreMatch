@@ -39,6 +39,12 @@ LOGGER = logging.getLogger(__name__)
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
 SUMMARY_TIME = time(9, 0)
 SETTLEMENT_DELAY = timedelta(hours=3)
+# Espera adicional del resumen diario DESPUÉS de que `settled_at` confirma el
+# último partido del día -no una estimación desde el kickoff, el instante real
+# en que `_seal_settlement` verificó ese partido como final y reconciliado.
+# No sustituye a SETTLEMENT_DELAY, que sigue protegiendo cada liquidación
+# individual en `_results`; ver DEC-168.
+DAILY_DIGEST_DELAY = timedelta(minutes=30)
 CHANNEL_MODES = frozenset({"full", "lite"})
 LITE_FIXTURE_LIMIT = 3
 DISTRIBUTIONAL_CONTRACT_VERSION = "phase102_v4_direct_totals"
@@ -422,47 +428,57 @@ class TelegramChannelPublisher:
             key, "track_record", _track_record_text(track_record(records)), now)
 
     def _daily_track_record(self, now: datetime) -> int:
-        """Publica el resumen de cada día calendario cuyo último kickoff ya
-        superó su propia ventana de liquidación (`kickoff + 3h`, la misma
-        que ya exige `_results` partido por partido) y que aún no se ha
-        publicado — no a una hora fija.
+        """Publica el resumen de cada día calendario ya completo, 30 minutos
+        después de que el sistema confirmó el último partido de ese día — no
+        a una hora fija, y no una estimación desde el kickoff.
 
-        Antes esperaba siempre hasta las 09:00 del día siguiente y resumía
-        el día anterior, con hasta 24h de rezago aunque el último partido
-        hubiera terminado al mediodía; DEC-167 lo reemplaza para publicar
-        el mismo día, tan pronto como el dato esté honestamente reconciliado.
-        Lista acierto y fallo por partido: DEC-161 prohíbe un aviso que sólo
-        muestre aciertos, igual que DEC-158 lo prohíbe para el historial
-        acumulado.
+        DEC-167 disparaba esto a partir de `último kickoff + 3h`: una
+        estimación fija de cuánto dura un partido más un margen. DEC-168 lo
+        afina para anclarse en `settled_at`, el instante real en que
+        `_seal_settlement` confirmó ESE partido — final y con marcador
+        reconciliado por ESPN, no un cálculo. `SETTLEMENT_DELAY` (3h) sigue
+        intacto donde protege la integridad de cada liquidación individual en
+        `_results`; esto es una espera adicional, más corta, después de que
+        esa liquidación ya ocurrió de verdad.
 
-        Recorre todos los días con predicciones congeladas, no sólo "hoy":
-        fijar el día objetivo a partir de la fecha local de `now` fallaría
-        en cuanto el ciclo corriera ya iniciado el día siguiente —exactamente
-        lo que puede pasar cuando el último kickoff es tarde (por ejemplo
-        22:30) y su ventana de +3h cruza la medianoche—, dejando ese día sin
-        publicar para siempre porque `now` nunca vuelve a apuntar a esa
-        fecha. Iterar por día evita ese punto ciego y además recupera
-        automáticamente cualquier día que un reinicio del servicio haya
-        dejado sin publicar.
+        "Íntegro" exige a todos los partidos del día, no sólo a los que ya
+        liquidaron: si un partido de hoy todavía no está en `on_date(...)`,
+        el día no se considera completo y no se publica nada todavía, se
+        vuelve a revisar en el siguiente ciclo. Limitación aceptada: un
+        partido cuyo marcador nunca llega a reconciliarse (dato roto, en vez
+        de sólo tardío) deja ese día sin publicar de forma indefinida; no se
+        agrega un tope de espera porque el usuario no lo pidió y "íntegro"
+        es la prioridad explícita de DEC-158/DEC-161.
+
+        Recorre todos los días con predicciones congeladas, no sólo "hoy",
+        para recuperar automáticamente cualquiera que un reinicio del
+        servicio hubiera dejado sin revisar. Lista acierto y fallo por
+        partido: DEC-161 prohíbe un aviso que sólo muestre aciertos, igual
+        que DEC-158 lo prohíbe para el historial acumulado.
         """
 
         if self._settlements is None:
             return 0
-        last_kickoff_by_day: dict[str, datetime] = {}
+        frozen_by_day: dict[str, set[str]] = {}
         for row in self._repository.predictions():
-            current = last_kickoff_by_day.get(row.target_date)
-            if current is None or row.kickoff_ts > current:
-                last_kickoff_by_day[row.target_date] = row.kickoff_ts
+            frozen_by_day.setdefault(row.target_date, set()).add(
+                row.fixture_key)
         published = 0
-        for target_text, last_kickoff in sorted(last_kickoff_by_day.items()):
-            if now < last_kickoff + SETTLEMENT_DELAY:
-                continue
+        for target_text, fixture_keys in sorted(frozen_by_day.items()):
             complete_key = f"track_record_daily:{target_text}:complete"
             if self._repository.publication_exists(complete_key):
                 continue
             target = date.fromisoformat(target_text)
             records = self._settlements.on_date(target, MEXICO_TZ)
-            if not records:
+            settled_keys = {record.fixture_key for record in records}
+            if settled_keys != fixture_keys:
+                continue
+            # SQLite (usado en pruebas y como respaldo local) no conserva el
+            # offset de un DateTime(timezone=True) al leerlo, a diferencia de
+            # PostgreSQL en producción -mismo defecto ya documentado en
+            # Fase 121-, así que se normaliza explícitamente en vez de asumir.
+            last_settled = _utc(max(record.settled_at for record in records))
+            if now < last_settled + DAILY_DIGEST_DELAY:
                 continue
             chunks = _daily_track_record_chunks(target, records)
             published += sum(self._publish(
