@@ -1,9 +1,29 @@
 import { env } from "@/lib/env";
 
 export class DikamahaError extends Error {
-  constructor(public readonly status: number, message = "dikamaha_request_failed") {
+  constructor(
+    public readonly status: number,
+    message = "dikamaha_request_failed",
+    // Código de contrato que devuelve DIKAMAHA en un 422, por ejemplo
+    // `league_history_below_minimum`. Sin él la interfaz sólo puede decir que
+    // algo falló, y el usuario no distingue "no hay historial de esta
+    // competición" de "el servicio está caído".
+    public readonly reason: string | null = null,
+  ) {
     super(message);
   }
+}
+
+/** Extrae el código de contrato de un error DIKAMAHA sin exponer el cuerpo. */
+function upstreamReason(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const detail = (payload as Record<string, unknown>).detail;
+  if (typeof detail === "string") return detail;
+  if (!detail || typeof detail !== "object") return null;
+  const code = (detail as Record<string, unknown>).code;
+  const message = (detail as Record<string, unknown>).message;
+  const value = typeof code === "string" && code ? code : message;
+  return typeof value === "string" && value ? value : null;
 }
 
 export async function dikamahaRequest(
@@ -32,7 +52,8 @@ export async function dikamahaRequest(
       const payload = await response.json().catch(() => null);
       if (response.ok && payload && typeof payload === "object") return payload;
       if (response.status < 500 && response.status !== 429) {
-        throw new DikamahaError(response.status);
+        throw new DikamahaError(
+          response.status, "dikamaha_request_failed", upstreamReason(payload));
       }
     } catch (error) {
       if (error instanceof DikamahaError) throw error;

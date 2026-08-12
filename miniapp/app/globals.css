@@ -16,12 +16,12 @@
 }
 
 * { box-sizing: border-box; }
-/* Red de seguridad de anchura. Un solo elemento más ancho que la pantalla hace
-   que iOS presente la página encogida y obligue a alejar el zoom, algo que no
-   se aprecia en iPad ni escritorio porque allí el contenido sí cabe. Esto
-   garantiza que ningún desbordamiento futuro rompa el encuadre completo; los
-   contenedores con `overflow-x:auto` siguen desplazándose por dentro. */
-html, body { max-width: 100%; overflow-x: hidden; }
+/* NO usar `overflow-x: hidden` en html/body. Se intentó como red de seguridad y
+   fue peor: recorta de forma permanente lo que sobresale en vez de dejarlo
+   alcanzable, y en iOS bloquea además el paneo y el pellizco, de modo que el
+   usuario no puede llegar a lo que quedó fuera. El desbordamiento se corrige en
+   el elemento que lo causa; lo genuinamente ancho se desplaza dentro de su
+   propio contenedor con `overflow-x: auto`. */
 html { background: var(--void); color-scheme: dark; }
 [data-tg-theme="light"] {
   --void: #edf9f4;

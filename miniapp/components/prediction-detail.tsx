@@ -35,6 +35,45 @@ function catalogDate(kickoff: string): string {
   return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
+/**
+ * Traduce el código de contrato de DIKAMAHA a una explicación concreta.
+ *
+ * Antes todo fallo mostraba "no cumple historia, identidad o cutoff causal",
+ * que mezcla tres causas distintas y no dice al usuario si el problema es suyo,
+ * del partido o del servicio. El caso más frecuente es una competición sin
+ * historial suficiente: la Supercopa de Europa, por ejemplo, tiene un único
+ * partido en el snapshot y el motor exige ocho de la misma competición.
+ */
+function unavailableReason(error: unknown): { title: string; detail: string } {
+  const code = error instanceof Error ? error.message : "";
+  if (code === "league_history_below_minimum") {
+    return {
+      title: "Sin historial suficiente en esta competición",
+      detail:
+        "El modelo sólo predice con historial causal de la misma competición, " +
+        "y ésta no reúne los partidos mínimos en el snapshot. Ocurre en finales " +
+        "a partido único y torneos recién añadidos. No es un fallo del " +
+        "servicio: preferimos no publicar una probabilidad que no se sostiene.",
+    };
+  }
+  if (code === "unsupported_league") {
+    return {
+      title: "Competición no soportada",
+      detail: "Esta competición no forma parte del snapshot causal vigente.",
+    };
+  }
+  if (code === "upstream_unavailable") {
+    return {
+      title: "Servicio no disponible",
+      detail: "No se pudo consultar el motor de predicción. Vuelve a intentarlo.",
+    };
+  }
+  return {
+    title: "Predicción no disponible",
+    detail: "El fixture no cumple historia, identidad o cutoff causal.",
+  };
+}
+
 export function PredictionDetail(props: Props) {
   const { csrfToken } = useAuth();
   const identityRequired = !props.homeName || !props.awayName;
@@ -58,7 +97,10 @@ export function PredictionDetail(props: Props) {
     }, csrfToken),
     enabled: Boolean(props.league && props.home && props.away && props.kickoff),
   });
-  if (query.isError) return <StatePanel title="Predicción no disponible">El fixture no cumple historia, identidad o cutoff causal.</StatePanel>;
+  if (query.isError) {
+    const { title, detail } = unavailableReason(query.error);
+    return <StatePanel title={title}>{detail}</StatePanel>;
+  }
   if (query.isLoading || (identityRequired && identity.isLoading)) return <StatePanel title="Calculando pre-match">Resolviendo equipos y aplicando el snapshot versionado anterior al kickoff.</StatePanel>;
   const payload = query.data ?? {};
   const fixture = record(payload.fixture);
