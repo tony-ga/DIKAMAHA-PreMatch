@@ -3385,6 +3385,113 @@ de mercado, comparativa matemática-, y la otra -recuperación de nombres reales
 desde IDs- se migró a verificar la propagación de nombre en la escalera
 auditada en vez de en "Mercados de equipo").
 
+DEC-179
+Fecha: 2026-08-13
+Problema: el usuario pide que "Mayor probabilidad" (Fase 122/123) se alimente
+de la escalera auditada en vez de las nueve líneas fijas de `MARKET_METADATA`
++ `eligibility.json`, y que muestre siempre al menos la estadística más
+probable de cada mercado de equipo -hoy varios desaparecen sin más si no
+superan el gate v2 post-hoc de Fase 122-, evitando líneas obvias/redundantes
+("más de 0.5 tiros" ≈ 99%, sin información). Pide explícitamente que el
+criterio de paso lo determine la implementación, no una cifra fija del
+usuario.
+Opciones: (a) mantener las nueve líneas fijas y el gate de Fase 122 para
+mercados de equipo, sólo cambiando la fuente de datos subyacente; (b)
+sustituir por completo los mercados de equipo del menú por selecciones de
+`audited_market_ladder_view` (Etapa 3, DEC-174), con un criterio de banda de
+confianza nuevo que decide qué línea exponer por grupo, dejando 1X2/Over
+2.5/Ambos marcan exactamente como están; (c) además de (b), forzar también la
+aparición de 1X2/Over 2.5/Ambos marcan aunque no superen el gate de Fase 122.
+Decisión: (b). `src/ladder_pick_selection.py` (nuevo) elige, por cada grupo
+de la escalera auditada (métrica × lado × periodo, hasta 18 por partido),
+la línea con confianza `max(over_probability, under_probability)` más
+cercana al piso de una banda `[0.60, 0.85]` -la menos extrema que igual
+califica-, y si ninguna línea del grupo cae en la banda, la más cercana a
+ella (`selection: "fallback_outside_band"`), nunca dejando un mercado cubierto
+sin pick. `src/high_probability_view.py` separa dos fuentes independientes:
+mercados de equipo desde la escalera (sin pasar ya por `eligibility.json` ni
+por `MARKET_METADATA`) y mercados de gol exactamente igual que antes
+(`eligibility.json`, `ExposurePolicy` con tope de 3 y componente único
+`{1x2, over_2_5, btts}`). Cada fuente degrada por separado: un gate de gol
+caído ya no vacía los mercados de equipo, y viceversa -antes un solo
+artefacto gobernaba todo el menú-; `GET /v1/high-probability` en
+`src/dikamaha_service.py` sólo reporta `"unavailable"` cuando **ambas**
+fuentes fallan, no cuando falla una sola. `MAX_PICKS_PER_MATCH` (3) se retira
+para mercados de equipo -contradice directamente "siempre... cada mercado"-;
+puede haber hasta ~18 picks de equipo por partido. Se descarta (c): la
+escalera auditada no cubre mercados de gol en absoluto (otra cadena de
+modelos, Dixon-Coles/Kalman), así que no hay fuente más rigurosa a la que
+migrarlos, y DEC-162 ya registró como hallazgo empírico que ninguno de los
+tres supera el gate en ningún tramo -forzar su aparición sin evidencia nueva
+contradiría ese hallazgo sellado en vez de resolver el pedido, que pide
+alimentarse "de la escalera auditada"-.
+Motivo del piso 0.60: una confianza de 51-59% es prácticamente un volado; el
+propio `ladder_reliability.json` incluye celdas `base_rate_driven` con
+ventaja mínima, así que "calibrado" no implica "informativo". Motivo del
+techo 0.85: los datos reales de la auditoría muestran líneas obvias ≥90%
+(over 0.5 córners ≈ 98.8% en la muestra medida); 0.85 deja margen amplio por
+debajo de esa zona sin descartar líneas genuinamente confiables de una
+escalera discreta cuyos saltos entre líneas contiguas rondan 5-15 pp. Elegir
+la línea menos extrema dentro de la banda (no la de mayor confianza)
+prioriza la línea más discriminante -la que más depende de estos dos equipos
+en concreto- en vez de la más fácil de acertar, el mismo sesgo que Fase 122
+ya documentó como "aciertos inflados por líneas extremas".
+Bug encontrado y corregido en el camino: `METRIC_LADDERS` (`src/ladder_
+audit.py`) usa `"half"` como periodo interno para córners/tarjetas de 1ª
+mitad -mismo convenio que `LADDER_MAXIMUMS`-, pero `_audited_market_ladder_
+view` filtraba ese valor sin traducir al campo público `period`, mientras
+todo el resto del sistema (`MARKET_METADATA`, `explorer_statistics.periods
+[side]`, el frontend `audited-ladder.tsx`) sólo reconoce `"first_half"`.
+Efecto real, preexistente a este pedido: la Escalera Auditada desplegada
+ayer (DEC-178) nunca mostró córners ni tarjetas de primera mitad -el filtro
+de periodo del frontend los descartaba en silencio-. Corregido con una
+traducción de una línea en `_audited_market_ladder_view`
+(`src/team_count_market_runtime.py`); sin esto, la liquidación de Fase 123
+para esas líneas también habría fallado en silencio.
+Esquema de congelación sin migración: `HighProbabilityPickFreeze` ya tenía
+columnas independientes `metric`/`team_side`/`period`/`line` (Fase 123 ya
+anticipaba líneas variables), así que no hizo falta ninguna migración de
+esquema. `bucket_low`/`bucket_high` se reutilizan para mercados de equipo
+para declarar la zona de confianza del pick (`[0.60, 0.85]` en banda
+objetivo; `[0.0, 0.60]` o `[0.85, 1.0]` en fallback, según el lado), en vez
+de añadir una columna `selection` nueva a una tabla que ya acumula datos
+reales en producción desde ayer. `resolve_team_market`
+(`src/high_probability_settlement.py`) ya no exige `pick.market in
+MARKET_METADATA`: acepta también cualquier `metric`/`team_side` estructural-
+mente válido de la escalera (reutilizando `METRIC_LADDERS`), preservando la
+liquidación de picks ya congelados bajo las claves fijas antiguas.
+`provenance()` publica un hash combinado de ambas fuentes
+(`sha256(goal_sha256|ladder_sha256)`) en el mismo campo `eligibility_sha256`
+que ya leía el ciclo de congelación de Fase 123, sin tocar su firma; no se
+construyó un manifiesto `hashes.json` sellado nuevo para
+`ladder_reliability.json` -no hacía falta un sistema de sellado nuevo sólo
+para trazabilidad-.
+Estado: congelada
+Impacto en contratos/fases: no reabre ni modifica Fase 93 (DEC-112), Fase 102
+(DEC-156) ni Fase 122 (DEC-162) -`user_market_view` y `bounded_market_grid_
+view` se siguen calculando y sirviendo intactos para "Resultados de hoy"
+(DEC-177) y otras superficies-; sólo cambia qué fuente alimenta el menú de
+mayor probabilidad y el criterio de selección de línea dentro de ella. Los
+picks de equipo ya congelados bajo las claves antiguas
+(`home_corners_over_4_5`, etc.) quedan intactos en
+`high_probability_pick_freezes`/`_settlements` como registro histórico, sin
+migrar; los nuevos usan las claves de grupo de la escalera (`home_corners`,
+`away_shots_first_half`, etc.), así que `prospective_reliability()` empieza
+una cohorte nueva para esos mercados -discontinuidad aceptada, mismo
+tratamiento que otras transiciones de cohorte ya registradas (Fase 106)-.
+Evidencia requerida: 14 pruebas nuevas en `tests/test_ladder_pick_
+selection.py` (banda objetivo, fallback en ambos sentidos, un grupo con una
+sola línea, bucket por zona, IC de Wilson real); 1 prueba nueva en `tests/
+test_audited_market_ladder_view.py` para `"first_half"`; `tests/test_phase_
+122_high_probability.py` reescrito (32 pruebas: fuentes independientes, sin
+tope de 3 para equipo, degradación por separado, componente único de gol);
+`tests/test_phase_123_high_probability_prospective.py` actualizado
+(liquidación acepta claves de grupo nuevas y rechaza métrica/lado
+inválidos); suite Python completa 812 aprobadas/8 omitidas sin regresiones;
+typecheck, build Next, 7 Playwright de `high-probability.spec.ts` (1 nueva
+para el aviso de `fallback_outside_band`) y el resto de la suite Playwright
+sin regresiones.
+
 ```text
 DEC-NNN
 Fecha:

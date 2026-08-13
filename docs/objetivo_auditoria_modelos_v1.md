@@ -1,7 +1,8 @@
 # Objetivo: auditoría de modelos y escalera completa adaptativa
 
-**Fecha:** 2026-08-12
-**Estado:** objetivo fijado, Etapa 1 en ejecución.
+**Fecha:** 2026-08-12 (Etapa 4 añadida 2026-08-13)
+**Estado:** Etapas 1-4 completas. Ver `DEC-179` para la integración con
+Mayor Probabilidad.
 
 ## Objetivo
 
@@ -469,6 +470,40 @@ Quedan abiertas, y documentadas, dos líneas de trabajo futuro: las 14 celdas
 sin causa estructural común (límite del prior estático walk-forward) y la
 posible auditoría del modelo Markov de Fase 88, que sigue sirviendo la
 rejilla original sin la misma verificación.
+
+## Etapa 4 — integración con Mayor Probabilidad (2026-08-13)
+
+El menú "Mayor probabilidad" (Fase 122/123) exponía mercados de equipo desde
+`user_market_view` -las nueve líneas fijas de `MARKET_METADATA`, aprobadas
+por el gate de punto sin IC de Fase 84A/88/89-, filtradas además por el gate
+v2 post-hoc de Fase 122 (`eligibility.json`, evidencia histórica sobre 1,270
+partidos). Ver `DEC-179`.
+
+Se sustituye esa fuente por la escalera auditada de la Etapa 3
+(`audited_market_ladder_view`), evidencia más rigurosa -calibración por
+tramos, ventaja con IC bootstrap contra partido completo, cuatro rondas de
+corrección de sesgos reales- y con cobertura mucho mayor (hasta 18 grupos por
+partido contra 9 líneas fijas). `src/ladder_pick_selection.py` decide, por
+cada grupo ya auditado, qué línea exponer: la menos extrema dentro de una
+banda de confianza `[0.60, 0.85]` -ni un volado (51-59%) ni una obviedad
+(≥90%, tipo "más de 0.5 tiros")-, con un pick de reserva si ninguna línea del
+grupo cae en la banda, para que ningún mercado cubierto quede sin al menos
+una estadística. Los mercados de gol (1X2, Over 2.5, Ambos marcan) quedan
+fuera: la escalera no los cubre, y DEC-162 ya midió que ninguno supera el
+gate de Fase 122 en ningún tramo.
+
+Efecto colateral encontrado y corregido: `_audited_market_ladder_view`
+publicaba el periodo de córners/tarjetas de primera mitad como `"half"` en
+vez de `"first_half"` -mismo convenio interno de `METRIC_LADDERS`
+(`src/ladder_audit.py`) filtrado sin traducir-, de modo que la Escalera
+Auditada desplegada el día anterior (DEC-178) nunca mostraba esos grupos en
+la Mini App. Corregido junto con esta integración.
+
+Fase 123 sigue congelando y liquidando exactamente lo que el menú muestra,
+sin migración de esquema: `resolve_team_market` ya no exige que `market` sea
+una de las nueve claves fijas, acepta cualquier métrica/lado estructuralmente
+válido de la escalera, y sigue liquidando también los picks ya congelados
+bajo las claves antiguas.
 
 ## Qué NO promete este objetivo
 

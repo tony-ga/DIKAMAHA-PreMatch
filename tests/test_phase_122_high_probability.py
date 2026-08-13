@@ -1,8 +1,14 @@
-"""Pruebas del menú de mayor probabilidad de Fase 122.
+"""Pruebas del menú de mayor probabilidad (Fase 122 + Etapa 4).
 
-Cubren la regla que gobierna la fase: una probabilidad alta sólo se expone si
-el par (mercado, tramo de confianza) superó el gate, y lo que se publica es la
-tasa observada histórica, no la probabilidad del modelo.
+Dos fuentes independientes, cada una con su propia degradación segura:
+
+- Mercados de gol (1X2, Over 2.5, Ambos marcan): sólo se exponen si el par
+  (mercado, tramo de confianza) supera el gate sellado de
+  `artifacts/phase_122_confidence_reliability`.
+- Mercados de equipo (córners, tiros, tiros a puerta, tarjetas): vienen de
+  `audited_market_ladder_view` vía `src/ladder_pick_selection.py`, ya
+  auditados en origen -no pasan por ningún gate de este archivo-. Siempre se
+  expone al menos una línea por cada mercado que la escalera cubra.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _cell(market: str, low: float, high: float, rate: float, **changes: Any) -> dict[str, Any]:
-    """Construye una celda apta sintética."""
+    """Construye una celda apta sintética del gate de gol."""
 
     payload = {
         "market": market, "bucket_low": low, "bucket_high": high,
@@ -42,7 +48,7 @@ def _cell(market: str, low: float, high: float, rate: float, **changes: Any) -> 
 
 
 def _artifact(tmp_path: Path, cells: list[dict[str, Any]], **changes: Any) -> Path:
-    """Sella un artefacto de elegibilidad sintético con su manifiesto."""
+    """Sella un artefacto de elegibilidad de gol sintético con su manifiesto."""
 
     payload: dict[str, Any] = {
         "version": EXPECTED_VERSION,
@@ -66,37 +72,138 @@ def _reseal(path: Path) -> None:
         json.dumps({path.name: digest}), encoding="utf-8")
 
 
-def _prediction(**markets: float) -> dict[str, Any]:
-    """Construye una predicción pre-match con los mercados indicados."""
+def _ladder_group(
+    key: str, metric: str, side: str, period: str, line: float,
+    probability: float, reliability: str = "model_edge",
+    observed: float | None = None, sample: int = 500,
+) -> dict[str, Any]:
+    """Construye un grupo sintético de la escalera auditada, una sola línea."""
 
-    metadata = {
-        "home_corners_over_4_5": ("corners", "home", "full_match", 4.5),
-        "away_corners_over_4_5": ("corners", "away", "full_match", 4.5),
-        "home_shots_over_10_5": ("shots", "home", "full_match", 10.5),
-        "away_shots_over_10_5": ("shots", "away", "full_match", 10.5),
-        "home_corners_second_half_over_2_5": ("corners", "home", "second_half", 2.5),
-        "home_shots_second_half_over_5_5": ("shots", "home", "second_half", 5.5),
-        "away_shots_second_half_over_5_5": ("shots", "away", "second_half", 5.5),
-        "shots_on_target_total_over_7_5": ("shots_on_target", "total", "full_match", 7.5),
-    }
-    view = [
-        {"key": key, "metric": metadata[key][0], "team_side": metadata[key][1],
-         "period": metadata[key][2], "line": metadata[key][3],
-         "probability": value}
-        for key, value in markets.items() if key in metadata
-    ]
     return {
-        "probability_home": markets.get("home", 0.34),
-        "probability_draw": markets.get("draw", 0.33),
-        "probability_away": markets.get("away", 0.33),
-        "probability_over_2_5": markets.get("over_2_5", 0.50),
-        "probability_btts": markets.get("btts", 0.50),
-        "experimental_team_markets": {"user_market_view": view},
+        "key": key, "metric": metric, "team_side": side, "period": period,
+        "expected_count": 5.0,
+        "lines": [{
+            "line": line, "over_probability": probability,
+            "under_probability": 1.0 - probability, "reliability": reliability,
+            "observed_rate_historical": observed if observed is not None else probability,
+            "sample_size": sample,
+        }],
     }
+
+
+def _prediction(
+    ladder_groups: list[dict[str, Any]] | None = None, **goals: float,
+) -> dict[str, Any]:
+    """Construye una predicción pre-match con mercados de gol y/o escalera."""
+
+    return {
+        "probability_home": goals.get("home", 0.34),
+        "probability_draw": goals.get("draw", 0.33),
+        "probability_away": goals.get("away", 0.33),
+        "probability_over_2_5": goals.get("over_2_5", 0.50),
+        "probability_btts": goals.get("btts", 0.50),
+        "experimental_team_markets": {
+            "audited_market_ladder_view": ladder_groups or [],
+        },
+    }
+
+
+def _one_pick_prediction() -> dict[str, Any]:
+    """Predicción mínima con exactamente un pick de equipo apto.
+
+    Conveniencia para las pruebas de infraestructura del endpoint
+    (concurrencia, caché, presupuesto de tiempo, `limit`), a las que no les
+    importa el contenido del pick, sólo que exista exactamente uno.
+    """
+
+    return _prediction(ladder_groups=[
+        _ladder_group("home_corners", "corners", "home", "full_match", 4.5, 0.70)])
 
 
 # --------------------------------------------------------------------------
-# Artefacto real sellado
+# Mercados de equipo — escalera auditada (Etapa 4)
+# --------------------------------------------------------------------------
+
+def test_team_market_picks_do_not_depend_on_the_goal_eligibility_artifact(
+    tmp_path: Path,
+) -> None:
+    """Los mercados de equipo nunca pasan por `eligibility.json`.
+
+    Se construye la vista apuntando a un artefacto de gol inexistente -el
+    gate de gol queda indisponible- y aun así el pick de equipo aparece.
+    """
+
+    view = HighProbabilityView(tmp_path / "no_existe.json")
+    assert view.available() is False
+    picks = view.picks(_one_pick_prediction())
+    assert len(picks) == 1
+    assert picks[0]["market"] == "home_corners"
+
+
+def test_team_markets_are_not_capped_at_three() -> None:
+    """A diferencia de los mercados de gol, la escalera no tiene tope de 3.
+
+    El pedido es "siempre al menos una estadística por cada mercado", así
+    que un partido con cobertura completa puede exponer todos sus grupos.
+    """
+
+    groups = [
+        _ladder_group(f"home_corners_{index}", "corners", "home", "full_match",
+                      4.5 + index, 0.70)
+        for index in range(6)
+    ]
+    view = HighProbabilityView()
+    picks = view.picks(_prediction(ladder_groups=groups))
+    assert len(picks) == 6
+
+
+def test_team_market_selection_field_travels_to_the_pick() -> None:
+    """`selection` (banda objetivo o fallback) llega intacto hasta el pick."""
+
+    groups = [
+        _ladder_group("home_corners", "corners", "home", "full_match", 4.5, 0.70),
+        _ladder_group("away_corners", "corners", "away", "full_match", 0.5, 0.98),
+    ]
+    view = HighProbabilityView()
+    picks = {pick["market"]: pick for pick in view.picks(_prediction(ladder_groups=groups))}
+    assert picks["home_corners"]["selection"] == "target_band"
+    assert picks["away_corners"]["selection"] == "fallback_outside_band"
+
+
+def test_team_market_edge_source_travels_end_to_end() -> None:
+    """El origen de la ventaja llega sin alterarse desde la escalera al pick."""
+
+    groups = [_ladder_group(
+        "home_shots_on_target", "shots_on_target", "home", "full_match", 7.5,
+        0.68, reliability="base_rate_driven", observed=0.71, sample=1204)]
+    picks = HighProbabilityView().picks(_prediction(ladder_groups=groups))
+    assert picks[0]["edge_source"] == "base_rate_driven"
+    assert picks[0]["sample_size"] == 1204
+    assert picks[0]["observed_rate"] == pytest.approx(0.71)
+
+
+def test_goal_market_malformed_probability_does_not_affect_team_picks() -> None:
+    """Un mercado de gol corrupto vacía sólo los picks de gol -no los de equipo."""
+
+    groups = [_ladder_group("home_corners", "corners", "home", "full_match", 4.5, 0.70)]
+    prediction = _prediction(ladder_groups=groups, over_2_5=0.50)
+    prediction["probability_over_2_5"] = 1.4
+
+    picks = HighProbabilityView().picks(prediction)
+    assert len(picks) == 1
+    assert picks[0]["market"] == "home_corners"
+
+
+def test_prediction_without_ladder_block_yields_no_team_picks() -> None:
+    """Sin `audited_market_ladder_view`, no hay picks de equipo -sin excepción."""
+
+    prediction = _prediction()
+    del prediction["experimental_team_markets"]["audited_market_ladder_view"]
+    assert HighProbabilityView().picks(prediction) == []
+
+
+# --------------------------------------------------------------------------
+# Artefacto real sellado (mercados de gol)
 # --------------------------------------------------------------------------
 
 def test_sealed_artifact_loads_and_matches_backtest() -> None:
@@ -109,6 +216,8 @@ def test_sealed_artifact_loads_and_matches_backtest() -> None:
     assert provenance["eligible_cells"] == 9
     assert len(provenance["eligibility_sha256"]) == 64
     assert provenance["status"] == "experimental_shadow_not_promoted"
+    assert provenance["goal_markets_gate_available"] is True
+    assert len(provenance["team_markets_sha256"]) == 64
 
 
 def test_official_goal_markets_never_surface() -> None:
@@ -116,6 +225,7 @@ def test_official_goal_markets_never_surface() -> None:
 
     Es el hallazgo central del backtest: ninguno superó el gate en ningún
     tramo, de modo que su confianza alta no debe llegar nunca al usuario.
+    Fuera de alcance de la Etapa 4 -sigue gobernado por el mismo gate-.
     """
 
     view = HighProbabilityView()
@@ -124,35 +234,15 @@ def test_official_goal_markets_never_surface() -> None:
     assert view.picks(prediction) == []
 
 
-def test_sealed_artifact_ranks_by_observed_rate() -> None:
-    """Con el artefacto real, el orden lo fija la tasa observada.
-
-    `away_shots_over_10_5` y `away_shots_second_half_over_5_5` miden tiros del
-    visitante y son el mismo componente, así que sólo sobrevive el más fuerte:
-    el menú no repite la misma señal partida por periodo.
-    """
-
-    view = HighProbabilityView()
-    picks = view.picks(_prediction(
-        home_corners_over_4_5=0.70, away_shots_over_10_5=0.28,
-        away_shots_second_half_over_5_5=0.70))
-    assert [pick["market"] for pick in picks] == [
-        "home_corners_over_4_5", "away_shots_over_10_5"]
-    assert picks[0]["observed_rate"] > picks[1]["observed_rate"]
-    assert picks[0]["model_probability"] == pytest.approx(0.70)
-
-
 # --------------------------------------------------------------------------
-# Selección de tramo y dirección
+# Selección de tramo y dirección (mercados de gol)
 # --------------------------------------------------------------------------
 
 def test_under_direction_uses_complementary_confidence(tmp_path: Path) -> None:
     """Una probabilidad de 0.28 es un pick `under` con confianza 0.72."""
 
-    path = _artifact(tmp_path, [
-        _cell("away_shots_over_10_5", 0.65, 0.75, 0.768)])
-    picks = HighProbabilityView(path).picks(
-        _prediction(away_shots_over_10_5=0.28))
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.768)])
+    picks = HighProbabilityView(path).picks(_prediction(over_2_5=0.28))
     assert len(picks) == 1
     assert picks[0]["direction"] == "under"
     assert picks[0]["model_probability"] == pytest.approx(0.72)
@@ -162,140 +252,122 @@ def test_under_direction_uses_complementary_confidence(tmp_path: Path) -> None:
 def test_confidence_outside_every_bucket_is_dropped(tmp_path: Path) -> None:
     """Una confianza fuera de los tramos aptos no produce pick."""
 
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893)])
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.893)])
     view = HighProbabilityView(path)
-    assert view.picks(_prediction(home_corners_over_4_5=0.60)) == []
-    assert view.picks(_prediction(home_corners_over_4_5=0.80)) == []
-    assert len(view.picks(_prediction(home_corners_over_4_5=0.70))) == 1
+    assert view.picks(_prediction(over_2_5=0.60)) == []
+    assert view.picks(_prediction(over_2_5=0.80)) == []
+    assert len(view.picks(_prediction(over_2_5=0.70))) == 1
 
 
 def test_bucket_upper_bound_is_exclusive(tmp_path: Path) -> None:
     """El límite superior del tramo no pertenece al tramo."""
 
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893)])
-    assert HighProbabilityView(path).picks(
-        _prediction(home_corners_over_4_5=0.75)) == []
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.893)])
+    assert HighProbabilityView(path).picks(_prediction(over_2_5=0.75)) == []
 
 
 # --------------------------------------------------------------------------
-# Política de exposición
+# Política de exposición (mercados de gol)
 # --------------------------------------------------------------------------
 
-def test_correlated_markets_collapse_to_the_strongest(tmp_path: Path) -> None:
-    """Dos líneas de córners del local son una señal, no dos."""
+def test_correlated_goal_markets_collapse_to_the_strongest(tmp_path: Path) -> None:
+    """Los tres mercados de gol son un solo componente correlacionado.
+
+    Si hipotéticamente dos superaran el gate a la vez, sólo sobrevive el más
+    fuerte -mismo mecanismo que antes protegía las líneas por periodo de un
+    mismo mercado de equipo, ahora exclusivo de los mercados de gol-.
+    """
 
     path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893),
-        _cell("home_corners_second_half_over_2_5", 0.65, 0.75, 0.688),
-    ])
-    picks = HighProbabilityView(path).picks(_prediction(
-        home_corners_over_4_5=0.70, home_corners_second_half_over_2_5=0.70))
-    assert [pick["market"] for pick in picks] == ["home_corners_over_4_5"]
-
-
-def test_match_is_capped_at_three_picks(tmp_path: Path) -> None:
-    """Ningún partido aporta más de tres picks al menú."""
-
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.90),
-        _cell("away_corners_over_4_5", 0.65, 0.75, 0.88),
-        _cell("home_shots_over_10_5", 0.65, 0.75, 0.86),
-        _cell("away_shots_over_10_5", 0.65, 0.75, 0.84),
-        _cell("shots_on_target_total_over_7_5", 0.65, 0.75, 0.82),
-    ])
-    picks = HighProbabilityView(path).picks(_prediction(
-        home_corners_over_4_5=0.70, away_corners_over_4_5=0.70,
-        home_shots_over_10_5=0.70, away_shots_over_10_5=0.70,
-        shots_on_target_total_over_7_5=0.70))
-    assert len(picks) == 3
-    assert [pick["market"] for pick in picks] == [
-        "home_corners_over_4_5", "away_corners_over_4_5",
-        "home_shots_over_10_5"]
-
-
-def test_edge_source_is_preserved(tmp_path: Path) -> None:
-    """El origen de la ventaja viaja hasta la interfaz sin alterarse."""
-
-    path = _artifact(tmp_path, [
-        _cell("home_shots_second_half_over_5_5", 0.65, 0.75, 0.68,
-              edge_source="base_rate_driven", skill_vs_naive=0.0)])
+        _cell("over_2_5", 0.65, 0.75, 0.893), _cell("btts", 0.65, 0.75, 0.688)])
     picks = HighProbabilityView(path).picks(
-        _prediction(home_shots_second_half_over_5_5=0.70))
-    assert picks[0]["edge_source"] == "base_rate_driven"
-    assert picks[0]["skill_vs_naive"] == pytest.approx(0.0)
+        _prediction(over_2_5=0.70, btts=0.70))
+    assert [pick["market"] for pick in picks] == ["over_2_5"]
 
 
 # --------------------------------------------------------------------------
 # Degradación segura
 # --------------------------------------------------------------------------
 
-def test_missing_artifact_fails_open(tmp_path: Path) -> None:
-    """Sin artefacto no hay picks, y tampoco hay excepción."""
+def test_missing_goal_artifact_fails_open_without_affecting_team_markets(
+    tmp_path: Path,
+) -> None:
+    """Sin artefacto de gol no hay picks de gol, pero los de equipo siguen.
+
+    Es la propiedad central de la Etapa 4: las dos fuentes degradan por
+    separado.
+    """
 
     view = HighProbabilityView(tmp_path / "ausente.json")
     assert view.available() is False
-    assert view.picks(_prediction(home_corners_over_4_5=0.70)) == []
-    assert view.provenance()["status"] == "unavailable"
+    assert view.provenance()["status"] == "experimental_shadow_not_promoted"
+    assert view.provenance()["goal_markets_gate_available"] is False
+
+    goal_only = _prediction(over_2_5=0.90)
+    assert view.picks(goal_only) == []
+
+    with_ladder = _one_pick_prediction()
+    picks = view.picks(with_ladder)
+    assert len(picks) == 1
+    assert picks[0]["market"] == "home_corners"
 
 
 @pytest.mark.parametrize("changes,cells", [
-    ({"version": "otra_version"}, [_cell("home_corners_over_4_5", 0.65, 0.75, 0.89)]),
-    ({}, [_cell("home_corners_over_4_5", 0.65, 0.75, 1.4)]),
-    ({}, [_cell("home_corners_over_4_5", 0.75, 0.65, 0.89)]),
-    ({}, [_cell("home_corners_over_4_5", 0.65, 0.75, 0.89, picks=0)]),
+    ({"version": "otra_version"}, [_cell("over_2_5", 0.65, 0.75, 0.89)]),
+    ({}, [_cell("over_2_5", 0.65, 0.75, 1.4)]),
+    ({}, [_cell("over_2_5", 0.75, 0.65, 0.89)]),
+    ({}, [_cell("over_2_5", 0.65, 0.75, 0.89, picks=0)]),
 ])
-def test_corrupt_artifact_fails_open(
+def test_corrupt_goal_artifact_fails_open(
     tmp_path: Path, changes: dict[str, Any], cells: list[dict[str, Any]],
 ) -> None:
-    """Versión distinta o cifras imposibles vacían el menú, no lo falsean."""
+    """Versión distinta o cifras imposibles vacían el gate de gol, no lo falsean."""
 
     path = _artifact(tmp_path, cells, **changes)
     view = HighProbabilityView(path)
     assert view.available() is False
-    assert view.picks(_prediction(home_corners_over_4_5=0.70)) == []
+    assert view.picks(_prediction(over_2_5=0.70)) == []
 
 
-def test_tampered_artifact_fails_open(tmp_path: Path) -> None:
-    """Editar el artefacto sin resellar vacía el menú, no lo altera.
+def test_tampered_goal_artifact_fails_open(tmp_path: Path) -> None:
+    """Editar el artefacto de gol sin resellar vacía el gate, no lo altera."""
 
-    Es el control que impide que una edición manual del archivo cambie qué
-    picks ve el usuario sin dejar rastro.
-    """
-
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893)])
-    assert len(HighProbabilityView(path).picks(
-        _prediction(home_corners_over_4_5=0.70))) == 1
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.893)])
+    assert len(HighProbabilityView(path).picks(_prediction(over_2_5=0.70))) == 1
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["eligible_cells"].append(
-        _cell("over_2_5", 0.65, 0.75, 0.95))
+    payload["eligible_cells"].append(_cell("btts", 0.65, 0.75, 0.95))
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     view = HighProbabilityView(path)
     assert view.available() is False
-    assert view.picks(_prediction(
-        home_corners_over_4_5=0.70, over_2_5=0.70)) == []
+    assert view.picks(_prediction(over_2_5=0.70, btts=0.70)) == []
 
 
 def test_missing_hash_manifest_fails_open(tmp_path: Path) -> None:
-    """Sin manifiesto de hashes no se sirve ningún pick."""
+    """Sin manifiesto de hashes no se sirve ningún pick de gol."""
 
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893)])
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.893)])
     (path.parent / "hashes.json").unlink()
     assert HighProbabilityView(path).available() is False
 
 
-def test_provenance_reports_the_sealed_hash() -> None:
-    """El hash publicado es el sellado, no uno recalculado en caliente."""
+def test_provenance_combines_both_source_hashes() -> None:
+    """El hash publicado combina el de gol (sellado) y el de la escalera.
 
-    sealed = json.loads(
-        (ELIGIBILITY.parent / "hashes.json").read_text(encoding="utf-8"))
-    assert HighProbabilityView().provenance()["eligibility_sha256"] == (
-        sealed["eligibility.json"])
+    No es una comparación contra un manifiesto sellado de la escalera -no
+    existe uno-: es una cifra de trazabilidad que cambia si cualquiera de
+    las dos fuentes cambia.
+    """
+
+    sealed_goal = json.loads(
+        (ELIGIBILITY.parent / "hashes.json").read_text(encoding="utf-8")
+    )["eligibility.json"]
+    provenance = HighProbabilityView().provenance()
+    expected = hashlib.sha256(
+        f"{sealed_goal}|{provenance['team_markets_sha256']}".encode()
+    ).hexdigest()
+    assert provenance["eligibility_sha256"] == expected
 
 
 def test_prediction_without_shadow_block_is_safe() -> None:
@@ -307,14 +379,12 @@ def test_prediction_without_shadow_block_is_safe() -> None:
     assert view.picks({}) == []
 
 
-def test_probability_out_of_range_fails_open(tmp_path: Path) -> None:
-    """Una probabilidad corrupta vacía el menú en vez de propagarse."""
+def test_goal_probability_out_of_range_fails_open(tmp_path: Path) -> None:
+    """Una probabilidad de gol corrupta vacía el menú de gol, no se propaga."""
 
-    path = _artifact(tmp_path, [
-        _cell("home_corners_over_4_5", 0.65, 0.75, 0.893)])
-    prediction = _prediction(home_corners_over_4_5=0.70)
-    prediction["experimental_team_markets"]["user_market_view"][0][
-        "probability"] = 1.4
+    path = _artifact(tmp_path, [_cell("over_2_5", 0.65, 0.75, 0.893)])
+    prediction = _prediction(over_2_5=0.70)
+    prediction["probability_over_2_5"] = 1.4
     assert HighProbabilityView(path).picks(prediction) == []
 
 
@@ -330,16 +400,58 @@ def test_endpoint_requires_external_calls() -> None:
     assert response.json()["detail"]["message"] == "external_calls_disabled"
 
 
-def test_endpoint_reports_unavailable_gate(monkeypatch: Any, tmp_path: Path) -> None:
-    """Sin artefacto el endpoint responde vacío y explícito, no 500."""
+def test_endpoint_reports_unavailable_only_when_both_sources_are_down(
+    monkeypatch: Any,
+) -> None:
+    """El endpoint sólo corta el barrido si gol Y equipo están indisponibles.
+
+    Antes de la Etapa 4 un solo artefacto gobernaba todo el menú; ahora un
+    gate de gol caído no debe vaciar los mercados de equipo -el artefacto de
+    la escalera sigue siendo el real del repositorio-, así que el barrido
+    real sigue adelante y el estado es `ok` (aquí sin picks porque el
+    catálogo del día está vacío), no `unavailable`.
+    """
+
+    import src.dikamaha_service as service
 
     app = create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
     app.state.high_probability_view = HighProbabilityView(
-        tmp_path / "ausente.json")
+        Path("/no/existe/eligibility.json"))
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: [])
+
+    payload = TestClient(app).get("/v1/high-probability").json()
+    assert payload["status"] == "ok"
+    assert payload["picks"] == []
+    assert payload["provenance"]["goal_markets_gate_available"] is False
+    assert len(payload["provenance"]["team_markets_sha256"]) == 64
+
+
+def test_endpoint_reports_unavailable_when_both_sources_are_down(
+    monkeypatch: Any,
+) -> None:
+    """Con las dos fuentes caídas, el endpoint corta antes del barrido real."""
+
+    import src.dikamaha_service as service
+
+    app = create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
+    app.state.high_probability_view = HighProbabilityView(
+        Path("/no/existe/eligibility.json"))
+    monkeypatch.setattr(
+        "src.high_probability_view.LADDER_RELIABILITY_ARTIFACT",
+        Path("/no/existe/ladder_reliability.json"))
+    catalog_called = {"count": 0}
+
+    def fail_if_called(payload: Any) -> list[Any]:
+        catalog_called["count"] += 1
+        return []
+
+    monkeypatch.setattr(service, "_upcoming_catalog", fail_if_called)
+
     payload = TestClient(app).get("/v1/high-probability").json()
     assert payload["status"] == "unavailable"
+    assert payload["reason"] == "high_probability_sources_unavailable"
     assert payload["picks"] == []
-    assert payload["reason"] == "phase122_eligibility_unavailable"
+    assert catalog_called["count"] == 0
 
 
 def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
@@ -358,8 +470,12 @@ def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
          "home_team_logo": None, "away_team_logo": None},
     ]
     predictions = {
-        1: _prediction(away_shots_second_half_over_5_5=0.70),
-        2: _prediction(home_corners_over_4_5=0.70),
+        1: _prediction(ladder_groups=[_ladder_group(
+            "away_shots", "shots", "away", "full_match", 10.5, 0.68,
+            observed=0.70)]),
+        2: _prediction(ladder_groups=[_ladder_group(
+            "home_corners", "corners", "home", "full_match", 4.5, 0.70,
+            observed=0.90)]),
     }
 
     monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
@@ -380,11 +496,9 @@ def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
     assert payload["classification"] == "experimental_shadow_not_promoted"
     assert payload["fixtures_scanned"] == 2
     markets = [pick["market"] for pick in payload["picks"]]
-    assert markets == [
-        "home_corners_over_4_5", "away_shots_second_half_over_5_5"]
+    assert markets == ["home_corners", "away_shots"]
     assert payload["picks"][0]["fixture"]["match_id"] == 2
-    assert payload["picks"][0]["observed_rate"] > payload["picks"][1][
-        "observed_rate"]
+    assert payload["picks"][0]["observed_rate"] > payload["picks"][1]["observed_rate"]
 
 
 def test_endpoint_skips_fixtures_without_prediction(monkeypatch: Any) -> None:
@@ -411,7 +525,7 @@ def test_endpoint_skips_fixtures_without_prediction(monkeypatch: Any) -> None:
 
         if int(fixture["match_id"]) == 1:
             raise PrematchUnavailableError("history_insufficient")
-        return _prediction(home_corners_over_4_5=0.70)
+        return _one_pick_prediction()
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
@@ -443,7 +557,7 @@ def test_endpoint_limit_is_bounded(monkeypatch: Any) -> None:
                          fixture: dict[str, Any]) -> dict[str, Any]:
         """Devuelve siempre un pick apto."""
 
-        return _prediction(home_corners_over_4_5=0.70)
+        return _one_pick_prediction()
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
@@ -454,6 +568,20 @@ def test_endpoint_limit_is_bounded(monkeypatch: Any) -> None:
     assert payload["count"] == 2
     assert len(payload["picks"]) == 2
     assert payload["total_candidates"] == 3
+
+
+def test_eligibility_artifact_is_versioned_in_repository() -> None:
+    """El artefacto sellado vive en el repositorio y es el que usa el runtime."""
+
+    assert ELIGIBILITY.exists()
+    payload = json.loads(ELIGIBILITY.read_text(encoding="utf-8"))
+    assert payload["version"] == EXPECTED_VERSION
+    assert payload["status"] == "experimental_shadow_not_promoted"
+    assert payload["primary_result_frozen_gate_v1_eligible_cells"] == 0
+    for cell in payload["eligible_cells"]:
+        assert cell["holdout_consistent"] is True
+        assert cell["picks"] >= 100
+        assert cell["observed_ci95"][0] >= 0.60
 
 
 # --------------------------------------------------------------------------
@@ -503,7 +631,7 @@ def test_predictions_run_with_bounded_concurrency_not_unbounded(
         in_flight["max_seen"] = max(in_flight["max_seen"], in_flight["current"])
         await asyncio.sleep(0.15)
         in_flight["current"] -= 1
-        return _prediction(home_corners_over_4_5=0.70)
+        return _one_pick_prediction()
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
@@ -541,7 +669,7 @@ def test_wall_clock_budget_returns_partial_results_instead_of_blocking(
         """Simula una inferencia real con latencia constante."""
 
         await asyncio.sleep(0.1)
-        return _prediction(home_corners_over_4_5=0.70)
+        return _one_pick_prediction()
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
@@ -578,7 +706,7 @@ def test_high_probability_catalog_fetch_is_cached(monkeypatch: Any) -> None:
                          fixture: dict[str, Any]) -> dict[str, Any]:
         """Predicción sintética instantánea."""
 
-        return _prediction(home_corners_over_4_5=0.70)
+        return _one_pick_prediction()
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
@@ -589,17 +717,3 @@ def test_high_probability_catalog_fetch_is_cached(monkeypatch: Any) -> None:
 
     assert first.status_code == second.status_code == 200
     assert calls["count"] == 1
-
-
-def test_eligibility_artifact_is_versioned_in_repository() -> None:
-    """El artefacto sellado vive en el repositorio y es el que usa el runtime."""
-
-    assert ELIGIBILITY.exists()
-    payload = json.loads(ELIGIBILITY.read_text(encoding="utf-8"))
-    assert payload["version"] == EXPECTED_VERSION
-    assert payload["status"] == "experimental_shadow_not_promoted"
-    assert payload["primary_result_frozen_gate_v1_eligible_cells"] == 0
-    for cell in payload["eligible_cells"]:
-        assert cell["holdout_consistent"] is True
-        assert cell["picks"] >= 100
-        assert cell["observed_ci95"][0] >= 0.60

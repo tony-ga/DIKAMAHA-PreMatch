@@ -6,6 +6,26 @@
 confirmación prospectiva real, congelando los picks del menú antes del
 kickoff y liquidándolos después contra el resultado verificado.
 
+## Mayor probabilidad alimentada por la escalera auditada
+
+Ver `DEC-179` y `docs/objetivo_auditoria_modelos_v1.md` (Etapa 4). Los
+mercados de equipo de "Mayor probabilidad" (Fase 122/123) ya no salen de las
+nueve líneas fijas de `MARKET_METADATA` + `eligibility.json`: salen de
+`audited_market_ladder_view`, con `src/ladder_pick_selection.py` eligiendo
+por cada uno de sus hasta 18 grupos la línea menos extrema dentro de una
+banda de confianza `[0.60, 0.85]` -evita tanto el volado como lo obvio-, con
+reserva garantizada si ninguna línea cae en la banda. Nunca falta al menos
+una estadística por mercado cubierto. 1X2/Over 2.5/Ambos marcan siguen
+exactamente igual, gobernados por el gate de Fase 122; DEC-162 ya midió que
+ninguno lo supera. Las dos fuentes degradan por separado: un gate de gol
+caído ya no vacía los mercados de equipo. De paso se corrigió un bug
+preexistente (`"half"` en vez de `"first_half"` en `_audited_market_ladder_
+view`) que dejaba la Escalera Auditada de DEC-178 sin mostrar nunca córners
+ni tarjetas de primera mitad. Sin migración de esquema: `HighProbabilityPick
+Freeze` ya tenía columnas independientes para metric/team_side/period/line.
+Gates: suite Python completa 812 aprobadas/8 omitidas, typecheck, build Next
+y Playwright (incluida `high-probability.spec.ts`) sin regresiones.
+
 ## Corrección de presentación — un solo bloque de mercados de equipo en pre-match
 
 Ver `DEC-178`. El detalle pre-match de la Mini App (`prediction-detail.tsx`)

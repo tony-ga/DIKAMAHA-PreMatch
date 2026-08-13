@@ -61,6 +61,7 @@ function PickCard({ value }: { value: Record<string, unknown> }) {
     ? new Date(fixture.kickoff_ts).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
     : "—";
   const modelEdge = String(value.edge_source) === "model_edge";
+  const fallback = String(value.selection) === "fallback_outside_band";
   return (
     <article className="data-panel">
       <div className="ladder-head">
@@ -93,6 +94,13 @@ function PickCard({ value }: { value: Record<string, unknown> }) {
         <div className="subscription-row">
           <span>El modelo declara</span><strong>{percentage(value.model_probability)}</strong>
         </div>
+        {fallback ? (
+          <small className="ladder-edge">
+            Única línea disponible para este mercado en este partido: ninguna cae en el rango de
+            confianza ideal (60%–85%), así que se muestra igual la más cercana en vez de omitir el
+            mercado.
+          </small>
+        ) : null}
       </div>
     </article>
   );
@@ -112,38 +120,41 @@ export default function HighProbabilityPage() {
   return (
     <>
       <PageHeader
-        eyebrow="FASE 122 · FIABILIDAD VERIFICADA · AUTO 2 MIN"
+        eyebrow="ESCALERA AUDITADA · FIABILIDAD VERIFICADA · AUTO 2 MIN"
         title="Mayor probabilidad"
         action={<button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar picks">↻</button>}
       />
       <div className="notice">
-        El porcentaje que ves es el <strong>acierto histórico real</strong> de ese mercado en ese
-        nivel de confianza, no la probabilidad que declara el modelo. Sólo aparecen mercados cuya
-        fiabilidad superó el gate de Fase 122; 1X2, Más de 2.5 y Ambos marcan no lo superaron en
-        ningún tramo y por eso nunca aparecen aquí.
+        El porcentaje que ves es el <strong>acierto histórico real</strong> de ese mercado, no la
+        probabilidad que declara el modelo. Córners, tiros, tiros a puerta y tarjetas vienen de la
+        escalera auditada: siempre se muestra al menos la línea más informativa de cada mercado que
+        cubra -ni la más obvia (tipo &quot;más de 0.5&quot;) ni un volado casi 50/50-. 1X2, Más de
+        2.5 y Ambos marcan siguen un gate distinto e histórico; ninguno lo superó en ningún tramo,
+        así que no aparecen aquí.
       </div>
       <div className="metric-grid compact-metrics">
         <Metric label="Picks del día" value={(query.data?.count as number | undefined) ?? "—"} accent />
         <Metric label="Partidos revisados" value={(query.data?.fixtures_scanned as number | undefined) ?? "—"} />
-        <Metric label="Mercados aptos" value={(provenance.eligible_cells as number | undefined) ?? "—"} />
+        <Metric label="Celdas de gol aptas" value={(provenance.eligible_cells as number | undefined) ?? "—"} />
       </div>
       {query.isError ? (
         <StatePanel title="Servicio no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>
           No se pudo consultar el menú de mayor probabilidad.
         </StatePanel>
       ) : unavailable ? (
-        <StatePanel title="Gate no disponible">
-          El artefacto de fiabilidad de Fase 122 no está cargado, de modo que no se expone ningún pick.
+        <StatePanel title="Fuentes no disponibles">
+          Ni el gate de mercados de gol ni la escalera auditada de mercados de equipo están
+          cargados, de modo que no se expone ningún pick.
         </StatePanel>
       ) : query.isLoading ? (
         <LoadingProgress title="Evaluando partidos de hoy" />
       ) : picks.length ? (
         <div className="stack">{picks.map((pick, index) => <PickCard key={`${String(record(pick.fixture).match_id)}-${String(pick.market)}-${index}`} value={pick} />)}</div>
       ) : (
-        <StatePanel title="Hoy no hay ningún pick que supere el gate">
-          Ningún mercado de los partidos de hoy alcanza un nivel de confianza cuya fiabilidad esté
-          demostrada. Es un resultado normal y frecuente: preferimos no mostrar nada antes que
-          mostrar un pick que no se sostiene.
+        <StatePanel title="Hoy no hay ningún pick disponible">
+          No hay partidos con predicción utilizable en el catálogo de hoy, o ninguna liga tiene
+          cobertura auditada de córners, tiros o tarjetas. Es un resultado normal y frecuente:
+          preferimos no mostrar nada antes que mostrar un pick que no se sostiene.
         </StatePanel>
       )}
     </>

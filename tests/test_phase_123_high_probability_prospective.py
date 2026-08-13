@@ -187,15 +187,46 @@ def test_resolve_team_market_misses_when_line_not_covered() -> None:
     assert resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3)) is None
 
 
-def test_resolve_team_market_rejects_unknown_market() -> None:
+def test_resolve_team_market_accepts_a_ladder_sourced_market_key() -> None:
+    """La clave de grupo de la escalera auditada (Etapa 4) también liquida.
+
+    `"home_corners"` nunca estuvo en `MARKET_METADATA` -es la clave de
+    `src/ladder_pick_selection.py`, no una línea fija-, pero su
+    metric/team_side son estructuralmente válidos, así que debe liquidar
+    igual que una línea fija heredada.
+    """
+
     fixture = _fixture()
     pick = freeze_from_pick(
-        _pick(market="unknown_market_key", metric="corners",
+        _pick(market="home_corners", metric="corners",
               team_side="home", period="full_match", line=4.5, direction="over"),
         fixture, "sha", FROZEN_AT)
     statistics = {"periods": {"home": {"full_match": {"corners": 6}}}}
 
-    assert resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3)) is None
+    verdict = resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3))
+
+    assert verdict is not None
+    assert verdict.hit is True
+    assert verdict.settlement_source == "team_market_statistics"
+
+
+def test_resolve_team_market_rejects_an_unrecognized_metric_or_side() -> None:
+    """Un `market` que no es ni una línea fija heredada ni una métrica/lado
+    conocidos de la escalera se rechaza -nunca liquida un string inventado."""
+
+    fixture = _fixture()
+    bad_metric = freeze_from_pick(
+        _pick(market="unknown_market_key", metric="possession",
+              team_side="home", period="full_match", line=4.5, direction="over"),
+        fixture, "sha", FROZEN_AT)
+    bad_side = freeze_from_pick(
+        _pick(market="another_unknown_key", metric="corners",
+              team_side="referee", period="full_match", line=4.5, direction="over"),
+        fixture, "sha", FROZEN_AT)
+    statistics = {"periods": {"home": {"full_match": {"corners": 6}}}}
+
+    assert resolve_team_market(bad_metric, statistics, KICKOFF + timedelta(hours=3)) is None
+    assert resolve_team_market(bad_side, statistics, KICKOFF + timedelta(hours=3)) is None
 
 
 def test_prospective_reliability_hides_rate_below_minimum_sample() -> None:

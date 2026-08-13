@@ -968,7 +968,8 @@ def _audited_market_ladder_view(
                 continue
             output.append({
                 "key": f"{side}_{spec_metric}", "metric": base_metric,
-                "team_side": side, "period": period,
+                "team_side": side,
+                "period": "first_half" if period == "half" else period,
                 "expected_count": float(mean), "lines": lines,
                 "source_model": "phase84a_negative_binomial_audited",
             })

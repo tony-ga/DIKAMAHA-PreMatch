@@ -41,6 +41,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from sqlalchemy.types import JSON
 
 try:
+    from src.ladder_audit import METRIC_LADDERS
     from src.prematch_raw_store import canonical_hash
     from src.settlement_store import (
         MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
@@ -48,6 +49,7 @@ try:
     from src.team_count_market_runtime import MARKET_METADATA
     from src.telegram_bot import PredictionGatewayError
 except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
+    from ladder_audit import METRIC_LADDERS
     from prematch_raw_store import canonical_hash
     from settlement_store import (
         MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
@@ -57,6 +59,8 @@ except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
 
 GOAL_MARKET_KEYS = {"1x2": "one_x_two", "over_2_5": "over_2_5", "btts": "btts"}
 MAXIMUM_WINDOW = 500
+_LADDER_BASE_METRICS = frozenset(base for base, _ in METRIC_LADDERS.values())
+_LADDER_SIDES = frozenset({"home", "away", "total"})
 
 
 class PickSettlementBase(DeclarativeBase):
@@ -383,9 +387,22 @@ def resolve_team_market(
     `prediction_settlements` ya tenga una fila para este `fixture_key`, lo
     que certifica estado final y marcador reconciliado (Fase 118)-. Este
     resolutor no repite esa comprobación.
+
+    Acepta dos orígenes de pick: las líneas fijas heredadas de
+    `MARKET_METADATA` (Fase 84A/88/89, `market` es la clave del catálogo
+    fijo) y las de la escalera auditada (Etapa 4, `market` es la clave del
+    grupo, p.ej. `"home_corners"`, con línea variable por partido). No hace
+    falta distinguirlas para liquidar: ambas ya traen `metric`/`team_side`/
+    `period`/`line` como columnas propias e independientes del string
+    `market`, y la regla de acierto es la misma (`team_market_hit`). La
+    validación sólo existe para rechazar un `market` que no sea ninguna de
+    las dos cosas -nunca liquidar un string inventado-.
     """
 
-    if pick.market not in MARKET_METADATA:
+    is_legacy_fixed_line = pick.market in MARKET_METADATA
+    is_ladder_market = (
+        pick.metric in _LADDER_BASE_METRICS and pick.team_side in _LADDER_SIDES)
+    if not is_legacy_fixed_line and not is_ladder_market:
         return None
     periods = statistics.get("periods")
     if not isinstance(periods, dict):

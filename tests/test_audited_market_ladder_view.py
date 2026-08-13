@@ -121,5 +121,28 @@ def test_second_half_is_not_claimed_as_audited() -> None:
     assert "second_half" not in periods
 
 
+def test_first_half_groups_use_the_canonical_period_name() -> None:
+    """Los grupos de córners/tarjetas de 1ª mitad declaran `"first_half"`.
+
+    `METRIC_LADDERS` usa internamente `"half"` (mismo convenio que
+    `LADDER_MAXIMUMS`), pero el resto del sistema -`MARKET_METADATA`,
+    `explorer_statistics.periods[side]`, y el filtro de periodo del
+    frontend (`audited-ladder.tsx`)- sólo reconoce `"first_half"`. Sin la
+    traducción a la salida, estos grupos nunca aparecían en la Mini App: el
+    filtro de periodo del frontend los descartaba en silencio.
+    """
+
+    shadow = UniversalPrematchEngine().predict(
+        _request(match_id=990105)).experimental_team_markets
+
+    periods = {row["period"] for row in shadow["audited_market_ladder_view"]}
+    assert "half" not in periods
+    assert "first_half" in periods
+    first_half_metrics = {
+        row["metric"] for row in shadow["audited_market_ladder_view"]
+        if row["period"] == "first_half"}
+    assert "corners" in first_half_metrics
+
+
 # Version: 1.0.0
 # Created: 2026-08-12

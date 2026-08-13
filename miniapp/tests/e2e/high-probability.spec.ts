@@ -16,10 +16,8 @@ function pick(overrides: Record<string, unknown> = {}) {
     observed_ci95: [0.833, 0.933],
     sample_size: 149,
     edge_source: "model_edge",
-    skill_vs_naive: 0.248,
-    bucket: [0.65, 0.75],
-    league_stability: 1.0,
-    status: "experimental_shadow_not_promoted",
+    selection: "target_band",
+    bucket: [0.6, 0.85],
     fixture: {
       match_id: 401,
       league_slug: "esp.1",
@@ -119,25 +117,48 @@ test("prefers an honest empty state over a weak pick", async ({ page }) => {
 
   await page.goto("/mayor-probabilidad");
   await expect(page.getByRole("heading", {
-    name: "Hoy no hay ningún pick que supere el gate",
+    name: "Hoy no hay ningún pick disponible",
   })).toBeVisible();
   await expect(page.getByText(/preferimos no mostrar nada/)).toBeVisible();
 });
 
-test("explains an unavailable gate instead of failing silently", async ({ page }) => {
+test("explains unavailable sources instead of failing silently", async ({ page }) => {
   await page.route("**/api/high-probability**", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       status: "unavailable",
-      reason: "phase122_eligibility_unavailable",
+      reason: "high_probability_sources_unavailable",
       picks: [], count: 0, fixtures_scanned: 0,
-      provenance: { status: "unavailable", eligible_cells: 0 },
+      provenance: {
+        status: "unavailable", eligible_cells: 0,
+        goal_markets_gate_available: false, team_markets_sha256: "",
+      },
     }),
   }));
 
   await page.goto("/mayor-probabilidad");
-  await expect(page.getByRole("heading", { name: "Gate no disponible" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fuentes no disponibles" })).toBeVisible();
+});
+
+test("marks a pick as the only line available when none fits the ideal band", async ({ page }) => {
+  await page.route("**/api/high-probability**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "ok",
+      picks: [pick({
+        market: "away_corners", line: 0.5, observed_rate: 0.98,
+        model_probability: 0.99, selection: "fallback_outside_band",
+      })],
+      count: 1,
+      fixtures_scanned: 3,
+      provenance: { eligible_cells: 9 },
+    }),
+  }));
+
+  await page.goto("/mayor-probabilidad");
+  await expect(page.getByText(/Única línea disponible para este mercado/)).toBeVisible();
 });
 
 test("is reachable from the primary navigation", async ({ page }) => {

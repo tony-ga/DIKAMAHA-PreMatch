@@ -1064,12 +1064,17 @@ def create_app(
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
         view = app.state.high_probability_view
-        if not view.available():
+        provenance = view.provenance()
+        if not provenance["goal_markets_gate_available"] and not provenance[
+                "team_markets_sha256"]:
+            # Las dos fuentes están caídas -no sólo el gate de gol, que por sí
+            # solo ya no vacía el menú: los mercados de equipo de la escalera
+            # auditada siguen siendo independientes-. Evita el barrido real.
             return {
                 "status": "unavailable",
-                "reason": "phase122_eligibility_unavailable",
+                "reason": "high_probability_sources_unavailable",
                 "picks": [], "count": 0, "fixtures_scanned": 0,
-                "provenance": view.provenance(),
+                "provenance": provenance,
             }
         selected = leagues or ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 50)
@@ -1109,7 +1114,7 @@ def create_app(
             "fixtures_scanned": scanned,
             "fixtures_catalog_size": len(fixtures),
             "fixtures_without_prediction": skipped,
-            "provenance": view.provenance(),
+            "provenance": provenance,
         }
 
     @app.get("/v1/live", tags=["inference"])
