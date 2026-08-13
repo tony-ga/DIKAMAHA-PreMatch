@@ -2,6 +2,35 @@
 
 **Actualizado:** 2026-08-13
 
+## Córners sin variabilidad por equipo en "Mayor probabilidad" (auditoría nocturna)
+
+Ver `DEC-183`. Reporte del usuario: el menú muestra prácticamente las mismas
+probabilidades y líneas en todos los partidos, como si tratara a todos por
+igual. Comparado contra tres enfrentamientos reales de `esp.1` (Real Madrid-
+Leganés, Leganés-Valladolid, Atlético-Alavés), `home_corners` esperado
+(`9.072`), `away_corners` (`7.277`), `total_corners` (`16.349`) y
+`home_corners_first_half` (`3.971`) salían **idénticos** en los tres,
+mientras tiros y tarjetas sí variaban por equipo. Causa: `_expected` mezcla
+`weight * modelo + (1 - weight) * baseline`, `baseline` depende sólo de
+(liga, localía) -nunca del equipo-, y el artefacto vigente de Fase 84A tiene
+`model_weights["corners"] == 0.0` y `["corners_first_half"] == 0.0` -córners
+son 6 de los 18 grupos de la escalera, un tercio del menú-. Confirmado con
+`selection.json` que ese peso cero es la elección correcta y ya auditada
+-el deviance de córners empeora de forma monótona en cuanto se usa el
+modelo-, consecuencia de la reparación de sesgo de cobertura de DEC-173, no
+un bug de código: forzar un peso distinto habría revertido esa reparación
+válida (se probó por error al ejecutar `run_phase_84a_team_count_markets.py`
+sin el paso de reparación; el artefacto se restauró con `git checkout` antes
+de continuar). Reparado en el punto correcto: `_audited_market_ladder_view`
+omite cualquier métrica con `model_weights <= 0.0`, igual que ya omite
+métricas sin cobertura (DEC-182) o ausentes. Efecto: córners y córners 1ª
+mitad dejan de aparecer en la escalera/"Mayor probabilidad" en cualquier
+liga hasta que una fase de modelado futura entrene una versión con señal
+real por equipo; el mercado fijo `home_corners_over_4_5`/
+`away_corners_over_4_5` de `user_market_view` no se toca. Tiros y tarjetas
+siguen publicándose y quedan confirmados variando por equipo. Gates: suite
+Python completa sin regresiones (1 prueba nueva, 1 ajustada).
+
 ## Auditoría y reparación de "Mayor probabilidad" (reporte de usuario)
 
 Ver `DEC-182`. Un reporte concreto -"córners de ambos equipos, menos de 0.5,

@@ -179,7 +179,50 @@ def test_first_half_groups_use_the_canonical_period_name() -> None:
     first_half_metrics = {
         row["metric"] for row in shadow["audited_market_ladder_view"]
         if row["period"] == "first_half"}
-    assert "corners" in first_half_metrics
+    # No córners: DEC-183 lo excluye porque `model_weights["corners"] == 0.0`
+    # en el artefacto vigente (ver test_zero_weight_metrics_are_omitted).
+    assert "yellow_cards" in first_half_metrics
+
+
+def test_zero_weight_metrics_are_omitted_and_do_not_vary_by_team() -> None:
+    """DEC-183: sin señal de equipo, no se publica como si la tuviera.
+
+    `_expected` mezcla `weight * modelo + (1 - weight) * baseline`, y
+    `baseline` depende sólo de (liga, localía), nunca del equipo. El
+    artefacto vigente tiene `model_weights["corners"] == 0.0` y
+    `model_weights["corners_first_half"] == 0.0` -confirmado por
+    `selection.json`: el deviance del bloque sube de forma monótona en
+    cuanto se usa el modelo, así que la baseline pura es la elección
+    correcta, no un defecto de código-, así que ambas métricas quedaban
+    exactamente iguales para cualquier partido de la misma liga. Antes de
+    esta corrección, dos partidos con equipos completamente distintos
+    (Real Madrid-Leganés y Leganés-Valladolid) publicaban córners
+    idénticos: `home_corners` esperado `9.072`, `away_corners` `7.277`,
+    en ambos. `shots`/`yellow_cards` sí tienen `weight > 0` y deben seguir
+    publicándose y variando por equipo.
+    """
+
+    engine = UniversalPrematchEngine()
+    strong_vs_weak = engine.predict(UpcomingMatchInput(
+        league_slug="esp.1", home_team_id=86, away_team_id=17534,
+        kickoff_ts="2030-01-10T20:00:00+00:00",
+        match_id=990106)).experimental_team_markets
+    weak_vs_weak = engine.predict(UpcomingMatchInput(
+        league_slug="esp.1", home_team_id=17534, away_team_id=95,
+        kickoff_ts="2030-01-10T20:00:00+00:00",
+        match_id=990107)).experimental_team_markets
+
+    for shadow in (strong_vs_weak, weak_vs_weak):
+        metrics = {row["metric"] for row in shadow["audited_market_ladder_view"]}
+        assert "corners" not in metrics
+        assert "shots" in metrics
+        assert "yellow_cards" in metrics
+
+    home_shots_a, home_shots_b = (
+        next(row["expected_count"] for row in shadow["audited_market_ladder_view"]
+             if row["key"] == "home_shots")
+        for shadow in (strong_vs_weak, weak_vs_weak))
+    assert home_shots_a != home_shots_b
 
 
 # Version: 1.0.0

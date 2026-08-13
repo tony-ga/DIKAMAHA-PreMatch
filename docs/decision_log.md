@@ -3701,6 +3701,89 @@ que fija el caso Tobol-Partizan por liga, prueba de fail-closed reescrita,
 1 Playwright reescrita para la dirección publicada; suite Python completa
 821 aprobadas/8 omitidas, typecheck, build Next y Playwright sin regresiones.
 
+DEC-183
+Fecha: 2026-08-13
+Problema: reporte del usuario -tarea de auditoría nocturna- de que "Mayor
+probabilidad" muestra prácticamente las mismas probabilidades y líneas en
+todos los partidos, como si el modelo tratara a todos los partidos por
+igual. Comparación directa contra `UniversalPrematchEngine` con tres
+enfrentamientos reales de `esp.1` completamente distintos (Real Madrid-
+Leganés, Leganés-Valladolid, Atlético-Alavés) confirmó el reporte para
+córners: `home_corners` esperado `9.072`, `away_corners` `7.277`,
+`total_corners` `16.349`, `home_corners_first_half` `3.971` -idénticos, byte
+a byte, en los tres partidos-, mientras tiros y tarjetas sí variaban por
+equipo. Causa raíz aislada en `_expected` (`src/team_count_market_runtime.py`):
+mezcla `weight * modelo + (1 - weight) * baseline`, y `baseline` se deriva
+sólo de `(liga, localía)` en `_features` -nunca del equipo-, así que en
+cualquier métrica con `weight == 0.0` la salida colapsa exactamente al mismo
+número para cualquier partido de esa liga. El artefacto vigente de Fase 84A
+(`artifacts/phase_84a_team_count_markets/config.json`) tiene
+`model_weights["corners"] == 0.0` y `model_weights["corners_first_half"] ==
+0.0`; córners y córners 1ª mitad son 6 de los 18 grupos de la escalera -un
+tercio del menú-, incluyendo dos de los cuatro mercados oficialmente
+promovidos (`home_corners_over_4_5`, `away_corners_over_4_5`). Verificado
+contra `artifacts/phase_84a_team_count_markets/selection.json` que el
+`weight == 0.0` no es un defecto de código sino la elección correcta y ya
+auditada: `blend_deviance` de córners sube de forma monótona en cuanto se
+usa el modelo (`0.0`→`3.180`, mejor; `1.0`→`4.484`, peor), evidencia de que
+el modelo de córners no generaliza sobre el histórico limpio tras el
+reajuste de sesgo de cobertura de DEC-173. Reentrenar para forzar un peso
+distinto habría revertido esa reparación validada -confirmado al ejecutar
+por error `scripts/run_phase_84a_team_count_markets.py` sin el paso de
+reparación de DEC-173: el peso subía a `0.5`, pero sólo porque reintroduce
+4,737-5,078 filas contaminadas de ligas sin córners reales; cambio
+descartado y artefacto restaurado con `git checkout` antes de continuar-.
+Opciones: (a) dejarlo como está, aceptando que un tercio del menú publica
+una cifra no personalizada bajo la misma etiqueta que el resto ("depende de
+estos dos equipos en concreto", comentario de `ladder_pick_selection.py`);
+(b) forzar un peso distinto de cero para córners, revirtiendo la reparación
+válida de DEC-173 sólo para ganar variabilidad superficial; (c) excluir de
+`_audited_market_ladder_view` cualquier métrica cuyo `model_weights` sea
+`<= 0.0`, igual que ya excluye métricas ausentes (DEC-nativo) o sin
+cobertura medida (DEC-182), y dejar pendiente reentrenar córners con más
+datos como trabajo de modelado aparte.
+Decisión: (c). `_audited_market_ladder_view` recibe un tercer filtro
+posicional, `model_weights`, y omite cualquier `spec_metric` con peso
+`<= 0.0` antes de construir sus líneas. `_predict` pasa
+`config["model_weights"]` tal cual, sin transformarlo. Ningún otro
+componente cambia: `ladder_pick_selection.py`, `LadderReliabilityView`,
+`MetricCoverage` y el resto de la cadena (Fase 122/123, liquidación)
+permanecen intactos.
+Motivo: (a) es la misma clase de certeza engañosa que DEC-179/182 ya
+corrigieron para otras dos precondiciones -cobertura ausente y dirección
+invertida-; no hay razón para aplicar el estándar sólo a esas dos y no a
+esta. (b) resolvería el síntoma reintroduciendo exactamente el sesgo que
+DEC-173 midió y corrigió con evidencia -"para un equipo sano con 8.39
+córners esperados, P(over 4.5) declaraba 57.5% cuando el ajuste limpio da
+71.3%"-, cambiando una certeza engañosa por otra. (c) es aditivo, reutiliza
+el mismo patrón ya validado de `absent_metrics`/`covered_metrics`, y dejar
+el reentrenamiento de córners fuera de esta corrección respeta la regla del
+proyecto de no promover ni ajustar pesos de modelo a partir de una sola
+corrida sin gates propios.
+Estado: congelada
+Impacto en contratos/fases: la escalera auditada y "Mayor probabilidad"
+dejan de publicar córners y córners 1ª mitad en **cualquier** liga hasta que
+una fase de modelado futura entrene una versión que genere señal real por
+equipo (`weight > 0.0`) y pase los gates de Fase 84A de forma independiente;
+no se reabre esa fase aquí. `home_corners_over_4_5`/`away_corners_over_4_5`
+siguen existiendo en `APPROVED_MARKETS`/`user_market_view` -contrato
+distinto, no tocado por este cambio-, así que sólo se retira su aparición en
+la escalera/"Mayor probabilidad", no el mercado fijo. Tiros y tarjetas, con
+`weight > 0.0`, siguen publicándose y ahora quedan confirmados variando por
+equipo (`home_shots` esperado `13.791` en Real Madrid-Leganés frente a
+`13.199` en Leganés-Valladolid). No cambia `docs/00_roadmap_actual.md` ni
+reabre ninguna fase archivada por DEC-170.
+Evidencia requerida: comparación reproducible de al menos dos partidos
+reales con equipos muy distintos, antes/después del cambio; prueba de
+regresión que ancle que córners no aparece y que tiros sí varían por
+equipo; suite Python completa sin regresiones.
+Evidencia obtenida: `tests/test_audited_market_ladder_view.py::
+test_zero_weight_metrics_are_omitted_and_do_not_vary_by_team` (nueva) ancla
+los tres enfrentamientos reales usados en el diagnóstico; 1 prueba existente
+ajustada (`test_first_half_groups_use_the_canonical_period_name`, que
+afirmaba córners en 1ª mitad y ahora usa tarjetas amarillas, la métrica de
+1ª mitad que sí conserva `weight > 0.0`).
+
 ```text
 DEC-NNN
 Fecha:

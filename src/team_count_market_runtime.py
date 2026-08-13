@@ -585,7 +585,7 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         audited_ladder = _audited_market_ladder_view(
             expected, baseline_expected, config["dispersions"],
             config.get("correlations"), self._reliability, absent_metrics,
-            covered_metrics)
+            covered_metrics, config["model_weights"])
         return self._payload(
             request, source, matches, expected, baseline_expected,
             probabilities, baselines,
@@ -938,6 +938,7 @@ def _audited_market_ladder_view(
     reliability: LadderReliabilityView,
     absent_metrics: frozenset[str],
     covered_metrics: frozenset[str] = frozenset(),
+    model_weights: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Expone la escalera completa, filtrada y etiquetada por fiabilidad real.
 
@@ -961,15 +962,29 @@ def _audited_market_ladder_view(
     que el mapa de cobertura nunca evaluó no puede heredarlos. Sin cobertura
     medida no se publica nada de esa métrica, aunque tampoco esté declarada
     `absent` (DEC-182).
+
+    `model_weights` es un tercer filtro, independiente de cobertura de liga:
+    `_expected` mezcla `weight * modelo + (1 - weight) * baseline`, y
+    `baseline` depende sólo de (liga, localía) -nunca del equipo-, así que en
+    cualquier métrica con `weight == 0.0` (`corners`/`corners_first_half` en
+    el artefacto vigente, ver DEC-183) `expected` colapsa exactamente al
+    mismo número para **cualquier** partido de esa liga, sin importar qué dos
+    equipos jueguen. Publicar esa línea aquí -que se presenta como "depende
+    de estos dos equipos en concreto"- sería la misma clase de certeza
+    engañosa que las otras dos precondiciones existen para evitar; se omite
+    la métrica en vez de mostrarla como si fuera específica del partido.
     """
 
     if not reliability.available():
         return []
+    weights = model_weights or {}
     output = []
     for spec_metric, (base_metric, period) in METRIC_LADDERS.items():
         if spec_metric in absent_metrics:
             continue
         if spec_metric not in covered_metrics:
+            continue
+        if float(weights.get(spec_metric, 0.0)) <= 0.0:
             continue
         for side in ("home", "away", "total"):
             mean = _side_rate(expected, spec_metric, side)
