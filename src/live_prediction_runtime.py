@@ -637,10 +637,39 @@ _PRESSURE_WEIGHTS = {
 }
 _PRESSURE_WINDOW_MINUTES = 5
 _REGULATION_MINUTES = 90
+# Métricas cuya autoridad es `summary.boxscore`. Si el boxscore llega y no
+# publica una de ellas, el proveedor no la entrega para esa competición: su
+# cero derivado del play-by-play no es una observación, es un hueco. `goals`
+# y `substitutions` quedan fuera a propósito -el primero viene del marcador
+# oficial, el segundo sólo del flujo de jugadas-.
+_BOXSCORE_AUTHORITATIVE_METRICS = (
+    "shots", "shots_on_target", "shots_blocked", "shots_off_target",
+    "corners", "yellow_cards", "red_cards", "fouls", "offsides", "saves",
+    "penalties",
+)
+# Métricas agregadas que, de existir con valor positivo, prueban que hubo
+# acciones de presión aunque el flujo de jugadas no las publique.
+_PRESSURE_EVIDENCE_METRICS = ("shots", "corners", "fouls")
 
 
-def _match_dynamics(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Construye una curva causal de presión sólo para presentación."""
+def _match_dynamics(
+    snapshot: dict[str, Any], observed: dict[str, dict[str, int]] | None = None,
+) -> dict[str, Any]:
+    """Construye una curva causal de presión sólo para presentación.
+
+    `observed` son los conteos ya agregados de esta misma respuesta. Sirven
+    para declarar por qué la curva está vacía, no para construirla: el
+    boxscore es agregado y no lleva marca de tiempo, así que repartir sus
+    conteos sobre el eje de minutos sería inventar el dato que falta. La
+    distinción que sí puede hacerse con honestidad es de tres estados:
+
+    - `play_by_play`: el proveedor publica jugadas con peso y la curva es real.
+    - `aggregate_only`: hay tiros/córners/faltas en el agregado pero ninguna
+      jugada con peso, así que esta competición no publica granularidad por
+      jugada -el caso de DEC-176, verificado en la Supercopa de Europa-.
+    - `insufficient_events`: todavía no ha pasado nada que pese; la curva se
+      llenará sola conforme avance el partido.
+    """
 
     home_id = int(snapshot["home_team_id"])
     away_id = int(snapshot["away_team_id"])
@@ -648,6 +677,7 @@ def _match_dynamics(snapshot: dict[str, Any]) -> dict[str, Any]:
     away_name = str(snapshot.get("away_team_name") or away_id)
     raw = [0.0] * _REGULATION_MINUTES
     goals: list[dict[str, Any]] = []
+    weighted_events = 0
     for event in snapshot.get("events", []):
         if not isinstance(event, dict) or bool(event.get("annulled")):
             continue
@@ -657,6 +687,7 @@ def _match_dynamics(snapshot: dict[str, Any]) -> dict[str, Any]:
         weight = _PRESSURE_WEIGHTS.get(canonical)
         if side is None or weight is None:
             continue
+        weighted_events += 1
         clock_seconds = max(0.0, float(event.get("match_clock_seconds") or 0.0))
         minute = min(_REGULATION_MINUTES, max(1, int(clock_seconds // 60) + 1))
         raw[minute - 1] += weight if side == "home" else -weight
@@ -676,9 +707,23 @@ def _match_dynamics(snapshot: dict[str, Any]) -> dict[str, Any]:
     current_minute = min(
         _REGULATION_MINUTES, max(1, int(current_seconds // 60) + 1),
     )
+    aggregate_actions = sum(
+        int((observed or {}).get(side, {}).get(metric, 0) or 0)
+        for side in ("home", "away")
+        for metric in _PRESSURE_EVIDENCE_METRICS
+    )
+    if weighted_events:
+        granularity = "play_by_play"
+    elif aggregate_actions:
+        granularity = "aggregate_only"
+    else:
+        granularity = "insufficient_events"
     return {
         "contract_version": "match_pressure_v1",
         "status": "display_only_heuristic",
+        "pressure_granularity": granularity,
+        "weighted_event_count": weighted_events,
+        "aggregate_action_count": aggregate_actions,
         "weights": {
             "goal": 25,
             "shot_on_target": 8,
@@ -746,10 +791,21 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
         })
     boxscore = snapshot.get("boxscore_aggregate")
     used_boxscore = isinstance(boxscore, dict) and "home" in boxscore and "away" in boxscore
+    published: dict[str, frozenset[str]] = {}
     if used_boxscore:
         for side in ("home", "away"):
+            published[side] = frozenset(
+                key for key, value in boxscore[side].items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool))
             stats[side].update(boxscore[side])
-    for row in stats.values():
+    for side, row in stats.items():
+        # `totalShots` es el total comercial del proveedor y manda sobre la
+        # suma de componentes. `_boxscore_aggregate` sólo deriva
+        # `shots_off_target` cuando ESPN publica también `shotsOnTarget`, así
+        # que recalcular siempre destruía el total autoritativo en cuanto
+        # faltaba ese desglose: `shots` caía a `0 + 0 + blocked`.
+        if "shots" in published.get(side, frozenset()):
+            continue
         row["shots"] = (
             row["shots_on_target"] + row["shots_off_target"]
             + row["shots_blocked"]
@@ -765,14 +821,37 @@ def _observed_live_presentation(snapshot: dict[str, Any]) -> dict[str, Any]:
                 else "provider_play_by_play"
             ),
             "as_of": str(snapshot["source_fetched_at"]),
+            "unavailable_metrics": _unavailable_metrics(used_boxscore, published),
             "home": stats["home"],
             "away": stats["away"],
             "unassigned": stats["unassigned"],
         },
         "recent_actions": actions[:24],
-        "match_dynamics": _match_dynamics(snapshot),
+        "match_dynamics": _match_dynamics(snapshot, stats),
         "automatic_refresh_recommended_seconds": 15,
     }
+
+
+def _unavailable_metrics(
+    used_boxscore: bool, published: dict[str, frozenset[str]],
+) -> list[str]:
+    """Declara qué métricas el proveedor no entregó para este partido.
+
+    Sólo se puede afirmar con el boxscore delante: es la fuente autoritativa
+    de estos conteos, así que si llega y omite una métrica, el proveedor no
+    la publica para esa competición y su cero derivado del play-by-play es
+    un hueco, no una observación. Sin boxscore no hay forma de distinguir
+    "cero real" de "sin dato", y entonces no se declara nada -inventar la
+    distinción sería peor que no hacerla-.
+    """
+
+    if not used_boxscore:
+        return []
+    return [
+        metric for metric in _BOXSCORE_AUTHORITATIVE_METRICS
+        if not any(metric in published.get(side, frozenset())
+                   for side in ("home", "away"))
+    ]
 
 
 def _empty_observed_stats(goals: int) -> dict[str, int]:

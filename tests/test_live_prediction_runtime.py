@@ -319,6 +319,103 @@ def test_observed_live_presentation_ignores_incomplete_boxscore() -> None:
     assert statistics["home"]["shots"] == 0
 
 
+def test_boxscore_total_shots_survive_a_missing_on_target_breakdown() -> None:
+    """El total comercial del proveedor manda sobre la suma de componentes.
+
+    `_boxscore_aggregate` sólo deriva `shots_off_target` cuando ESPN publica
+    también `shotsOnTarget`. Recalcular `shots` incondicionalmente destruía
+    el único dato real disponible cuando faltaba ese desglose: 9 tiros
+    publicados caían a 0 en la interfaz.
+    """
+
+    snapshot = {
+        **_snapshot(),
+        "events": [],
+        "boxscore_aggregate": {
+            "home": {"shots": 9, "corners": 4, "fouls": 8},
+            "away": {"shots": 12, "corners": 6, "fouls": 11},
+        },
+    }
+
+    statistics = _observed_live_presentation(
+        snapshot)["observed_live_statistics"]
+
+    assert statistics["home"]["shots"] == 9
+    assert statistics["away"]["shots"] == 12
+    assert "shots" not in statistics["unavailable_metrics"]
+    assert "shots_on_target" in statistics["unavailable_metrics"]
+
+
+def test_shots_are_still_derived_when_the_provider_omits_the_total() -> None:
+    """Sin `totalShots`, la suma de componentes sigue siendo la mejor lectura."""
+
+    snapshot = {
+        **_snapshot(),
+        "events": [],
+        "boxscore_aggregate": {
+            "home": {"shots_on_target": 3, "shots_blocked": 1},
+            "away": {"shots_on_target": 2, "shots_blocked": 0},
+        },
+    }
+
+    statistics = _observed_live_presentation(
+        snapshot)["observed_live_statistics"]
+
+    assert statistics["home"]["shots"] == 4
+    assert statistics["away"]["shots"] == 2
+
+
+def test_unavailable_metrics_stay_empty_without_a_boxscore() -> None:
+    """Sin la fuente autoritativa no se puede afirmar que falte un dato."""
+
+    snapshot = {
+        **_snapshot(),
+        "events": [
+            {"event_id": "1", "event_type": "corner", "event_type_raw": "corner", "team_id": 1, "period": 1, "match_clock_seconds": 60, "text": "Corner", "annulled": False},
+        ],
+    }
+
+    statistics = _observed_live_presentation(
+        snapshot)["observed_live_statistics"]
+
+    assert statistics["source"] == "provider_play_by_play"
+    assert statistics["unavailable_metrics"] == []
+
+
+def test_pressure_granularity_separates_no_data_from_no_action_yet() -> None:
+    """El caso DEC-176: conteos agregados reales, cero jugadas con minuto.
+
+    Una curva plana en esa situación no significa "partido tranquilo", sino
+    que el proveedor no publica cronología por jugada para esa competición y
+    la curva no se va a llenar nunca. La interfaz necesita distinguirlo de un
+    partido que apenas arranca.
+    """
+
+    aggregate_only = _match_dynamics(
+        {**_snapshot(), "match_clock_seconds": 2700, "events": []},
+        {"home": {"shots": 9, "corners": 4, "fouls": 8},
+         "away": {"shots": 12, "corners": 6, "fouls": 11}},
+    )
+    too_early = _match_dynamics(
+        {**_snapshot(), "match_clock_seconds": 120, "events": []},
+        {"home": {"shots": 0, "corners": 0, "fouls": 0},
+         "away": {"shots": 0, "corners": 0, "fouls": 0}},
+    )
+    with_plays = _match_dynamics(
+        {**_snapshot(), "match_clock_seconds": 900,
+         "events": [{"event_type": "shot_on_target", "team_id": 1,
+                     "match_clock_seconds": 600}]},
+        {"home": {"shots": 1, "corners": 0, "fouls": 0},
+         "away": {"shots": 0, "corners": 0, "fouls": 0}},
+    )
+
+    assert aggregate_only["pressure_granularity"] == "aggregate_only"
+    assert aggregate_only["weighted_event_count"] == 0
+    assert too_early["pressure_granularity"] == "insufficient_events"
+    assert with_plays["pressure_granularity"] == "play_by_play"
+    assert with_plays["weighted_event_count"] == 1
+
+
 def test_match_dynamics_applies_signed_weights_and_centered_smoothing() -> None:
     """Orienta local/visitante y suaviza cinco minutos sin usar el futuro."""
 

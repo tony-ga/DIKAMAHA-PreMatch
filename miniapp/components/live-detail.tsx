@@ -101,14 +101,21 @@ function OfficialLivePrediction({ value, engine, teamMarkets, homeName, awayName
           <div><span>Gol próximos 5 min</span><strong>{percentage(record(horizon.next_5m).probability_any_goal)}</strong></div>
           <div><span>Gol próximos 10 min</span><strong>{percentage(record(horizon.next_10m).probability_any_goal)}</strong></div>
         </div>
-        <div className="live-period-table">
-          {periodRows.map(([label, periodMarkets]) => <div key={label}><strong>{label}</strong><span>1 {percentage(periodMarkets.probability_home)}</span><span>X {percentage(periodMarkets.probability_draw)}</span><span>2 {percentage(periodMarkets.probability_away)}</span></div>)}
-        </div>
+        {/* El contrato de fallback (`_official_markov_fallback`) devuelve
+            `periods: {}`, así que pintar la tabla igual daba nueve guiones
+            sin explicar por qué. La causa ya viaja en `fallback.reason`. */}
+        {Object.keys(periods).length ? (
+          <div className="live-period-table">
+            {periodRows.map(([label, periodMarkets]) => <div key={label}><strong>{label}</strong><span>1 {percentage(periodMarkets.probability_home)}</span><span>X {percentage(periodMarkets.probability_draw)}</span><span>2 {percentage(periodMarkets.probability_away)}</span></div>)}
+          </div>
+        ) : (
+          <p className="muted">Sin desglose por periodo en este snapshot: el motor cayó al contrato de compatibilidad{fallback.reason ? ` (${String(fallback.reason)})` : ""}.</p>
+        )}
         {nextEvents.length ? <div className="next-event"><p className="eyebrow">PRÓXIMO EVENTO · {String(nextEvent.horizon_minutes ?? 5)} MIN</p>{nextEvents.map((event) => <div className="subscription-row" key={event.name}><span>{event.name}</span><strong>{percentage(event.probability)}</strong></div>)}<div className="subscription-row"><span>Sin evento</span><strong>{percentage(nextEvent.probability_no_event)}</strong></div></div> : null}
         {exactScores.length ? <div className="exact-score-strip"><span>Marcadores más probables</span>{exactScores.map((score) => <b key={`${score.score_home}-${score.score_away}`}>{String(score.score_home)}–{String(score.score_away)} <small>{percentage(score.probability)}</small></b>)}</div> : null}
         <div className="engine-health">
           <span className={audit.passed ? "health-ok" : "health-warn"}>{audit.passed ? "✓ Auditoría matemática aprobada" : "⚠ Auditoría en revisión"}</span>
-          <span>Confianza {String(confidence.level ?? confidence.status ?? "calculada")}</span>
+          <span>Confianza {String(confidence.classification ?? confidence.status ?? "calculada")}</span>
           <span>Monte Carlo: {String(monteCarlo.status ?? "pendiente")} · {Number(monteCarlo.simulations ?? 0).toLocaleString("es-MX")} simulaciones</span>
         </div>
         {fallback.applied ? <div className="notice">Fallback aplicado: {String(fallback.source ?? "Markov Live")} · {String(fallback.reason ?? "calidad insuficiente")}</div> : null}
@@ -189,25 +196,35 @@ function ObservedStatistics({ value, homeName, awayName }: { value: unknown; hom
   const statistics = record(value);
   const home = record(statistics.home);
   const away = record(statistics.away);
+  // El backend sólo declara una métrica ausente cuando el boxscore -su
+  // fuente autoritativa- llegó y la omitió. Sin esa lista, un 0 del
+  // play-by-play y un dato que el proveedor nunca publicó se veían igual.
+  const unavailable = new Set(
+    Array.isArray(statistics.unavailable_metrics)
+      ? statistics.unavailable_metrics.map(String)
+      : [],
+  );
+  const fromBoxscore = statistics.source === "provider_boxscore_aggregate";
   return (
     <article className="data-panel live-statistics">
-      <div className="panel-heading"><div><p className="eyebrow">DATOS DEL PARTIDO</p><h3>Acciones observadas</h3></div><span className="provider-chip">PLAY-BY-PLAY</span></div>
+      <div className="panel-heading"><div><p className="eyebrow">DATOS DEL PARTIDO</p><h3>Acciones observadas</h3></div><span className="provider-chip">{fromBoxscore ? "BOXSCORE OFICIAL" : "PLAY-BY-PLAY"}</span></div>
       <div className="live-stat-header"><strong>{homeName}</strong><span>Comparativa</span><strong>{awayName}</strong></div>
       <div className="live-stat-list">
         {STAT_ROWS.map(([key, label]) => {
+          const missing = unavailable.has(key);
           const homeValue = numberValue(home, key);
           const awayValue = numberValue(away, key);
           const total = Math.max(homeValue + awayValue, 1);
           return (
             <div className="live-stat-row" key={key}>
-              <strong>{homeValue}</strong>
-              <div><span>{label}</span><div className="live-stat-bars"><i><b style={{ width: `${(homeValue / total) * 100}%` }} /></i><i><b style={{ width: `${(awayValue / total) * 100}%` }} /></i></div></div>
-              <strong>{awayValue}</strong>
+              <strong>{missing ? "—" : homeValue}</strong>
+              <div><span>{label}</span>{missing ? <small className="muted">sin dato del proveedor</small> : <div className="live-stat-bars"><i><b style={{ width: `${(homeValue / total) * 100}%` }} /></i><i><b style={{ width: `${(awayValue / total) * 100}%` }} /></i></div>}</div>
+              <strong>{missing ? "—" : awayValue}</strong>
             </div>
           );
         })}
       </div>
-      <p className="live-source-note">Conteos derivados del flujo de jugadas del proveedor. El marcador usa su valor oficial.</p>
+      <p className="live-source-note">{fromBoxscore ? "Conteos oficiales agregados del proveedor." : "Conteos derivados del flujo de jugadas del proveedor."} El marcador usa su valor oficial.</p>
     </article>
   );
 }

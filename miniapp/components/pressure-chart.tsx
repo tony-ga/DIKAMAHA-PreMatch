@@ -25,8 +25,25 @@ function pointsFrom(value: unknown): Point[] {
   }) : [];
 }
 
+/**
+ * Motivo por el que la curva está vacía, en las palabras del backend.
+ *
+ * `aggregate_only` no es un estado de carga: el proveedor publicó los
+ * conteos agregados del partido pero ninguna jugada con marca de tiempo,
+ * así que la curva no se puede construir nunca para esa competición (DEC-176).
+ * Distinguirlo de "todavía no ha pasado nada" evita que el usuario espere
+ * indefinidamente un gráfico que no va a llegar.
+ */
+const EMPTY_REASONS: Record<string, string> = {
+  aggregate_only:
+    "Esta competición no publica la cronología por jugada, sólo los totales del partido. Los conteos oficiales sí están en «Acciones observadas», arriba.",
+  insufficient_events:
+    "Todavía no hay acciones suficientes para construir la curva.",
+};
+
 export default function PressureChart({ value, homeName, awayName }: { value: unknown; homeName: string; awayName: string }) {
   const dynamics = record(value);
+  const granularity = String(dynamics.pressure_granularity ?? "insufficient_events");
   const currentMinute = Math.max(1, Number(dynamics.current_minute) || 1);
   const points = pointsFrom(dynamics.points).filter((point) => point.minute <= currentMinute);
   const goals = Array.isArray(dynamics.goal_markers) ? dynamics.goal_markers.map(record) : [];
@@ -35,8 +52,11 @@ export default function PressureChart({ value, homeName, awayName }: { value: un
   const domain = Math.ceil(maximum * 1.25 * 10) / 10;
   const byMinute = new Map(points.map((point) => [point.minute, point.smoothed_score]));
 
-  if (!points.length) {
-    return <article className="data-panel pressure-panel"><p className="eyebrow">DINÁMICA DE PARTIDO</p><h3>Presión por acciones</h3><p className="muted">Todavía no hay acciones suficientes para construir la curva.</p></article>;
+  // `aggregate_only` manda sobre el conteo de puntos: aunque un gol suelto
+  // produzca una curva técnicamente dibujable, sin tiros, córners ni faltas
+  // con minuto esa línea no representa la presión del partido.
+  if (!points.length || granularity === "aggregate_only") {
+    return <article className="data-panel pressure-panel"><p className="eyebrow">DINÁMICA DE PARTIDO</p><h3>Presión por acciones</h3><p className="muted">{EMPTY_REASONS[granularity] ?? EMPTY_REASONS.insufficient_events}</p></article>;
   }
 
   return (
