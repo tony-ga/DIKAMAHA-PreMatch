@@ -8,21 +8,30 @@ módulo no añade una capa de evidencia nueva: decide, dentro de cada grupo
 (métrica × lado × periodo) ya auditado, cuál de sus líneas exponer como "la
 estadística más probable" de ese mercado en el menú de mayor probabilidad.
 
-La regla evita dos fallos simétricos: el volado (confianza apenas sobre 50%,
-no gana nada frente al azar) y lo obvio (confianza cercana a la certeza, tipo
-"más de 0.5 tiros" ≈ 99%, que no aporta información aunque acierte casi
-siempre -el mismo sesgo que Fase 122 ya documentó como "aciertos inflados por
-líneas extremas"-). Se define una banda de confianza
-`[CONFIDENCE_FLOOR, CONFIDENCE_CEILING]` y, dentro de ella, se prefiere la
-línea menos extrema -la más discriminante entre estos dos equipos en
-concreto-. Si ninguna línea del grupo cae en la banda, se expone igual la más
-cercana a ella: el pedido es mostrar siempre al menos una estadística por
-mercado, nunca dejarlo vacío por indecisión de banda. Ese caso se marca
-`selection = "fallback_outside_band"` para que la interfaz y la liquidación
-puedan distinguirlo de una selección dentro del rango ideal.
+Dos reglas gobiernan la selección, y la segunda manda sobre la cobertura:
 
-Version: 1.0.0
+1. **Nada obvio.** Una línea cuya probabilidad ronda la certeza -"más de 0.5
+   córners" ≈ 99%- no aporta información aunque acierte casi siempre; es el
+   mismo sesgo que Fase 122 documentó como "aciertos inflados por líneas
+   extremas". Tampoco sirve el volado, apenas por encima del 50%.
+2. **Antes vacío que obvio.** Si ningún line del grupo cae en la banda
+   `[CONFIDENCE_FLOOR, CONFIDENCE_CEILING]`, el mercado **no se publica**.
+   Una versión anterior exponía igual la línea más cercana a la banda
+   (`fallback_outside_band`) para garantizar "al menos una línea por
+   mercado"; en la práctica eso publicó exactamente las obviedades que la
+   regla 1 existe para evitar -incluida una línea imposible en producción,
+   ver DEC-182-, así que la garantía de cobertura cede ante la regla de
+   obviedad.
+
+La banda se comprueba **dos veces**, contra dos cifras que pueden divergir:
+la confianza del modelo para este partido y la tasa histórica observada de
+esa línea, que es la cifra que el menú realmente publica. Una línea cuyo
+modelo declara 0.62 pero cuyo histórico es 0.96 sigue siendo una obviedad
+para el usuario, porque 96% es lo que ve.
+
+Version: 2.0.0
 Created: 2026-08-13
+Updated: 2026-08-13 (DEC-182: dirección del histórico y regla de obviedad)
 """
 
 from __future__ import annotations
@@ -41,11 +50,10 @@ CONFIDENCE_CEILING = 0.85
 def select_ladder_picks(
     audited_market_ladder_view: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Elige una línea por grupo de la escalera auditada.
+    """Elige como mucho una línea por grupo de la escalera auditada.
 
-    Un grupo sin líneas no produce pick -nunca se inventa evidencia-. Todo
-    grupo con al menos una línea sí produce exactamente un pick, así que un
-    mercado cubierto por la escalera nunca queda ausente del menú.
+    Un grupo sin líneas aptas no produce pick: preferimos que un mercado
+    falte a que aparezca con una cifra que no informa.
     """
 
     picks = []
@@ -57,63 +65,71 @@ def select_ladder_picks(
 
 
 def _select_group(group: dict[str, Any]) -> dict[str, Any] | None:
-    """Elige la línea representativa de un solo grupo."""
+    """Elige la línea representativa de un grupo, o ninguna."""
 
-    lines = group.get("lines") or []
-    candidates = [_candidate(line) for line in lines]
-    if not candidates:
-        return None
+    candidates = [_candidate(line) for line in group.get("lines") or []]
     in_band = [
         candidate for candidate in candidates
-        if CONFIDENCE_FLOOR <= candidate["confidence"] <= CONFIDENCE_CEILING]
-    if in_band:
-        chosen = min(in_band, key=lambda candidate: candidate["confidence"])
-        selection = "target_band"
-    else:
-        chosen = min(
-            candidates,
-            key=lambda candidate: abs(candidate["confidence"] - CONFIDENCE_FLOOR))
-        selection = "fallback_outside_band"
-    return _pick(group, chosen, selection)
+        if _within_band(candidate["confidence"])
+        and _within_band(candidate["observed_rate"])
+    ]
+    if not in_band:
+        return None
+    # La menos extrema dentro de la banda: es la que más depende de estos dos
+    # equipos en concreto, en vez de la más fácil de acertar.
+    chosen = min(in_band, key=lambda candidate: candidate["confidence"])
+    return _pick(group, chosen)
+
+
+def _within_band(value: float) -> bool:
+    """Comprueba que una probabilidad no sea ni volado ni obviedad."""
+
+    return CONFIDENCE_FLOOR <= value <= CONFIDENCE_CEILING
 
 
 def _candidate(line: dict[str, Any]) -> dict[str, Any]:
-    """Normaliza una línea cruda a su confianza y dirección dominante."""
+    """Normaliza una línea cruda a la dirección dominante y sus dos cifras.
+
+    `observed_rate_historical` del artefacto de auditoría es **siempre** la
+    tasa del `over`. Para un pick `under` la cifra que corresponde es su
+    complemento: publicar la del `over` sin invertirla es exactamente el
+    defecto que llevó a producción "menos de 0.5 córners: 96%", cuando 96%
+    era la frecuencia histórica de que hubiera **más** de 0.5 (ver DEC-182).
+
+    La calibración y el veredicto de fiabilidad sí son invariantes a la
+    dirección -el Brier de un binario cumple `B(p, y) == B(1-p, 1-y)`-, así
+    que `reliability` viaja sin alterarse.
+    """
 
     over = float(line["over_probability"])
     under = float(line.get("under_probability", 1.0 - over))
-    direction = "over" if over >= under else "under"
-    confidence = over if direction == "over" else under
-    return {"line": line, "confidence": confidence, "direction": direction}
+    observed_over = float(line["observed_rate_historical"])
+    sample_size = int(line["sample_size"])
+    over_hits = round(observed_over * sample_size)
+    is_over = over >= under
+    return {
+        "line": line,
+        "direction": "over" if is_over else "under",
+        "confidence": over if is_over else under,
+        "observed_rate": observed_over if is_over else 1.0 - observed_over,
+        "observed_hits": over_hits if is_over else sample_size - over_hits,
+        "sample_size": sample_size,
+    }
 
 
-def _pick(
-    group: dict[str, Any], candidate: dict[str, Any], selection: str,
-) -> dict[str, Any]:
+def _pick(group: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     """Construye el pick final en el shape que consume `high_probability_view`.
 
     `bucket` reutiliza el mismo campo que ya usan los picks de gol (Fase 122)
-    para clasificar la zona de confianza -no hace falta una columna nueva en
-    `high_probability_pick_freezes`-: la banda objetivo para una selección
-    `target_band`, o el extremo correspondiente para una `fallback_outside_
-    band`, que por construcción cae siempre estrictamente por debajo del piso
-    o por encima del techo. `observed_ci95` es un intervalo de Wilson real
-    sobre `observed_rate_historical`/`sample_size` de esta línea concreta -no
-    existía en la escalera auditada, que sólo publicaba el punto-.
+    para declarar la zona de confianza, sin añadir una columna nueva a
+    `high_probability_pick_freezes`. `observed_ci95` es un intervalo de Wilson
+    calculado sobre los aciertos de **la dirección publicada**, no sobre los
+    del `over`.
     """
 
     line = candidate["line"]
-    observed_rate = float(line["observed_rate_historical"])
-    sample_size = int(line["sample_size"])
-    hits = round(observed_rate * sample_size)
-    ci_low, ci_high = wilson_interval(hits, sample_size)
-    confidence = candidate["confidence"]
-    if selection == "target_band":
-        bucket = [CONFIDENCE_FLOOR, CONFIDENCE_CEILING]
-    elif confidence < CONFIDENCE_FLOOR:
-        bucket = [0.0, CONFIDENCE_FLOOR]
-    else:
-        bucket = [CONFIDENCE_CEILING, 1.0]
+    sample_size = candidate["sample_size"]
+    ci_low, ci_high = wilson_interval(candidate["observed_hits"], sample_size)
     return {
         "market": str(group["key"]),
         "metric": str(group["metric"]),
@@ -121,15 +137,16 @@ def _pick(
         "period": str(group["period"]),
         "line": float(line["line"]),
         "direction": candidate["direction"],
-        "model_probability": float(confidence),
-        "observed_rate": observed_rate,
+        "model_probability": float(candidate["confidence"]),
+        "observed_rate": float(candidate["observed_rate"]),
         "observed_ci95": [ci_low, ci_high],
         "sample_size": sample_size,
         "edge_source": str(line["reliability"]),
-        "bucket": bucket,
-        "selection": selection,
+        "bucket": [CONFIDENCE_FLOOR, CONFIDENCE_CEILING],
+        "selection": "target_band",
     }
 
 
-# Version: 1.0.0
+# Version: 2.0.0
 # Created: 2026-08-13
+# Updated: 2026-08-13

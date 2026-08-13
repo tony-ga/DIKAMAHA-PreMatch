@@ -2,6 +2,38 @@
 
 **Actualizado:** 2026-08-13
 
+## Auditoría y reparación de "Mayor probabilidad" (reporte de usuario)
+
+Ver `DEC-182`. Un reporte concreto -"córners de ambos equipos, menos de 0.5,
+96%" en Tobol–Partizan, imposible- destapó **cuatro defectos encadenados**,
+todos reproducidos contra el fixture real de producción:
+
+1. **Dirección del histórico invertida.** `observed_rate_historical` es
+   siempre la tasa del `over`; se publicaba tal cual también para picks
+   `under`. El 96% era la frecuencia de que hubiera **más** de 0.5 córners;
+   la real del under era 3.83%. Afectaba a todos los picks `under`, y el
+   menú ordena por esa cifra, así que los peores subían al tope.
+2. **24 de 63 ligas servidas sin veredicto de cobertura.** El mapa se
+   construía del corpus de Fase 74 (39 ligas, cero filas de las 14 de Fase
+   120). Con `MetricCoverage` degradando abierto, esas ligas publicaban
+   mercados sobre datos que el proveedor nunca entregó.
+3. **La banda no cubría la cifra publicada** y el `fallback_outside_band` de
+   DEC-179 dejaba pasar justamente las obviedades que debía evitar.
+4. **La escalera heredaba fiabilidad global sin cobertura local**: sus
+   veredictos no tienen dimensión de liga.
+
+Reparado: tasa e intervalo por dirección publicada; mapa de cobertura
+regenerado desde el snapshot activo (39 → 56 ligas, 21 con métricas
+ausentes; **cero desacuerdos** con el mapa validado en las 39 comunes, así
+que el cambio es aditivo); banda aplicada a las dos cifras y mercado omitido
+cuando ninguna línea califica; y `is_covered` como precondición positiva de
+la escalera. Efecto: el caso reportado pasa de 18 a 4 picks, todos de
+tarjetas -la única métrica con cobertura real ahí-, mientras `esp.1` conserva
+15 con líneas informativas y ninguna obviedad. Verificados los tres
+consumidores aguas abajo (canal Telegram, ventana de aciertos y detalle
+pre-match). Gates: 821 Python/8 omitidas, typecheck, build Next y Playwright
+sin regresiones.
+
 ## Investigación — lentitud del catálogo live y progreso real
 
 Ver `DEC-181`. Medido contra ESPN real: un barrido en frío de "Partidos en

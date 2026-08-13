@@ -157,8 +157,14 @@ def test_team_markets_are_not_capped_at_three() -> None:
     assert len(picks) == 6
 
 
-def test_team_market_selection_field_travels_to_the_pick() -> None:
-    """`selection` (banda objetivo o fallback) llega intacto hasta el pick."""
+def test_obvious_team_market_lines_are_dropped_not_published() -> None:
+    """Una línea con probabilidad cercana a la certeza no llega al menú.
+
+    Regla principal declarada por el usuario y congelada en DEC-182: antes
+    vacío que obvio. `away_corners` sólo ofrece "más de 0.5" al 98%, así que
+    ese mercado desaparece del menú en vez de ocupar espacio con una cifra
+    que acierta casi siempre sin informar nada.
+    """
 
     groups = [
         _ladder_group("home_corners", "corners", "home", "full_match", 4.5, 0.70),
@@ -166,8 +172,8 @@ def test_team_market_selection_field_travels_to_the_pick() -> None:
     ]
     view = HighProbabilityView()
     picks = {pick["market"]: pick for pick in view.picks(_prediction(ladder_groups=groups))}
+    assert set(picks) == {"home_corners"}
     assert picks["home_corners"]["selection"] == "target_band"
-    assert picks["away_corners"]["selection"] == "fallback_outside_band"
 
 
 def test_team_market_edge_source_travels_end_to_end() -> None:
@@ -489,7 +495,7 @@ def test_endpoint_groups_by_fixture_instead_of_flattening_globally(
         ]),
         2: _prediction(ladder_groups=[_ladder_group(
             "home_corners", "corners", "home", "full_match", 4.5, 0.70,
-            observed=0.90)]),
+            observed=0.84)]),
     }
 
     monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)

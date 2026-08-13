@@ -3614,6 +3614,93 @@ desaparece al resolver, y el mensaje genérico honesto cuando no hay total
 conocido); suite Python completa sin regresiones; typecheck y build Next
 aprobados.
 
+DEC-182
+Fecha: 2026-08-13
+Problema: el usuario reportó que "Mayor probabilidad" no cumple su función y
+citó un caso concreto en producción: Tobol Kostanay–Partizan Belgrade
+mostraba "primer tiempo · córners de ambos equipos · menos de 0.5 · 96%",
+que es literalmente imposible. La auditoría reprodujo el caso exacto contra
+el fixture real (`uefa.europa.conf_qual`, match 401903118) y encontró
+**cuatro defectos encadenados**, no uno:
+(A) **Dirección del histórico invertida.** `observed_rate_historical` del
+artefacto de auditoría es *siempre* la tasa del `over`;
+`ladder_pick_selection._pick` la publicaba verbatim también para picks
+`under`. El 96% mostrado era la frecuencia histórica de que hubiera **más**
+de 0.5 córners en 1T (0.9617 medido sobre 1,306 partidos); la cifra real del
+`under` publicado era 3.83%. Afectaba a **todos** los picks `under`, y como
+el menú ordena por esa cifra, los peores subían al tope.
+(B) **24 de 63 ligas servidas sin veredicto de cobertura.** El mapa se
+construía desde el corpus de Fase 74, que tiene 39 ligas y **cero filas** de
+las 14 que Fase 120 añadió al catálogo. Como `MetricCoverage` degrada
+abierto, esas ligas publicaban mercados construidos sobre datos que el
+proveedor nunca entregó. Medido en el snapshot activo:
+`uefa.europa.conf_qual` 99.9% de ventanas con córners en cero,
+`uefa.europa_qual` 99.9%, `tur.1` y `ksa.1` 100%, frente a 38.7% en `esp.1`
+sana. El modelo aprendió 0.65 córners esperados en 1T donde lo real ronda 4-5.
+(C) **La banda no cubría lo que se publica, y el fallback dejaba pasar
+obviedades.** `fallback_outside_band` (DEC-179) exponía igual la línea más
+cercana a la banda para garantizar "al menos una por mercado", que es
+justo como la línea 0.5 llegó a la interfaz. Además la banda sólo miraba la
+confianza del modelo, no la tasa histórica que el menú realmente publica, y
+ambas divergen (0.524 modelo contra 0.962 publicado en el caso reportado).
+(D) **La escalera auditada heredaba fiabilidad global sin cobertura local.**
+`LadderReliabilityView.verdict(metric, side, line)` no tiene dimensión de
+liga: sus veredictos se midieron sobre un corpus de ligas sanas, así que una
+liga nunca evaluada los heredaba y se declaraba "auditada".
+Opciones: (a) parchear sólo (A), la cifra visible, dejando el resto; (b)
+reparar los cuatro, aceptando que (C) contradice la garantía de cobertura de
+DEC-179 y que (D) invierte un invariante de DEC-174; (c) además, auditar la
+escalera por liga -350 celdas × 56 ligas-, que resolvería (D) de raíz.
+Decisión: (b). (A) `_candidate` calcula tasa e intervalo de Wilson sobre los
+aciertos de la dirección publicada; el veredicto de fiabilidad sí viaja sin
+alterarse porque el Brier de un binario cumple `B(p,y) == B(1-p,1-y)`, así
+que es invariante a la dirección. (B) `scripts/run_metric_coverage_map.py`
+pasa a leer el **snapshot activo** -la misma fuente de la que el runtime
+deriva sus predicciones-, conservando `--source` para reproducir el mapa
+histórico; 39 → 56 ligas evaluadas, 21 con alguna métrica ausente. (C) se
+retira `fallback_outside_band`: si ninguna línea del grupo cae en
+`[0.60, 0.85]` **el mercado no se publica**, y la banda se comprueba contra
+las dos cifras (confianza del modelo y tasa histórica publicada). (D)
+`MetricCoverage.is_covered` (nuevo) exige evidencia positiva y
+`_audited_market_ladder_view` filtra por él, de modo que sin cobertura medida
+no se publica esa métrica aunque tampoco esté declarada `absent`. Se descarta
+(c) por ahora: es la solución de fondo pero exige rehacer la auditoría
+completa, y (D) ya cierra el agujero de forma conservadora.
+Motivo del cambio de fuente en (B): antes de adoptarlo se midió el desacuerdo
+entre ambas fuentes sobre las 39 ligas comunes y todas sus métricas:
+**cero desacuerdos**. El snapshot reproduce exactamente los veredictos ya
+validados y además cubre 17 ligas más, así que el cambio es estrictamente
+aditivo y no regresa el trabajo de Etapa 1. Motivo de (C): el usuario declaró
+explícitamente que evitar obviedades es "la regla principal", por encima de
+la garantía de mostrar siempre una línea por mercado que él mismo había
+pedido antes; cuando ambas chocan, manda la primera.
+Estado: congelada
+Impacto en contratos/fases: **invierte** el invariante de DEC-174 según el
+cual un mapa de cobertura ausente no debía vaciar la escalera auditada -su
+prueba se reescribió afirmando lo contrario, con el motivo documentado-, y
+**retira** la garantía "siempre al menos una línea por mercado" de DEC-179.
+No cambia el esquema de `high_probability_pick_freezes` ni la lógica de
+liquidación: `resolve_team_market` compara dirección/línea contra conteos
+reales y siempre fue correcta. Efecto verificado sobre el caso reportado: la
+escalera pasa de 18 a 9 grupos y de 18 a 4 picks, todos de tarjetas -la única
+métrica con cobertura real en esa liga-; `esp.1` conserva 15 picks con líneas
+informativas (12.5 córners, 21.5 tiros, 9.5 a puerta) y ninguna obviedad.
+Los tres consumidores aguas abajo quedan comprobados para esa liga:
+`bounded_market_grid_view` (canal Telegram y `shadow_verdicts` de la ventana
+de aciertos) y `user_market_view` también dejan de publicar córners y tiros.
+Discontinuidad aceptada: los picks de equipo ya congelados por Fase 123 antes
+de este despliegue llevan `observed_rate_declared` con la dirección
+equivocada, así que `prospective_reliability` reinicia cohorte útil para esos
+mercados; las filas viejas se conservan append-only como registro histórico y
+no se migran.
+Evidencia requerida: caso real reproducido y corregido extremo a extremo
+contra el fixture de producción; 4 pruebas nuevas de obviedad y dirección en
+`tests/test_ladder_pick_selection.py` (incluida la que ancla el 0.9617 real
+del artefacto), 1 regresión nueva en `tests/test_audited_market_ladder_view.py`
+que fija el caso Tobol-Partizan por liga, prueba de fail-closed reescrita,
+1 Playwright reescrita para la dirección publicada; suite Python completa
+821 aprobadas/8 omitidas, typecheck, build Next y Playwright sin regresiones.
+
 ```text
 DEC-NNN
 Fecha:

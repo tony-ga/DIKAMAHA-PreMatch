@@ -574,9 +574,18 @@ class ArtifactTeamCountMarketProvider(TeamCountMarketProvider):
         league = str(getattr(request, "league_slug", "") or "")
         absent_metrics = (
             self._coverage.absent_metrics(league) if league else frozenset())
+        # La escalera auditada exige cobertura **medida**, no sólo ausencia de
+        # veredicto `absent`: sus veredictos de fiabilidad son globales por
+        # (métrica, lado, línea), así que una liga nunca evaluada heredaría el
+        # "publicable" calculado sobre ligas sanas. Ver DEC-182.
+        covered_metrics = frozenset(
+            metric for metric in METRIC_LADDERS
+            if self._coverage.is_covered(league, metric)
+        ) if league else frozenset()
         audited_ladder = _audited_market_ladder_view(
             expected, baseline_expected, config["dispersions"],
-            config.get("correlations"), self._reliability, absent_metrics)
+            config.get("correlations"), self._reliability, absent_metrics,
+            covered_metrics)
         return self._payload(
             request, source, matches, expected, baseline_expected,
             probabilities, baselines,
@@ -928,6 +937,7 @@ def _audited_market_ladder_view(
     correlations: dict[str, float] | None,
     reliability: LadderReliabilityView,
     absent_metrics: frozenset[str],
+    covered_metrics: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """Expone la escalera completa, filtrada y etiquetada por fiabilidad real.
 
@@ -944,6 +954,13 @@ def _audited_market_ladder_view(
     segunda mitad de Fase 88/Markov: ese modelo no se auditó en esta ronda y
     mezclar ambos sin distinguir el origen habría sido la misma clase de
     certeza inventada que esta auditoría existe para evitar.
+
+    `covered_metrics` es un filtro **positivo** por liga, aparte de
+    `absent_metrics`: los veredictos de fiabilidad son globales por (métrica,
+    lado, línea), medidos sobre un corpus de ligas sanas, así que una liga
+    que el mapa de cobertura nunca evaluó no puede heredarlos. Sin cobertura
+    medida no se publica nada de esa métrica, aunque tampoco esté declarada
+    `absent` (DEC-182).
     """
 
     if not reliability.available():
@@ -951,6 +968,8 @@ def _audited_market_ladder_view(
     output = []
     for spec_metric, (base_metric, period) in METRIC_LADDERS.items():
         if spec_metric in absent_metrics:
+            continue
+        if spec_metric not in covered_metrics:
             continue
         for side in ("home", "away", "total"):
             mean = _side_rate(expected, spec_metric, side)

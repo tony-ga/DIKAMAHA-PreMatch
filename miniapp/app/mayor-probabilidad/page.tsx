@@ -73,12 +73,11 @@ function groupByFixture(picks: Pick[]): FixtureGroup[] {
 
 function PickRow({ pick, homeName, awayName }: { pick: Pick; homeName: string; awayName: string }) {
   const modelEdge = String(pick.edge_source) === "model_edge";
-  const fallback = String(pick.selection) === "fallback_outside_band";
   const side = pick.team_side === "away" ? "away" : "home";
   return (
     <div className="market-probability">
       <div>
-        <span>{pickLabel(pick, homeName, awayName)}{fallback ? " · única disponible" : ""}</span>
+        <span>{pickLabel(pick, homeName, awayName)}</span>
         <strong>{percentage(pick.observed_rate)}</strong>
       </div>
       <i><b className={side} style={{ width: probabilityWidth(pick.observed_rate) }} /></i>
@@ -148,13 +147,14 @@ export default function HighProbabilityPage() {
         action={<button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar picks">↻</button>}
       />
       <div className="notice">
-        El porcentaje de cada línea es el <strong>acierto histórico real</strong> de ese mercado, no
-        la probabilidad que declara el modelo. Cada partido muestra todos los mercados de equipo que
-        cubre la escalera auditada -córners, tiros, tiros a puerta y tarjetas, completos y de primera
-        mitad-, con la línea más informativa de cada uno: ni la más obvia (tipo &quot;más de
-        0.5&quot;) ni un volado casi 50/50. Cuando ninguna línea cae en ese rango ideal se marca
-        &quot;única disponible&quot; en vez de omitir el mercado. 1X2, Más de 2.5 y Ambos marcan
-        siguen un gate distinto e histórico; ninguno lo superó en ningún tramo, así que no aparecen.
+        El porcentaje de cada línea es el <strong>acierto histórico real</strong> de esa línea en la
+        dirección mostrada, no la probabilidad que declara el modelo. Cada partido muestra los
+        mercados de equipo que cubre la escalera auditada -córners, tiros, tiros a puerta y
+        tarjetas, completos y de primera mitad-, con la línea más informativa de cada uno: entre 60%
+        y 85%. Fuera de ese rango el mercado <strong>no se publica</strong>: ni obviedades (tipo
+        &quot;más de 0.5&quot;, que aciertan casi siempre sin informar nada) ni volados casi 50/50.
+        Una liga cuyo proveedor no entrega esa estadística tampoco aparece. 1X2, Más de 2.5 y Ambos
+        marcan siguen un gate distinto e histórico; ninguno lo superó en ningún tramo.
       </div>
       <div className="metric-grid compact-metrics">
         <Metric label="Picks del día" value={(query.data?.count as number | undefined) ?? "—"} accent />

@@ -150,15 +150,19 @@ test("explains unavailable sources instead of failing silently", async ({ page }
   await expect(page.getByRole("heading", { name: "Fuentes no disponibles" })).toBeVisible();
 });
 
-test("marks a pick as the only line available when none fits the ideal band", async ({ page }) => {
+test("publishes the historical rate of the direction actually picked", async ({ page }) => {
+  // Un pick `under` muestra la tasa de que ocurra el under. El defecto de
+  // producción (DEC-182) publicaba la tasa del `over` también para picks
+  // `under`, produciendo "menos de 0.5 córners: 96%" cuando lo real era 3.8%.
   await page.route("**/api/high-probability**", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       status: "ok",
       picks: [pick({
-        market: "away_corners", line: 0.5, observed_rate: 0.98,
-        model_probability: 0.99, selection: "fallback_outside_band",
+        market: "away_corners", metric: "corners", team_side: "away",
+        line: 8.5, direction: "under", observed_rate: 0.65,
+        observed_ci95: [0.61, 0.69], model_probability: 0.67,
       })],
       count: 1,
       fixtures_scanned: 3,
@@ -167,7 +171,8 @@ test("marks a pick as the only line available when none fits the ideal band", as
   }));
 
   await page.goto("/mayor-probabilidad");
-  await expect(page.getByText(/única disponible/)).toBeVisible();
+  await expect(page.getByText("Córners de Sevilla · Menos de 8.5")).toBeVisible();
+  await expect(page.getByText("65%", { exact: true })).toBeVisible();
 });
 
 test("is reachable from the primary navigation", async ({ page }) => {

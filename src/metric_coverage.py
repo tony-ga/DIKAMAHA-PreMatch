@@ -203,6 +203,29 @@ class MetricCoverage:
             name for name, entry in metrics.items()
             if isinstance(entry, dict) and entry.get("status") == "absent")
 
+    def is_covered(self, league_slug: str, metric: str) -> bool:
+        """Afirma cobertura **medida** de esa métrica en esa liga.
+
+        Deliberadamente asimétrica frente a `is_absent`, que degrada abierto
+        para no suprimir un mercado que sí funciona ante un artefacto
+        ausente. Aquí la pregunta es la contraria -"¿hay evidencia de que
+        este dato existe?"- y la respuesta ante cualquier duda es `False`:
+        una liga que el mapa no evaluó, o evaluó con muestra insuficiente,
+        no puede heredar el veredicto de fiabilidad global de la escalera
+        auditada, que se midió sobre un corpus de ligas sanas.
+
+        Es la lección de DEC-182: `uefa.europa.conf_qual` no tenía veredicto
+        alguno, así que nada la suprimía, y publicó una línea de córners
+        imposible construida sobre datos que el proveedor nunca entregó.
+        """
+
+        try:
+            leagues = self._load()["leagues"]
+        except (OSError, ValueError, KeyError):
+            return False
+        entry = leagues.get(league_slug, {}).get("metrics", {}).get(metric)
+        return isinstance(entry, dict) and entry.get("status") == "covered"
+
 
 # Version: 1.0.0
 # Created: 2026-08-12

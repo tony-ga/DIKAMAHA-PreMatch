@@ -85,10 +85,24 @@ def test_missing_reliability_artifact_yields_an_empty_view(
     assert shadow["audited_market_ladder_view"] == []
 
 
-def test_missing_coverage_artifact_never_suppresses_the_audited_ladder(
+def test_missing_coverage_artifact_empties_the_audited_ladder(
     tmp_path: Path,
 ) -> None:
-    """Sin mapa de cobertura, la vista auditada no se vacía por eso."""
+    """Sin mapa de cobertura, la vista auditada queda vacía.
+
+    **Invierte deliberadamente el invariante anterior** (DEC-174), que
+    afirmaba que un mapa ausente no debía vaciar esta vista. DEC-182 mostró
+    por qué esa asimetría estaba mal aplicada aquí: los veredictos de
+    fiabilidad son globales por (métrica, lado, línea), medidos sobre un
+    corpus de ligas sanas, así que una liga sin cobertura medida los heredaba
+    y publicaba mercados construidos sobre datos que el proveedor nunca
+    entregó -en producción, "menos de 0.5 córners: 96%"-.
+
+    `MetricCoverage.is_absent` conserva su degradación abierta para los
+    mercados heredados que protege; sólo esta vista, que ya degradaba cerrada
+    ante un artefacto de fiabilidad ausente, extiende esa misma exigencia de
+    evidencia positiva a la cobertura.
+    """
 
     provider = ArtifactTeamCountMarketProvider(
         coverage=MetricCoverage(tmp_path / "no_existe.json"))
@@ -96,7 +110,31 @@ def test_missing_coverage_artifact_never_suppresses_the_audited_ladder(
 
     shadow = engine.predict(_request(match_id=990103)).experimental_team_markets
 
-    assert len(shadow["audited_market_ladder_view"]) > 0
+    assert shadow["audited_market_ladder_view"] == []
+
+
+def test_a_league_without_corner_coverage_publishes_no_corner_ladder() -> None:
+    """Regresión del caso real Tobol-Partizan (`uefa.europa.conf_qual`).
+
+    El proveedor no entrega córners ni tiros para esa competición y el
+    modelo aprendió ~0.65 córners esperados en primera mitad, de modo que la
+    escalera llegó a publicar "menos de 0.5" con certeza casi absoluta. Con
+    cobertura medida, esas métricas no se publican; las tarjetas, que sí
+    tienen cobertura real, siguen disponibles.
+    """
+
+    request = UpcomingMatchInput(
+        league_slug="uefa.europa.conf_qual", home_team_id=6748,
+        away_team_id=541, kickoff_ts="2026-08-13T15:00:00+00:00",
+        match_id=401903118)
+
+    shadow = UniversalPrematchEngine().predict(
+        request).experimental_team_markets
+
+    metrics = {row["metric"] for row in shadow["audited_market_ladder_view"]}
+    assert "corners" not in metrics
+    assert "shots" not in metrics
+    assert "yellow_cards" in metrics
 
 
 def test_unavailable_payload_includes_the_empty_field() -> None:
