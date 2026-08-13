@@ -8,6 +8,7 @@ import { AuditedLadder } from "@/components/audited-ladder";
 import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
+import { MarketGrid } from "@/components/market-grid";
 import { useAuth } from "@/components/providers";
 import { api, percentage, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
@@ -73,6 +74,7 @@ export function PredictionDetail(props: Props) {
   const awayLogo = String(fixture.away_team_logo || catalogFixture?.away_team_logo || "");
   const teamMarkets = record(payload.experimental_team_markets);
   const auditedRows = teamMarkets.audited_market_ladder_view;
+  const gridRows = teamMarkets.bounded_market_grid_view;
   const outcomeValues = [
     { name: homeName, value: Number(payload.probability_home ?? 0), color: "var(--mint)" },
     { name: "Empate", value: Number(payload.probability_draw ?? 0), color: "var(--signal)" },
@@ -110,6 +112,7 @@ export function PredictionDetail(props: Props) {
         </article>
         <FixtureContext league={props.league} eventId={props.fixtureId} />
         <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} />
+        <MarketGrid rows={gridRows} homeName={homeName} awayName={awayName} />
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
       </div>
     </>

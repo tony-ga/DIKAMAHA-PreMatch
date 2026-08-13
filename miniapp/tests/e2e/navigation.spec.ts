@@ -208,6 +208,96 @@ test("renders the audited ladder with reliability labels and an expand toggle", 
   await expect(audited.getByText("histórico 41%", { exact: false })).toBeVisible();
 });
 
+test("shows corners and second-half markets in the adaptive grid for a healthy league", async ({ page }) => {
+  // Reporte real: "Escalera auditada" nunca cubrió segundo tiempo -audita
+  // sólo Fase 84A, primer tiempo y partido completo, por diseño- y dejó de
+  // ser la única fuente que corners/segundo tiempo aparecieran en la Mini
+  // App cuando la vista más amplia ("Rejilla adaptativa") se dejó de
+  // renderizar en la pantalla de predicción. El backend nunca dejó de
+  // calcularla; sólo faltaba conectarla aquí.
+  const gridLine = (line: number, over: number, baseline: number) => ({
+    line, over_probability: over, under_probability: 1 - over,
+    baseline_over_probability: baseline, baseline_under_probability: 1 - baseline,
+  });
+  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      fixture: { home_team_name: "Cambridge United", away_team_name: "Barnet" },
+      probability_home: 0.4, probability_draw: 0.3, probability_away: 0.3,
+      probability_over_2_5: 0.55, probability_btts: 0.52,
+      expected_home_goals: 1.42, expected_away_goals: 1.08,
+      lambda_home: 1.42, lambda_away: 1.08,
+      experimental_team_markets: {
+        user_market_view: [],
+        audited_market_ladder_view: [],
+        bounded_market_grid_view: [
+          {
+            key: "home_corners_first_half", metric: "corners", team_side: "home",
+            period: "first_half", expected_count: 3.96,
+            lines: [gridLine(2.5, 0.63, 0.64), gridLine(3.5, 0.49, 0.49)],
+          },
+          {
+            key: "home_corners_second_half", metric: "corners", team_side: "home",
+            period: "second_half", expected_count: 4.2,
+            lines: [gridLine(3.5, 0.58, 0.55)],
+          },
+          {
+            key: "away_shots_full_match", metric: "shots", team_side: "away",
+            period: "full_match", expected_count: 11.1,
+            lines: [gridLine(9.5, 0.7, 0.66)],
+          },
+        ],
+      },
+    }),
+  }));
+  await page.goto("/predictions/401880614?league=eng.league_cup&home=351&away=280&kickoff=2030-01-10T20%3A00%3A00Z");
+  const grid = page.locator("article.model-card").filter({ hasText: "Rejilla adaptativa por periodo" });
+  await expect(grid).toBeVisible();
+  await expect(grid.getByText("Primer tiempo · Cambridge United · Córners")).toBeVisible();
+  await expect(grid.getByText("Segundo tiempo · Cambridge United · Córners")).toBeVisible();
+  await expect(grid.getByText("Partido completo · Barnet · Tiros")).toBeVisible();
+  await expect(grid.getByText("Más de 3.5", { exact: false })).toHaveCount(2);
+});
+
+test("keeps corners out of the adaptive grid when the league has no real coverage", async ({ page }) => {
+  // Espejo del guard de backend (`src/metric_coverage.py`, DEC-173/182): si
+  // el backend ya retiró córners porque el proveedor no los entrega para esa
+  // liga, la rejilla no debe reinventarlos en el cliente. Este es el mismo
+  // guard que "Escalera auditada" ya tenía; aquí se confirma que la vista
+  // nueva no lo reintroduce.
+  await page.route("**/api/predict/upcoming", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      fixture: { home_team_name: "Tobol", away_team_name: "Partizan" },
+      probability_home: 0.35, probability_draw: 0.3, probability_away: 0.35,
+      probability_over_2_5: 0.5, probability_btts: 0.48,
+      expected_home_goals: 1.1, expected_away_goals: 1.05,
+      lambda_home: 1.1, lambda_away: 1.05,
+      experimental_team_markets: {
+        user_market_view: [],
+        audited_market_ladder_view: [],
+        bounded_market_grid_view: [
+          {
+            key: "home_yellow_cards_first_half", metric: "yellow_cards", team_side: "home",
+            period: "first_half", expected_count: 1.1,
+            lines: [{
+              line: 0.5, over_probability: 0.42, under_probability: 0.58,
+              baseline_over_probability: 0.4, baseline_under_probability: 0.6,
+            }],
+          },
+        ],
+      },
+    }),
+  }));
+  await page.goto("/predictions/401903118?league=uefa.europa.conf_qual&home=10&away=20&kickoff=2030-01-10T20%3A00%3A00Z");
+  const grid = page.locator("article.model-card").filter({ hasText: "Rejilla adaptativa por periodo" });
+  await expect(grid).toBeVisible();
+  await expect(grid.getByText(/Córners/)).toHaveCount(0);
+  await expect(grid.getByText(/Tarjetas amarillas/)).toBeVisible();
+});
+
 test("shows the global open close and live market tape", async ({ page }) => {
   await page.unroute("**/api/provider/markets**");
   await page.route("**/api/provider/markets**", (route) => route.fulfill({
