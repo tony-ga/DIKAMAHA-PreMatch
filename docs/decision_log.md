@@ -3883,6 +3883,557 @@ ambas. Recomendado como siguiente paso: una inspección SQL de sólo lectura
 con credenciales propias del usuario, o una tarea de diagnóstico aparte con
 aprobación explícita para desplegar una consulta temporal.
 
+DEC-185
+Fecha: 2026-08-13
+Problema: reporte del usuario de que "en cualquier partido in-live los datos
+del partido y graficas se estan mostrando incorrectamente o no se estan
+mostrando". La revision extremo a extremo encontro cinco defectos
+independientes, ninguno en la inferencia: (A) `_observed_live_presentation`
+recalculaba `shots` como suma de componentes de forma incondicional, pero
+`_boxscore_aggregate` solo deriva `shots_off_target` cuando ESPN publica
+`totalShots` **y** `shotsOnTarget`; sin ese desglose el total autoritativo
+del proveedor se sobrescribia con `0 + 0 + blocked`. (B) `_match_dynamics`
+sigue derivando la curva de presion solo de `events`, la limitacion que
+DEC-176 dejo escrita al reparar el panel de estadisticas con el boxscore: en
+competiciones donde el proveedor solo publica goles/tarjetas/cambios la curva
+queda plana o vacia y la interfaz decia "todavia no hay acciones
+suficientes", que sugiere esperar algo que no va a llegar. (C)
+`live-detail.tsx:111` leia `confidence.level`, clave que el motor nunca
+emite -emite `classification`-, de modo que el indicador imprimia siempre la
+literal "calculada". (D) el contrato de fallback devuelve `periods: {}` y la
+tabla de periodos se pintaba igual, con nueve guiones y sin explicar la
+causa, que ya viaja en `fallback.reason`. (E) las doce filas de estadisticas
+usaban `?? 0`, asi que un dato que el proveedor no publica y un cero real se
+veian identicos.
+Opciones: (a) corregir solo (A) y (C), los dos defectos de dato duro; (b)
+corregir los cinco, aceptando que (B) y (E) exigen que el backend publique
+metadatos nuevos; (c) ademas, reconstruir la curva de presion repartiendo los
+conteos agregados del boxscore sobre el eje de minutos.
+Decision: (b). El backend publica `match_dynamics.pressure_granularity`
+(`play_by_play` | `aggregate_only` | `insufficient_events`, con sus conteos)
+y `observed_live_statistics.unavailable_metrics`; el cliente pinta el estado
+correspondiente en vez de una curva enganosa o un cero inventado. `shots`
+solo se recalcula cuando el proveedor no publico el total.
+Motivo: (c) queda descartado sin discusion -el boxscore es agregado y no
+lleva marca de tiempo, asi que repartirlo por minutos seria fabricar
+exactamente el dato que falta-. `unavailable_metrics` solo se declara con el
+boxscore delante: es la fuente autoritativa de esos conteos, asi que su
+omision es evidencia de ausencia; sin boxscore no hay forma de distinguir y
+no se afirma nada.
+Estado: congelada
+Impacto en contratos/fases: `POST /v1/predict/live/fixture` gana claves
+aditivas (`match_dynamics.pressure_granularity`/`weighted_event_count`/
+`aggregate_action_count` y `observed_live_statistics.unavailable_metrics`);
+ninguna clave existente cambia de forma. No toca inferencia: `match_dynamics`
+sigue marcado `not_model_feature: True`.
+Evidencia requerida: prueba que ancle que un boxscore con `totalShots` y sin
+`shotsOnTarget` conserva el total; prueba de los tres estados de
+granularidad; prueba de que sin boxscore no se declara ninguna metrica
+ausente; cobertura E2E de las tres formas visibles.
+Evidencia obtenida: 4 pruebas nuevas en
+`tests/test_live_prediction_runtime.py` (20 en total) y 3 Playwright nuevas
+en `miniapp/tests/e2e/live-observed-data.spec.ts`.
+
+DEC-186
+Fecha: 2026-08-13
+Problema: reporte del usuario de que la ventana "Aciertos" muestra
+"predicciones de corners totalmente imposibles como 'Corners partido completo
+menos 1.5'". La auditoria encontro **dos rutas independientes**, las dos
+vivas. Ruta 1: `bounded_market_grid_view` no tiene compuerta positiva de
+cobertura -solo `_drop_uncovered`, que suprime unicamente lo declarado
+`absent` y degrada abierto-, y `_status` de `src/metric_coverage.py`
+cortocircuitaba en `insufficient_evidence` **antes** de mirar la tasa de
+ceros. Efecto medido: `uru.1` con 8 de 8 equipos-partido sin un solo corner y
+`esp.super_cup` con 12 de 12 no se suprimian, y la rejilla publicaba corners
+sobre un dato que el proveedor nunca entrego. Ademas `_centered_lines` busca
+la linea mas cercana a P(over)=0.5, y cuando la intensidad ronda cero no hay
+ninguna: el "centro" colapsa en la mas baja elegible, que es literalmente la
+constante `VISIBLE_LINE_MIN = 1.5`. Ruta 2: `pick_view` (DEC-184) republica
+verbatim cada fila de `high_probability_pick_freezes`, incluidas las
+congeladas antes de DEC-182, que llevan la tasa del `over` publicada tambien
+para picks `under`; el propio DEC-182 las registro como "discontinuidad
+aceptada ... se conservan append-only como registro historico y no se
+migran", y DEC-184 las volvio visibles sin advertirlo.
+Opciones: (a) suprimir toda metrica con veredicto distinto de `covered`, lo
+que vaciaria tambien ligas con datos reales y poca muestra; (b) corregir la
+asimetria del veredicto -concluir ausencia con muestra chica pero unanime, y
+seguir exigiendo la muestra completa para afirmar cobertura-, anadir una
+guarda local contra el anclaje en el minimo, y cortar la publicacion de las
+filas heredadas; (c) borrar las filas historicas de la tabla.
+Decision: (b). `_status` usa el limite inferior de Wilson sobre la tasa de
+ceros cuando la muestra esta por debajo del minimo: 8/8 da 0.676 y 12/12 da
+0.758, ambos por encima de `ABSENT_THRESHOLD`, mientras que 2/2 solo da 0.342
+y sigue sin concluir. `_bounded_market_grid` descarta un grupo de metrica
+`ZERO_IMPLAUSIBLE` cuya linea mas alta no alcanza `GRID_MINIMUM_PEAK = 0.20`.
+`is_publishable` retiene los picks congelados antes de la reparacion o con
+cifras fuera de `[0.55, 0.90]`, solo para mercados de equipo.
+Motivo: (a) habria borrado `concacaf.nations.league`, que tiene `zero_rate`
+0.0 en corners -datos reales, solo poca muestra-; la regla correcta no es
+"pocos datos" sino "ceros suficientes para descartar el azar". La guarda de
+la rejilla es deliberadamente independiente del mapa de cobertura para cubrir
+las ligas cuya muestra no alcanza para veredicto (`uefa.super_cup`, 2
+observaciones). Las tarjetas quedan exentas de la guarda por el mismo motivo
+por el que ya las exime `_drop_uncovered`: media tarjeta por mitad es una
+observacion real -medido en `esp.1`, `home_yellow_cards_first_half` tiene
+mu 0.765 y P(over 1.5) 0.168-. (c) contradice el caracter append-only que
+DEC-182 fijo: las filas siguen en la tabla, solo dejan de presentarse como
+predicciones vigentes.
+Estado: congelada
+Impacto en contratos/fases: el mapa de cobertura pasa de 21 a 24 ligas con
+alguna metrica suprimida. `pick_view` gana `summary.withheld_legacy`,
+aditivo. Se confirmo que las 7 ligas servidas sin veredicto (`fifa.world`,
+`uefa.euro`, `conmebol.america`, `fifa.wwc`, las dos olimpicas y
+`fifa.worldq`) tienen **cero filas** en el snapshot activo, asi que
+regenerar el mapa no podia cubrirlas y tampoco pueden producir prediccion.
+Evidencia requerida: veredicto reproducible sobre las ligas reportadas;
+prueba de que una muestra chica con corners reales no se suprime; prueba de
+la guarda de rejilla y de su exencion para tarjetas; prueba de que una fila
+congelada antes del corte no se publica y una de gol si.
+Evidencia obtenida: `scripts/diagnose_prematch_market_views.py` (nuevo)
+confirma sobre el runtime real que `uru.1` pasa de 21 a 9 filas de rejilla
+sin corners ni tiros mientras `esp.1` conserva las 21; 3 pruebas nuevas en
+`tests/test_metric_coverage.py`, 2 en
+`tests/test_team_count_market_runtime.py` y 4 en
+`tests/test_phase_123_high_probability_prospective.py`.
+
+DEC-187
+Fecha: 2026-08-13
+Problema: reporte del usuario de que "en mayor probabilidad siguen apareciendo
+mayores probabilidades sin corners y en todos aparecen unicamente
+probabilidades de tarjetas, aun no se llega al objetivo de que aparezca MINIMO
+una probabilidad por mercado". El objetivo choca de frente con DEC-182, que
+retiro esa misma garantia citando la regla del propio usuario de que evitar
+obviedades manda; consultado, el usuario pidio reconciliar ambas con una cota
+dura en vez de elegir una. Medido sobre los 1,895 partidos de
+`team_predictions.json` con la banda estricta `[0.60, 0.85]`: tarjetas de
+primera mitad conseguian pick en el 32.4% de los grupos disponibles y tiros a
+puerta en el 61.7%.
+Opciones: (a) restaurar `fallback_outside_band` de DEC-179 sin tope; (b)
+ensanchar la banda unica; (c) dos niveles -banda objetivo y, solo si el grupo
+queda vacio, la linea mas cercana a ella dentro de una cota dura-.
+Decision: (c), con cota `[HARD_FLOOR, HARD_CEILING] = [0.55, 0.90]`. El pick
+de nivel 2 se marca `selection: "outside_band"` y la interfaz lo declara.
+Motivo: (a) es exactamente lo que puso "menos de 0.5 corners, 96%" en
+produccion. El techo 0.90 rechaza esa linea (0.9617) y la de corners bajo 1.5
+(P alrededor de 0.99), asi que la regla de obviedad sigue mandando; lo que se
+recupera es el margen 0.55-0.60 y 0.85-0.90 que la banda estricta tiraba de
+mas. El piso es 0.55 y no el 0.50 propuesto inicialmente porque 0.50 seria
+vacuo del lado del modelo: `_candidate` publica la direccion dominante, asi
+que su confianza es `max(over, under)` y nunca baja de 0.5; con el piso en
+0.50 el nivel 2 habria admitido lineas de 51%, el volado que la regla 1
+existe para evitar. Medido, subirlo a 0.55 cuesta 0.4 puntos de cobertura
+global (90.5% -> 90.1%).
+Estado: congelada
+Impacto en contratos/fases: `bucket_low`/`bucket_high` distinguen los dos
+niveles reutilizando el campo que DEC-179 ya destino a eso, sin migracion de
+`high_probability_pick_freezes`. No se aplico `ExposurePolicy` a los picks de
+equipo pese a estar contemplado en el plan: la pantalla ya publica **todos**
+los mercados disponibles sin tope, asi que un cap solo habria quitado picks,
+justo lo contrario de lo pedido. Se corrigio ademas el docstring de
+`_team_picks`, que seguia afirmando "nunca vacio por indecision" -falso desde
+DEC-182-.
+Evidencia requerida: cobertura por grupo antes/despues sobre el artefacto
+real; prueba de que la linea reportada sigue rechazada; prueba de que el
+nivel 1 gana siempre que exista.
+Evidencia obtenida: cobertura por grupo tarjetas 1T 32.4% -> 96.5%, tarjetas
+partido completo 84.9% -> 100%, tiros 93.0% -> 96.7%, tiros a puerta 61.7% ->
+70.8%, sin ninguna cifra publicada fuera de `[0.55, 0.90]`; 6 pruebas nuevas
+en `tests/test_ladder_pick_selection.py` y 2 Playwright en
+`miniapp/tests/e2e/high-probability.spec.ts`.
+
+
+DEC-188
+Fecha: 2026-08-13
+Problema: dos pedidos del usuario que resultaron tener una sola causa comun.
+(1) "En predicciones pre match aun no aparecen corners": la escalera auditada
+no publicaba corners en **ninguna** liga desde DEC-183, que anadio un filtro
+por `model_weights <= 0.0` tras observar `model_weights["corners"] == 0.0` en
+el artefacto y concluir, citando `selection.json`, que ese cero era "la
+eleccion correcta y ya auditada", es decir, que corners no tenia senal por
+equipo. (2) "En escalera auditada aun no existe la prediccion de segundo
+tiempo": `METRIC_LADDERS` no tenia ninguna entrada `*_second_half`, asi que
+ese periodo no era representable ni auditable; `CountMetricSpec` sólo
+distinguia dos periodos con un `first_half_only: bool`.
+Sobre (1), la auditoria encontro que la conclusion de DEC-183 era incorrecta,
+no el sintoma. `_select_alpha_clean`
+(`scripts/repair_team_count_coverage_bias.py`) ajusta el modelo y elige
+`alpha` con `_matrix_clean` -filas contaminadas excluidas, la reparacion de
+DEC-173- pero pasaba la lista `selection` **sin filtrar** a
+`_select_count_weight`. En corners eso son 5,082 filas de ligas donde el
+proveedor nunca entrego el dato y el pipeline lo almaceno como cero; en esas
+filas el baseline de liga -aprendido de esos mismos ceros, ~0.18- le gana a
+cualquier prediccion real, asi que el minimo de la curva de mezcla se
+desplazaba a `weight == 0.0`. El `selection.json` que DEC-183 cito como
+evidencia de "sin senal" era la salida de ese mismo defecto. Tiros estaba
+afectado igual (4,599 filas, peso `0.1`).
+Opciones: (a) reponer corners en la escalera etiquetados como media de liga,
+sin tocar el modelo; (b) reentrenar ampliando el corpus del snapshot activo
+(39 -> 56 ligas); (c) peso de mezcla por liga (shrinkage jerarquico); (d)
+corregir la fuga de la seleccion del peso y reentrenar con el pipeline
+reparado tal cual.
+Decision: (d), mas la extension de periodo. `CountMetricSpec.first_half_only`
+pasa a `period` (`full_match`/`first_half`/`second_half`) con
+`window_belongs_to` como unico lugar donde vive el corte de ventanas -el
+mismo `window_index < 3` que ya usa `src/team_market_markov.py`-; `METRICS`
+gana `corners_second_half`, `yellow_cards_second_half`, `shots_first_half` y
+`shots_second_half`; `METRIC_LADDERS` gana las tres de segunda mitad y pasa a
+declarar el periodo publico directamente, con `maximums_key` normalizando a
+la clave de `LADDER_MAXIMUMS` en un solo sitio.
+Motivo: (b) se midio antes de descartarla y no habria bastado: el snapshot
+solo aporta +9.2% de partidos utiles para corners (6,360 -> 6,944) frente a
+una degradacion del 38% en la curva de mezcla contaminada; ningun volumen
+razonable voltea eso. (c) se midio tambien -el peso optimo por liga salia
+0.8-1.0 en las 9 ligas con muestra suficiente, con mejoras del 16-26%-, pero
+al validar contra el split de confirmacion la ganancia frente a un peso
+global unico era nula o negativa (-0.0% a -0.2%): la senal por liga era en
+realidad la senal global que la fuga estaba escondiendo, no un efecto
+jerarquico. (a) publicaria una cifra no personalizada bajo una etiqueta que
+promete lo contrario, el mismo reparo que DEC-183 tenia razon en levantar.
+El filtro por `model_weights <= 0.0` de DEC-183 **se conserva intacto**: su
+razonamiento es correcto como invariante, sólo su premisa empirica era falsa.
+Estado: congelada
+Impacto en contratos/fases: `config.json` cambia `first_half_only` por
+`period` y pasa de 7 a 11 metricas; `_metric_target` acepta las dos formas
+para que un `git checkout` a un artefacto anterior siga funcionando sin tocar
+codigo. `_commercial_count`/`_runtime_count` pasan a condicionar el ajuste de
+goles por `source_field` y no por `name`: los nombres por periodo no estaban
+en el conjunto literal y habrian perdido ese ajuste en silencio. `ZERO_
+IMPLAUSIBLE` y `BLOCK_DEPENDENT` incorporan las variantes por periodo, y
+`run_metric_coverage_map.py` las emite, para que la reparacion de DEC-173 no
+se reintroduzca por la puerta de atras en las metricas nuevas. Se invierte el
+invariante de `test_second_half_is_not_claimed_as_audited`, con el motivo
+documentado en la propia prueba.
+Evidencia requerida: pesos antes/despues por metrica; comparacion
+reproducible de partidos reales con equipos muy distintos; conteo de celdas
+publicables de la auditoria de escalera; reparto de mercados en el menu;
+suite completa sin regresiones frente a HEAD limpio.
+Evidencia obtenida: pesos de corners `0.0 -> 0.9` en los tres periodos y
+tiros `0.1 -> 1.0`. Las intensidades vuelven a variar por partido: sobre tres
+enfrentamientos de `esp.1`, `home_corners` da 12.76 / 9.53 / 12.45 donde
+DEC-183 medía 9.072 identico en los tres. La auditoria de escalera pasa de
+350 a 534 celdas, de 264 a 512 publicables y de 101 a **181 con ventaja real
+del modelo**; corners pasa de 0 celdas `model_edge` a 8 local, 8 visitante y
+3 total, mas 7+7 en primera mitad y 3+5+1 en segunda. La escalera auditada de
+`esp.1` pasa de 12 a 30 filas, con corners y segundo tiempo en las tres
+metricas que los soportan. El reparto de mercados del menu pasa de
+tarjetas 48% / tiros 27% / tiros a puerta 25% / **corners 0%** a
+tarjetas 30.2% / tiros 30.2% / **corners 29.6%** / tiros a puerta 9.9%, con
+cobertura por grupo entre 94.6% y 99.9% en los diez grupos. Suite Python
+867 aprobadas / 8 omitidas / 0 fallos, contrastada contra HEAD limpio en la
+misma maquina; typecheck, build Next, 65 Vitest y 55 Playwright sin
+regresiones.
+Nota de registro: DEC-183 y DEC-184 declararon "~15 fallas preexistentes de
+orden en `test_catalog_caching.py`/`test_phase_122_high_probability.py`". La
+linea base medida en esta sesion sobre HEAD limpio da 849 aprobadas y 1 sola
+falla -una prueba con `kickoff_ts` fijo al 2026-08-13, que empezo a fallar
+por el paso del reloj y queda corregida aqui-. Esas ~15 fallas son
+sensibles a contencion de CPU, no preexistentes: se reprodujeron al correr la
+suite mientras la auditoria de escalera ocupaba la maquina y desaparecen al
+correrla sola. Conviene no volver a darlas por conocidas sin medirlas.
+
+
+DEC-189
+Fecha: 2026-08-13
+Problema: DEC-184 dejo abierta una limitacion: 43 picks de "Mayor probabilidad"
+estancados en `still_pending`, sin variar entre ciclos de ~5 minutos ni entre
+ocho redeploys del mismo dia, y `channel_cycle_completed` mostraba conteos en
+cero en todos sus contadores durante toda la ventana observada. Sin acceso de
+lectura a PostgreSQL de produccion no se pudo confirmar entonces si era
+ociosidad genuina del calendario o un fallo silencioso de
+`_settled_result`/`_final_fixture`. Esta sesion audito el codigo a fondo -sin
+acceso a produccion tampoco- para acotar el mecanismo con la evidencia
+disponible: la forma exacta del sintoma reportado.
+Hallazgo principal: `_results()` (`src/telegram_channel_publisher.py`) itera
+`self._repository.predictions()`, que devuelve las filas **ordenadas por
+kickoff, la mas antigua primero**, y llamaba a `self._settled_result(row)`
+sin ningun `try/except` alrededor. Cualquier excepcion sin capturar en esa
+llamada -de red, de un payload ESPN inesperado, de cualquier causa- abortaba
+el bucle **completo**, incluidas todas las filas mas nuevas detras de la que
+fallo. El ciclo seguia completando y publicando su log (`channel_cycle_
+completed`) con conteos en cero porque la excepcion interrumpia `_results` a
+medio bucle, antes de que `count` reflejara nada, pero **despues** de que
+`run_cycle` ya habia calculado `frozen`/`summaries`/`cards`/`markets` -la
+traza exacta que DEC-184 documento-. Si la fila que fallaba era persistente
+-no transitoria-, quedaria fallando en el mismo punto cada ciclo, bloqueando
+a las mismas filas nuevas indefinidamente: la firma exacta de "43 picks
+estancados, sin variar, sin ningun log de error".
+Hallazgo secundario: `_settled_result` determina finalidad por fecha de
+calendario (`_final_fixture`, que consulta `explorer_fixtures(liga, fecha)`
+para las fechas Mexico y UTC del kickoff original) y no deja ningun rastro
+cuando esa busqueda falla -a diferencia del rechazo de reconciliacion, que si
+loguea `channel_result_rejected`-. Un partido que el proveedor archiva bajo
+otra fecha (aplazamiento, reindexado) queda invisible para siempre a esa
+busqueda, sin ninguna senal. `explorer_statistics`, en cambio, esta indexado
+por `match_id`/`competition_id` -inmune a esa fragilidad- y su `summary()`
+subyacente ya trae su propio bloque de estado (`header.competitions[0].
+status.type.completed`/`.detail`), la misma forma que `espn_live_follower.py`
+ya usa para partidos en vivo, pero nunca se habia extraido para partidos
+finalizados.
+Opciones: (a) solo anadir logging al camino silencioso, sin cambiar
+comportamiento; (b) ademas, aislar cada fila para que una no bloquee a las
+demas, y anadir un respaldo indexado por `match_id` para filas atascadas;
+(c) reescribir `_final_fixture` para que abandone la busqueda por fecha por
+completo y use siempre `explorer_statistics`.
+Decision: (b). `_results()` envuelve `self._settled_result(row, now)` en un
+`try/except Exception` por fila -mismo patron y justificacion ya usados en
+`_seal_settlement` de este archivo-, registra `channel_settlement_row_failed`
+con el `fixture_key` y continua con la siguiente fila. `_settled_result`
+conserva la via rapida (`_final_fixture`, barata: un scoreboard por liga y
+fecha cubre todos los partidos de ese dia) como primer intento; si falla o el
+partido aun no aparece final, y la fila lleva mas de
+`STALE_FIXTURE_LOOKUP_GRACE` (12h, muy por encima de `SETTLEMENT_DELAY` de 3h
+y de la duracion de cualquier partido real) sin resolverse, intenta el
+respaldo via `explorer_statistics`, dejando constancia con
+`channel_final_fixture_lookup_stale` -incluso si el respaldo tampoco resuelve
+nada, para que el caso quede visible sin acceso a la base-.
+`EspnFootballDataExplorer.statistics()` gana `is_final`/`status_detail`,
+extraidos por la nueva `_summary_status()`.
+Motivo: (a) habria dejado el bloqueo real -si es que es el mecanismo real- sin
+resolver, solo mas visible; dado que el aislamiento por fila es una correccion
+de bajo riesgo y alto valor explicativo por si sola -no depende de que la
+teoria del aplazamiento sea la causa exacta-, no hay razon para no aplicarla
+ahora. (c) se descarta: la via rapida por fecha es mas barata -reutiliza un
+solo scoreboard para todos los partidos de una liga y fecha- y sigue
+funcionando para la inmensa mayoria de los casos; sustituirla por completo
+pagaria el costo de `explorer_statistics` (plays + summary, dos llamadas
+ESPN) en cada fila de cada ciclo sin necesidad.
+Estado: congelada
+Impacto en contratos/fases: `_settled_result` gana un parametro `now`
+-cambio interno, sin consumidores externos-. `explorer_statistics`/
+`/v1/explorer/match/statistics` ganan dos claves aditivas (`is_final`,
+`status_detail`); ningun consumidor existente hace validacion estricta de
+esquema. `_final_fixture`/`_is_final` no se tocan ni se eliminan: siguen
+siendo la via rapida.
+Limitacion abierta, sin cambios: no se pudo confirmar con evidencia de
+produccion cual de los dos hallazgos -bloqueo por fila o busqueda por fecha-
+era la causa real de los 43 picks especificos que DEC-184 reporto, ni si
+siguen estancados hoy. Ambos mecanismos son reales, estan confirmados por
+codigo y por prueba, y los dos cierran clases de fallo silencioso genuinas
+independientemente de cual fuera la causa exacta de ese incidente. La
+siguiente vez que ocurra algo similar, los logs nuevos (`channel_settlement_
+row_failed`, `channel_final_fixture_lookup_stale`, y `channel_result_
+rejected` ahora con `status_detail`) deberian bastar para diagnosticarlo sin
+necesidad de acceso directo a PostgreSQL.
+Evidencia requerida: prueba que reproduzca el bloqueo por fila con dos
+fixtures, uno que falla y otro que deberia liquidarse igual en el mismo
+ciclo; prueba del respaldo por `match_id` antes y despues de
+`STALE_FIXTURE_LOOKUP_GRACE`; prueba de que un respaldo sin finalidad
+confirmada tampoco inventa un resultado; suite completa sin regresiones.
+Evidencia obtenida: `test_one_broken_fixture_does_not_block_settlement_of_
+the_rest` ancla que, con la fila mas antigua fallando, `results` pasa de 0
+(el comportamiento anterior habria bloqueado todo) a 1 en el mismo ciclo, con
+`channel_settlement_row_failed` en el log y sin que el fixture roto deje de
+reintentarse en ciclos siguientes; `test_stale_fixture_falls_back_to_match_
+id_indexed_statistics` y `test_stale_fixture_without_final_status_stays_
+pending_and_logs` cubren el respaldo; 3 pruebas nuevas en `tests/test_espn_
+user_explorer.py` para `_summary_status`. Suite Python 855 aprobadas / 8
+omitidas / 0 fallos en aislamiento -las mismas 18 fallas de contencion de
+CPU en `test_catalog_caching.py`/`test_phase_118_track_record.py`/`test_
+phase_122_high_probability.py`/`test_dikamaha_service.py`/`test_catalog_
+cache_store.py` ya documentadas en DEC-188, reproducidas y descartadas de la
+misma forma-.
+
+
+DEC-190
+Fecha: 2026-08-13
+Problema: continuando el diagnostico de DEC-189, esta sesion obtuvo por
+primera vez acceso de lectura al PostgreSQL real de produccion (proxy
+publico de Railway, con permiso explicito del usuario). Los numeros reales
+resultaron mucho peores que lo documentado: 868 picks congelados en
+high_probability_pick_freezes, solo 25 liquidados, 843 pendientes, 656 con
+kickoff ya vencido. Los logs reales de Railway (get-logs) mostraron ademas
+un salto de settle.failed de 0 a 44, sostenido, no transitorio.
+Comparando los periodos de los 25 picks liquidados historicamente contra el
+universo total de picks de equipo congelados se encontro la causa: CERO de
+los 25 liquidados tienen period == "full_match" -todos son first_half o
+second_half-, mientras full_match es 611 de 876 (70%) de todo el universo
+congelado. `resolve_team_market` (`src/high_probability_settlement.py`) y
+`_shadow_verdicts` (`src/telegram_channel_publisher.py`, usada por
+"Resultados de hoy") buscan `periods[side].get(pick.period)` cuando
+`pick.period == "full_match"`, pero `_period_statistics`
+(`src/espn_user_explorer.py`) -la fuente real de `explorer_statistics`- solo
+expone tres claves por lado: `first_half`, `second_half` y `total`, nunca
+`full_match`. La busqueda no encuentra nada, `observed` queda `None`, y el
+pick se cuenta como `failed`/se omite del shadow verdict, siempre, sin
+ningun log que distinga este caso de un dato genuinamente ausente. Las
+pruebas existentes de ambas funciones no lo detectaban porque construian su
+propio `statistics` de prueba con la forma incorrecta
+(`{"full_match": {...}}`), reproduciendo el defecto en el fixture en vez de
+la forma real del contrato.
+Opciones: (a) traducir el periodo dentro de cada funcion consumidora por
+separado; (b) un traductor compartido en `settlement_store.py`, junto a
+`team_market_hit` -la otra regla que estas dos funciones ya comparten-.
+Decision: (b). `observed_team_count(periods, side, period, metric)` nuevo en
+`src/settlement_store.py`, unico punto donde vive la traduccion
+`full_match -> total`. `resolve_team_market` y `_shadow_verdicts` lo
+reutilizan sin reimplementar la busqueda.
+Motivo: (a) dejaria dos lugares con la misma logica de traduccion,
+exactamente el patron que ya causo divergencias en esta sesion (DEC-179: la
+traduccion de "half" vivia sin centralizar). Un solo punto compartido es
+estructuralmente imposible de que vuelva a divergir entre las dos funciones.
+Estado: congelada
+Impacto en contratos/fases: ninguna migracion de esquema. Las 4 pruebas
+existentes que construian `statistics` con la forma `{"full_match": {...}}`
+se corrigieron a `{"total": {...}}` -la forma real-, lo que expuso el
+defecto antes de la correccion y lo confirma resuelto despues.
+Evidencia requerida: reproduccion con datos reales de produccion del
+desequilibrio periodo liquidado vs universo congelado; pruebas que ancien la
+traduccion en ambos sentidos (full_match, first_half, second_half) y el
+caso de dato ausente.
+Evidencia obtenida: consulta SQL directa confirma 0/25 liquidados en
+full_match vs 611/876 (70%) del universo en ese periodo. 6 pruebas nuevas en
+`tests/test_settlement_store.py` (nuevo), 4 pruebas de fixture corregidas y
+1 nueva en `tests/test_phase_123_high_probability_prospective.py`, 3 pruebas
+nuevas en `tests/test_phase_101_telegram_channel_publisher.py` para
+`_shadow_verdicts`.
+
+DEC-191
+Fecha: 2026-08-13
+Problema: pedido explicito del usuario de auditoria extensiva para encontrar
+otros "errores bomba" tras el hallazgo de DEC-189 (bloqueo de fila en
+`_results`). Dos agentes de exploracion barrieron los cinco procesos de
+larga duracion desplegados en produccion (API+worker de canal, bot premium,
+bot gratuito -mismo codigo que el premium-, worker de alertas de la
+miniapp) y encontraron el mismo patron exacto u otros relacionados en seis
+lugares mas, tres de severidad alta identica al ya corregido: un `for` sobre
+items independientes, ordenados (por kickoff o por `created_at`), donde una
+llamada de red/DB dentro del bucle no tenia proteccion propia, de modo que
+un item roto bloqueaba en silencio a todos los que vienen detras de el, en
+cada pasada, indefinidamente mientras el fallo persistiera.
+Hallazgos, por severidad:
+(1) `src/telegram_bot.py::LongPollingRunner.poll_once` -ALTA, el mas grave-:
+el offset de Telegram solo avanzaba tras un `process_update` exitoso; un
+update "veneno" (bug de un handler, callback expirado) lo dejaba clavado
+para siempre, Telegram lo reenvia en cada `getUpdates`, y el bot dejaba de
+procesar cualquier mensaje nuevo de cualquier usuario -incluso tras
+reiniciar, porque el offset vive solo en memoria-. Afecta a los dos bots de
+Telegram desplegados (comparten el mismo modulo).
+(2) `TelegramChannelPublisher._publish_predictions` -ALTA-: mismo patron
+exacto que `_results`, en el flujo de publicacion de tarjetas/mercados en
+vez del de resultados.
+(3) `TelegramChannelPublisher._with_logos` -ALTA-: una sola liga con
+`explorer_teams` roto abortaba la congelacion del dia **completo** -ningun
+fixture de ninguna liga-, no solo "los siguientes".
+(4) `TelegramChannelPublisher._daily_track_record` -MEDIA-: un dia con datos
+de liquidacion corruptos bloqueaba el resumen de todos los dias
+posteriores.
+(5) `high_probability_settlement.run_settle_cycle` -ALTA-: `settlements.get()`
+sin proteccion (a diferencia de la llamada a `explorer_statistics` unas
+lineas mas abajo, que si la tenia); ademas `record is None` solo
+incrementaba un contador agregado, sin identidad del pick.
+(6) `miniapp/worker/alerts.ts::cycle()` -ALTA-: la peticion de prediccion en
+vivo y el `UPDATE ... last_observation` no tenian proteccion propia -solo el
+envio a Telegram la tenia-; una suscripcion con fixture problematico
+bloqueaba a todas las suscripciones mas nuevas de cualquier usuario.
+Opciones: (a) corregir solo el hallazgo mas grave (1); (b) corregir los seis
+con el mismo patron ya validado hoy en `_results`/`run_settle_cycle`
+-aislar cada item con su propio try/except, loguear con identidad, seguir
+con el siguiente-.
+Decision: (b), los seis. El patron es identico y de bajo riesgo: no cambia
+ningun comportamiento cuando nada falla, solo evita que un fallo se
+propague mas alla del item que lo causo.
+Motivo: dejar sin corregir cualquiera de los seis habria dejado un
+mecanismo idéntico al que motivo esta auditoria; el costo de aplicar el
+mismo parche ya probado hoy es bajo comparado con el de otro incidente
+igual de silencioso en un proceso distinto.
+Estado: congelada
+Impacto en contratos/fases: ninguno de los seis cambia el contrato publico
+de ninguna funcion salvo `run_settle_cycle`, que ahora loguea
+`phase123_settle_failed`/`phase123_settle_row_failed` con la identidad del
+pick -aditivo, no cambia el dict de retorno-. `discord_bot.py` no se toco:
+no tiene servicio Railway desplegado en este proyecto (confirmado, sin
+`railway*.toml`/Dockerfile propio), asi que queda fuera de alcance por
+ahora aunque comparta el mismo tipo de riesgo si llega a desplegarse.
+Evidencia requerida: prueba que reproduzca cada bloqueo con un item roto
+seguido de uno sano, confirmando que el sano se procesa igual en el mismo
+ciclo.
+Evidencia obtenida: `test_long_polling_advances_past_a_poison_update`
+(`tests/test_telegram_bot.py`), `test_publish_predictions_isolates_a_broken_
+fixture_from_the_rest` y `test_with_logos_skips_a_broken_league_and_keeps_
+the_rest` (`tests/test_phase_101_telegram_channel_publisher.py`),
+`test_run_settle_cycle_isolates_a_broken_pick_from_the_rest` y
+`test_run_settle_cycle_logs_the_pick_identity_when_unresolved`
+(`tests/test_phase_123_high_probability_prospective.py`). `alerts.ts` se
+corrigio sin prueba automatizada dedicada -no existe infraestructura de
+mocking para el cliente `postgres`/`fetch` de este worker en el repo, y
+crearla es un esfuerzo mayor que el propio arreglo-; se verifico con
+typecheck limpio y revision manual del diff. `_daily_track_record` se
+corrigio sin prueba dedicada nueva -severidad media, mismo patron ya
+probado dos veces en el mismo archivo-.
+Suite completa: 871 pruebas Python (865 + 6 de `test_settlement_store.py`
+nuevo) aprobadas / 8 omitidas / 0 fallos en aislamiento -mismo conjunto de
+~17 fallas por contencion de CPU ya documentado en DEC-188/189, reproducido
+y descartado de nuevo-; typecheck, 65 Vitest y 55 Playwright de la miniapp
+sin regresiones (1 spec de live-catalog-progress parpadeo por contencion de
+workers en la corrida completa y paso limpio en aislamiento).
+
+DEC-192
+Fecha: 2026-08-13
+Problema: continuando la auditoria extensiva pedida por el usuario, un
+agente de exploracion comparo todos los consumidores del catalogo de
+partidos (`/v1/upcoming`, `/v1/live`, `high_probability`) y una revision
+directa de indices en produccion encontro un hallazgo de rendimiento
+confirmado con `EXPLAIN`.
+Hallazgo confirmado y corregido: `high_probability_pick_freezes` no tenia
+ningun indice mas alla de su llave primaria (`pick_key`), a diferencia de la
+tabla hermana `prediction_settlements`, que si tiene `kickoff_ts` indexado.
+`unsettled()` -que corre cada `HIGH_PROBABILITY_PROSPECTIVE_POLL_SECONDS`
+(30 min por defecto) en produccion- y `frozen_on_date()` filtran y ordenan
+por `kickoff_ts`; `EXPLAIN` contra produccion confirmo *seq scan* + *sort*
+completos en cada corrida. La tabla es append-only por diseno (DEC-182) y
+crecia ~290 filas/dia medido en produccion: sin indice, el costo de cada
+ciclo solo sube con el tiempo, sin limite.
+Hallazgos identificados pero NO corregidos en esta sesion -requieren
+decision de producto, no son bugs de codigo-:
+(a) `CATALOG_MAX_LIMIT=20` (`src/dikamaha_service.py:986`) es un tope
+**global**, no por liga, compartido por 8+ consumidores independientes
+(miniapp upcoming/live/prediction-detail, ambos bots, el barrido detras de
+`high_probability`). Un dia con una sola liga con muchos kickoffs
+simultaneos (el caso `uefa.europa.conf_qual` ya visto con 392 picks) agota
+el cupo completo y ningun partido de las otras 62 ligas aparece en vistas
+sin filtro -sin ninguna senal en el contrato de que hay mas partidos de los
+que se muestran-. Mismo mecanismo raiz que `HIGH_PROBABILITY_FIXTURES=30`
+(sin reparto por liga).
+(b) `miniapp/worker/alerts.ts` solo vigila fixtures **ya en vivo**
+(`/v1/live`, tope 20 por liga), mientras el formulario de alta de
+suscripciones (`miniapp/app/subscriptions/page.tsx`) acepta cualquier
+`fixture_id` sin validarlo contra ese universo: una suscripcion para un
+fixture que desborda el tope de 20/liga, o que aun no esta en vivo, nunca
+se evalua, sin error ni log especifico.
+(c) `fixture_key` entre el canal y Fase 123 se verifico **consistente**
+-descartado explicitamente como causa, para no perseguir una pista falsa-.
+(d) `TelegramChannelPublisher._freeze_all` descarta fixtures con 422 en
+silencio -comportamiento **documentado a proposito** desde Fase 120, no un
+bug-.
+Opciones para (a)/(b): corregirlas ahora mismo, o dejarlas documentadas para
+una decision de producto aparte.
+Decision: indice (b) corregido via migracion 015 (`sql/migrations/015_add_
+high_probability_kickoff_index.sql`, patron identico a la migracion 013 ya
+existente). Los hallazgos (a)/(b) del segundo bloque se documentan aqui y no
+se corrigen: redisenar el reparto de cupo entre ligas o validar
+`fixture_id` contra el catalogo en vivo son decisiones de producto -que
+mercados/ligas priorizar cuando no caben todos, si vale la pena bloquear el
+alta de una suscripcion "prematura"- que exceden el alcance de una
+correccion de bug.
+Motivo: un indice aditivo es de riesgo minimo y beneficio claro, con
+precedente identico ya establecido (migracion 013); los otros dos hallazgos
+cambian comportamiento visible al usuario (que partidos ve, que
+suscripciones se permiten) y merecen una conversacion explicita, no una
+decision unilateral en medio de una auditoria de bugs.
+Estado: congelada (indice, aplicada); (a)/(b) quedan abiertas, sin decidir
+Impacto en contratos/fases: la migracion 015 no cambia ningun contrato,
+solo el plan de consulta. Aplicada contra produccion con confirmacion
+explicita del usuario -la primera escritura/DDL de esta sesion contra la
+base de produccion real-.
+Evidencia requerida: `EXPLAIN` antes/despues confirmando el cambio de plan.
+Evidencia obtenida: `EXPLAIN` contra produccion confirmo *Seq Scan on
+high_probability_pick_freezes* + *Sort* para la consulta real de
+`unsettled()` antes de aplicar la migracion. Tras aplicarla (`CREATE INDEX`
+confirmado, `\d`/`pg_indexes` verifica el indice creado), el mismo `EXPLAIN`
+pasa a *Index Scan using idx_high_probability_pick_freezes_kickoff_ts* -el
+seq scan y el sort explicito desaparecen del plan-.
+
+
 ```text
 DEC-NNN
 Fecha:

@@ -2,6 +2,191 @@
 
 **Actualizado:** 2026-08-13
 
+## Auditoría extensiva de producción — acceso real a Postgres, "errores bomba"
+
+Ver `DEC-190`, `DEC-191`, `DEC-192`. Esta sesión obtuvo por primera vez acceso
+de lectura al PostgreSQL real de producción (proxy público de Railway, con
+autorización explícita del usuario) y, a partir de los datos reales, encontró
+el defecto dominante detrás de que "Mayor probabilidad" y "Resultados de hoy"
+casi nunca liquiden mercados de equipo.
+
+**El hallazgo más grave (`DEC-190`).** `resolve_team_market` y
+`_shadow_verdicts` buscan la clave `"full_match"` en el diccionario de
+periodos que trae `explorer_statistics`, pero esa fuente sólo expone
+`first_half`/`second_half`/`total` -nunca `full_match`-. Confirmado con datos
+reales: **0 de los 25** picks liquidados históricamente son de partido
+completo -todos son de mitad-, mientras que `full_match` es **611 de 876
+(70%) de todo el universo congelado**. Las pruebas existentes no lo
+detectaban porque construían su propio `statistics` de prueba con la forma
+incorrecta, reproduciendo el defecto en el fixture en vez de la forma real.
+Corregido con `observed_team_count()`, un único punto de traducción
+compartido en `settlement_store.py`.
+
+**Auditoría de "bomba" en los cinco procesos de larga duración.** Dos
+agentes de exploración barrieron los procesos desplegados en producción y
+encontraron el mismo patrón exacto del bug de `_results()` (DEC-189) en seis
+lugares más, tres de severidad alta idéntica: el offset de long-polling de
+**ambos bots de Telegram** se quedaba clavado para siempre ante un update
+"veneno" -el hallazgo más grave de este bloque, puede bloquear el bot
+completo incluso tras reiniciar-; la publicación de tarjetas/mercados del
+canal; la asignación de escudos por liga; el resumen diario; el ciclo de
+liquidación de Fase 123; y el worker de alertas de la miniapp. Los seis se
+corrigieron con el mismo patrón ya validado: aislar cada item con su propio
+`try/except`, loguear con identidad, seguir con el siguiente.
+
+**Índice faltante (`DEC-192`).** `high_probability_pick_freezes` no tenía
+ningún índice más allá de su llave primaria, a diferencia de su tabla
+hermana. `EXPLAIN` contra producción confirmó *seq scan* + *sort* completos
+en cada corrida de `unsettled()` -cada 30 minutos-, sobre una tabla que
+crece ~290 filas/día sin límite. Migración 015 preparada, sin aplicar
+todavía contra producción.
+
+**Hallazgos documentados, sin corregir -decisión de producto pendiente-.**
+`CATALOG_MAX_LIMIT=20` es un tope global (no por liga) compartido por 8+
+consumidores; un solo día con muchos kickoffs simultáneos en una liga agota
+el cupo y ningún partido de las otras 62 aparece, sin ninguna señal en el
+contrato de que hay más partidos de los mostrados. El worker de alertas sólo
+vigila fixtures ya en vivo (tope 20/liga) mientras el formulario de alta
+acepta cualquier `fixture_id` sin validarlo contra ese universo.
+
+**Gates.** Suite Python 871 aprobadas / 8 omitidas / 0 fallos en aislamiento
+(mismo conjunto de fallas por contención de CPU ya documentado, reproducido
+y descartado de nuevo); typecheck, 65 Vitest y 55 Playwright sin
+regresiones. La migración 015 se aplicó contra producción con confirmación
+explícita del usuario -`EXPLAIN` confirma el cambio de plan a *Index Scan*-;
+el despliegue de los cambios de código sigue pendiente.
+
+
+## Diagnóstico de los 43 picks estancados en `still_pending` (auditoría nocturna)
+
+Ver `DEC-189`. Continuación de la limitación abierta que dejó `DEC-184`: sin
+acceso a PostgreSQL de producción, se auditó el código a fondo para acotar el
+mecanismo con la evidencia disponible -la forma exacta del síntoma reportado.
+
+**Hallazgo principal.** `_results()` (`src/telegram_channel_publisher.py`)
+itera las predicciones congeladas **ordenadas por kickoff, la más antigua
+primero**, y llamaba a `_settled_result(row)` sin ningún `try/except`. Una
+excepción sin capturar en esa llamada abortaba el bucle **completo**,
+incluidas todas las filas más nuevas detrás de la que falló -y el ciclo
+seguía completando con `channel_cycle_completed` en cero, porque la
+excepción interrumpía `_results` a medio bucle, antes de que `run_cycle`
+llegara a `return counts`-. Si la fila que fallaba era persistente, quedaría
+bloqueando a las mismas filas nuevas cada ciclo: la firma exacta de "43
+picks estancados, sin variar, sin ningún log de error" que reportó DEC-184.
+Corregido: cada fila se aísla con su propio `try/except`, registrado como
+`channel_settlement_row_failed`, y el bucle sigue con la siguiente.
+
+**Hallazgo secundario.** `_settled_result` ubicaba el partido por fecha de
+calendario (`_final_fixture`), y no dejaba ningún rastro cuando esa búsqueda
+fallaba -a diferencia del rechazo de reconciliación, que sí logueaba-. Un
+partido que el proveedor archiva bajo otra fecha (aplazamiento, reindexado)
+quedaría invisible para siempre a esa búsqueda. Se añadió un respaldo
+indexado por `match_id` (`explorer_statistics`, inmune a esa fragilidad) que
+se intenta después de `STALE_FIXTURE_LOOKUP_GRACE` (12h post-kickoff) y deja
+constancia en el log incluso si tampoco resuelve nada.
+
+**Limitación que se mantiene.** No se pudo confirmar con evidencia de
+producción cuál de los dos mecanismos era la causa real de los 43 picks
+específicos, ni si siguen estancados hoy -sigue exigiendo lectura directa de
+PostgreSQL con credenciales propias del usuario-. Ambos mecanismos son reales
+y están confirmados por código y por prueba; la próxima vez que ocurra algo
+similar, los logs nuevos deberían bastar para diagnosticarlo sin acceso a la
+base.
+
+**Gates.** 3 pruebas nuevas en `tests/test_phase_101_telegram_channel_
+publisher.py` (aislamiento por fila, respaldo antes/después de la gracia,
+respaldo sin finalidad confirmada) y 3 en `tests/test_espn_user_explorer.py`
+para `_summary_status`. Suite Python completa 855 aprobadas / 8 omitidas / 0
+fallos en aislamiento -mismas fallas de contención de CPU que DEC-188 ya
+documentó, reproducidas y descartadas de nuevo-.
+
+
+## Cuatro defectos reportados: in-live, córners, segundo tiempo y línea imposible
+
+Ver `DEC-185`, `DEC-186`, `DEC-187` y `DEC-188`. Reporte del usuario con
+cuatro síntomas que resultaron tener causas distintas, tres de ellas
+introducidas por los despliegues de las últimas 24 horas.
+
+**Diagnóstico previo.** Antes de tocar nada se ejecutó
+`scripts/diagnose_prematch_market_views.py` (nuevo, sólo lectura) contra el
+runtime real. Descartó la hipótesis de que la "Rejilla adaptativa por
+periodo" estuviera rota: en `esp.1`/`eng.1`/`ita.1` publicaba sus 21 filas
+con córners y los tres periodos, y el Markov de Fase 88 estaba disponible.
+Lo que faltaba era todo de la **escalera auditada**, que traía 12 filas sin
+córners y sin segundo tiempo.
+
+**Córners y segundo tiempo (`DEC-188`).** La causa de los dos era la misma y
+no era la que DEC-183 registró. `_select_alpha_clean` ajustaba el modelo y
+elegía `alpha` con las filas limpias de la reparación de DEC-173, pero
+pasaba la lista **sin filtrar** a `_select_count_weight`: las 5,082 filas de
+ligas donde el proveedor nunca entregó córners empujaban el peso óptimo de
+mezcla a `0.0`, y DEC-183 leyó ese cero como evidencia de que córners no
+tenía señal por equipo, retirándolo de la escalera en todas las ligas. Con
+la selección corregida el peso es `0.9` en los tres periodos y tiros sube de
+`0.1` a `1.0`. Se descartaron con medición dos alternativas antes de llegar
+ahí: ampliar el corpus al snapshot activo sólo aporta +9.2% de partidos
+útiles para córners, y el peso por liga -que parecía prometedor, 0.8-1.0 en
+las 9 ligas con muestra- no mejora nada contra el split de confirmación,
+porque esa "señal por liga" era la señal global que la fuga escondía.
+En paralelo, `CountMetricSpec.first_half_only` pasa a `period` con tres
+valores y `METRIC_LADDERS` gana las entradas de segunda mitad, así que ese
+periodo por fin es auditable: `scripts/run_ladder_audit.py` regenerado da 512
+celdas publicables (antes 264) y **181 con ventaja real del modelo** (antes
+101). La escalera auditada de `esp.1` pasa de 12 a 30 filas, con córners y
+segundo tiempo.
+
+**Mínimo un mercado por probabilidad (`DEC-187`).** El objetivo del usuario
+chocaba con DEC-182, que había retirado esa garantía para evitar obviedades.
+Se reconcilian con dos niveles: la banda `[0.60, 0.85]` manda, y sólo si un
+grupo queda vacío se publica la línea más cercana dentro de una cota dura
+`[0.55, 0.90]`, etiquetada como fuera de banda. El caso que motivó DEC-182
+-"menos de 0.5 córners, 96%"- sigue rechazado por el techo. El reparto de
+mercados del menú pasa de tarjetas 48% / tiros 27% / tiros a puerta 25% /
+**córners 0%** a tarjetas 30.2% / tiros 30.2% / **córners 29.6%** / tiros a
+puerta 9.9%, con cobertura por grupo entre 94.6% y 99.9%.
+
+**Línea imposible en Aciertos (`DEC-186`).** Dos rutas, las dos vivas. La
+rejilla no tenía compuerta positiva de cobertura y `_status` cortocircuitaba
+en `insufficient_evidence` antes de mirar los ceros, así que `uru.1` (8 de 8
+equipos-partido sin un córner) y `esp.super_cup` (12 de 12) publicaban
+córners inventados; corregido con el límite inferior de Wilson, que concluye
+ausencia con muestra chica pero unánime sin castigar a
+`concacaf.nations.league`, que tiene córners reales y poca muestra. Además
+`_centered_lines` anclaba la selección en la constante `VISIBLE_LINE_MIN =
+1.5` cuando la intensidad rondaba cero -de ahí el "menos de 1.5" literal-, y
+ahora una guarda descarta esos grupos. La segunda ruta era `pick_view`, que
+republicaba las filas congeladas antes de DEC-182 con la dirección del
+histórico invertida; `is_publishable` deja de publicarlas sin borrarlas, que
+es lo que DEC-182 estableció.
+
+**Pantalla in-live (`DEC-185`).** Cinco defectos independientes, ninguno en
+la inferencia: el total de tiros del proveedor se destruía al recalcularlo
+cuando ESPN no manda el desglose; la curva de presión seguía derivándose
+sólo de `events` -la limitación que DEC-176 dejó abierta- y decía "todavía no
+hay acciones suficientes" en competiciones donde nunca las habrá; el
+indicador de confianza leía una clave que el motor no emite e imprimía
+siempre "calculada"; la tabla de periodos pintaba nueve guiones en el camino
+de fallback; y un cero real era indistinguible de un dato no publicado. El
+backend ahora declara `pressure_granularity` y `unavailable_metrics`, y la
+interfaz explica cada caso en vez de fingir un dato.
+
+**Gates.** Suite Python 867 aprobadas / 8 omitidas / **0 fallos**, typecheck,
+build Next, 65 Vitest y 55 Playwright, todo en verde. Se corrigió además una
+bomba de tiempo preexistente: `test_a_league_without_corner_coverage_
+publishes_no_corner_ladder` fijaba `kickoff_ts` al 2026-08-13 y empezó a
+fallar por el paso del reloj. **Corrección de registro:** DEC-183 y DEC-184
+declararon "~15 fallas preexistentes de orden" en
+`test_catalog_caching.py`/`test_phase_122_high_probability.py`; la línea base
+medida sobre HEAD limpio en esta sesión da 849 aprobadas y una sola falla (la
+bomba de tiempo). Esas ~15 son sensibles a contención de CPU -aparecen si se
+corre la suite mientras otra tarea pesada ocupa la máquina y desaparecen al
+correrla sola-, no preexistentes; no conviene volver a darlas por conocidas
+sin medirlas.
+
+**Limitación abierta heredada.** Los 43 picks estancados en `still_pending`
+que `DEC-184` no pudo explicar siguen sin diagnosticar: exige lectura directa
+de PostgreSQL de producción, fuera del alcance de esta sesión.
+
 ## Integración de "Mayor probabilidad" en la ventana de Aciertos (auditoría nocturna)
 
 Ver `DEC-184`. Reporte del usuario: "Aciertos" no publicó nada hoy pese a
