@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { SHADOW_PREVIEW_SIZE, shadowMarketLabel, shadowMatchEntries, shadowSummary } from "@/lib/track-record";
+import {
+  SHADOW_PREVIEW_SIZE, highProbabilityPickLabel, highProbabilityPicks,
+  shadowMarketLabel, shadowMatchEntries, shadowSummary,
+} from "@/lib/track-record";
 
 describe("shadow market key parsing", () => {
   it("decomposes side, metric and period for a first-half line", () => {
@@ -70,5 +73,49 @@ describe("preview size", () => {
   it("is a small, positive number of lines shown before an explicit expand", () => {
     expect(SHADOW_PREVIEW_SIZE).toBeGreaterThan(0);
     expect(SHADOW_PREVIEW_SIZE).toBeLessThan(10);
+  });
+});
+
+describe("high-probability pick normalization", () => {
+  it("extracts the picks array from the /v1/track-record[...] block", () => {
+    const picks = highProbabilityPicks({ picks: [{ pick_key: "a" }, { pick_key: "b" }] });
+
+    expect(picks).toEqual([{ pick_key: "a" }, { pick_key: "b" }]);
+  });
+
+  it("degrades a malformed block to an empty list instead of throwing", () => {
+    expect(highProbabilityPicks(null)).toEqual([]);
+    expect(highProbabilityPicks({ picks: "not an array" })).toEqual([]);
+    expect(highProbabilityPicks(undefined)).toEqual([]);
+  });
+});
+
+describe("high-probability pick label", () => {
+  it("labels a goal-market pick with its fixed name, ignoring team/line", () => {
+    expect(highProbabilityPickLabel(
+      { market: "over_2_5", metric: "result", team_side: "match", period: "full_match", line: null },
+      "Puebla", "Guadalajara",
+    )).toBe("Más de 2.5 goles");
+  });
+
+  it("composes a team-market pick from side, metric, period and line", () => {
+    expect(highProbabilityPickLabel(
+      { market: "home_corners", direction: "over", metric: "corners", team_side: "home", period: "first_half", line: 4.5 },
+      "Puebla", "Guadalajara",
+    )).toBe("Puebla · Córners · 1ª mitad · Más de 4.5");
+  });
+
+  it("uses 'Menos de' for an under pick", () => {
+    expect(highProbabilityPickLabel(
+      { market: "away_shots_on_target", direction: "under", metric: "shots_on_target", team_side: "away", period: "full_match", line: 7.5 },
+      "Puebla", "Guadalajara",
+    )).toBe("Guadalajara · Tiros a puerta · partido completo · Menos de 7.5");
+  });
+
+  it("omits the line segment when the pick has none", () => {
+    expect(highProbabilityPickLabel(
+      { market: "1x2", metric: "result", team_side: "match", period: "full_match", line: null },
+      "Puebla", "Guadalajara",
+    )).toBe("Resultado (1X2)");
   });
 });

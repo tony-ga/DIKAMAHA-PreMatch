@@ -12,6 +12,12 @@ from sqlalchemy.pool import StaticPool
 
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
 
+from src.high_probability_settlement import (
+    PickSettlementBase,
+    SqlAlchemyHighProbabilityPickRepository,
+    freeze_from_pick,
+    resolve_goal_market,
+)
 from src.settlement_store import (
     MINIMUM_SAMPLE,
     SettlementBase,
@@ -26,6 +32,15 @@ from src.telegram_channel_publisher import (
     _track_record_text,
     official_verdicts,
 )
+
+
+def _high_probability_repository() -> SqlAlchemyHighProbabilityPickRepository:
+    engine = create_engine(
+        "sqlite+pysqlite://", future=True,
+        connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    PickSettlementBase.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
+    return SqlAlchemyHighProbabilityPickRepository(factory)
 
 KICKOFF = datetime(2026, 8, 1, 20, 0, tzinfo=timezone.utc)
 
@@ -382,6 +397,119 @@ def test_daily_endpoint_scopes_to_the_local_day_and_never_hides_misses() -> None
         "/v1/track-record/daily?date=20260811&hit=true").json()
     assert [row["fixture_key"] for row in filtered_attempt["matches"]] == (
         fixture_keys)
+
+
+def _hp_fixture(**changes: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "match_id": 1000, "league_slug": "esp.1",
+        "kickoff_ts": KICKOFF.isoformat(),
+        "home_team_name": "Local", "away_team_name": "Visitante",
+    }
+    values.update(changes)
+    return values
+
+
+def _hp_pick(**changes: object) -> dict[str, object]:
+    values: dict[str, object] = {
+        "market": "1x2", "direction": "home", "metric": "result",
+        "team_side": "match", "period": "full_match", "line": None,
+        "model_probability": 0.72, "observed_rate": 0.80, "sample_size": 40,
+        "edge_source": "model_edge", "bucket": [0.65, 0.75],
+    }
+    values.update(changes)
+    return values
+
+
+def test_track_record_high_probability_block_defaults_to_unavailable() -> None:
+    """Sin `DATABASE_URL` el bloque nuevo degrada igual que el resto de la
+    ventana de Aciertos, en vez de romper la respuesta (DEC-184)."""
+
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    client = TestClient(create_app())
+
+    payload = client.get("/v1/track-record").json()
+
+    assert payload["high_probability"] == {
+        "status": "unavailable", "picks": [],
+        "summary": {"hits": 0, "settled": 0, "pending": 0, "total": 0},
+    }
+
+
+def test_daily_endpoint_high_probability_block_defaults_to_unavailable() -> None:
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    client = TestClient(create_app())
+
+    payload = client.get("/v1/track-record/daily?date=20260811").json()
+
+    assert payload["high_probability"]["status"] == "unavailable"
+
+
+def test_track_record_endpoint_includes_a_settled_high_probability_pick() -> None:
+    """Fase 123 alimenta la ventana de Aciertos (DEC-184): un pick del menú
+    de "Mayor probabilidad" ya liquidado aparece con su mismo `market`."""
+
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    settlement_repository = _repository()
+    settlement_repository.add_if_absent(_record(0, hit=True))
+    hp_repository = _high_probability_repository()
+    frozen = freeze_from_pick(
+        _hp_pick(), _hp_fixture(), "sha256value", KICKOFF - timedelta(hours=6))
+    hp_repository.freeze_if_absent(frozen)
+    outcome = resolve_goal_market(frozen, _record(0, hit=True))
+    assert outcome is not None
+    hp_repository.settle_if_absent(outcome)
+    client = TestClient(create_app(
+        settlement_store=settlement_repository,
+        high_probability_pick_store=hp_repository))
+
+    payload = client.get("/v1/track-record?window=5").json()
+
+    entries = payload["high_probability"]["picks"]
+    assert len(entries) == 1
+    assert entries[0]["market"] == "1x2"
+    assert entries[0]["status"] == "hit"
+    assert payload["high_probability"]["summary"] == {
+        "hits": 1, "settled": 1, "pending": 0, "total": 1}
+
+
+def test_daily_endpoint_lists_a_pending_high_probability_pick_for_that_day() -> None:
+    """Un pick congelado sin liquidar todavía se publica, nunca se omite
+    (DEC-158/161): la ventana diaria debe quedar íntegra."""
+
+    from fastapi.testclient import TestClient
+
+    from src.dikamaha_service import create_app
+
+    settlement_repository = _repository()
+    hp_repository = _high_probability_repository()
+    kickoff = datetime(
+        2026, 8, 11, 20, 0, tzinfo=MEXICO_TZ).astimezone(timezone.utc)
+    frozen = freeze_from_pick(
+        _hp_pick(market="over_2_5", direction="over"),
+        _hp_fixture(match_id=2000, kickoff_ts=kickoff.isoformat()),
+        "sha256value", kickoff - timedelta(hours=6))
+    hp_repository.freeze_if_absent(frozen)
+    client = TestClient(create_app(
+        settlement_store=settlement_repository,
+        high_probability_pick_store=hp_repository))
+
+    payload = client.get("/v1/track-record/daily?date=20260811").json()
+
+    entries = payload["high_probability"]["picks"]
+    assert len(entries) == 1
+    assert entries[0]["status"] == "pending"
+    assert entries[0]["market"] == "over_2_5"
+    assert payload["high_probability"]["summary"] == {
+        "hits": 0, "settled": 0, "pending": 1, "total": 1}
 
 
 # Version: 1.0.0

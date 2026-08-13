@@ -172,6 +172,14 @@ class HighProbabilityPickRepository(ABC):
     def settled_recent(self, window: int) -> list[PickSettlementRecord]:
         """Devuelve los veredictos más recientes, cronológicos y completos."""
 
+    @abstractmethod
+    def settlements_for(self, pick_keys: list[str]) -> dict[str, PickSettlementRecord]:
+        """Busca los veredictos ya sellados de un conjunto puntual de picks."""
+
+    @abstractmethod
+    def frozen_for(self, pick_keys: list[str]) -> dict[str, PickFreezeRecord]:
+        """Busca las congelaciones de un conjunto puntual de `pick_key`."""
+
 
 class SqlAlchemyHighProbabilityPickRepository(HighProbabilityPickRepository):
     """Adaptador SQLAlchemy compatible con PostgreSQL y SQLite."""
@@ -262,6 +270,32 @@ class SqlAlchemyHighProbabilityPickRepository(HighProbabilityPickRepository):
             HighProbabilityPickSettlement.settled_at.desc()).limit(limit)
         with self._factory() as session:
             return [_settlement_record(row) for row in session.execute(statement).scalars()]
+
+    def settlements_for(self, pick_keys: list[str]) -> dict[str, PickSettlementRecord]:
+        """Lee, en un solo viaje, los veredictos ya sellados de esos picks."""
+
+        if not pick_keys:
+            return {}
+        statement = select(HighProbabilityPickSettlement).where(
+            HighProbabilityPickSettlement.pick_key.in_(pick_keys))
+        with self._factory() as session:
+            return {
+                row.pick_key: _settlement_record(row)
+                for row in session.execute(statement).scalars()
+            }
+
+    def frozen_for(self, pick_keys: list[str]) -> dict[str, PickFreezeRecord]:
+        """Lee, en un solo viaje, las congelaciones de esos `pick_key`."""
+
+        if not pick_keys:
+            return {}
+        statement = select(HighProbabilityPickFreeze).where(
+            HighProbabilityPickFreeze.pick_key.in_(pick_keys))
+        with self._factory() as session:
+            return {
+                row.pick_key: _freeze_record(row)
+                for row in session.execute(statement).scalars()
+            }
 
 
 def _freeze_record(row: HighProbabilityPickFreeze) -> PickFreezeRecord:
@@ -552,6 +586,65 @@ def prospective_reliability(
             "Fase 122 contra la tasa real de picks congelados antes del "
             "kickoff y liquidados después. No constituye gate ni promoción."
         ),
+    }
+
+
+def pick_view(
+    frozen: list[PickFreezeRecord],
+    settled_by_key: dict[str, PickSettlementRecord],
+    fixture_names: dict[str, tuple[str | None, str | None]] | None = None,
+) -> dict[str, Any]:
+    """Publica los picks de Fase 123 congelados con su veredicto, si ya hay uno.
+
+    Fuente para la ventana de "Aciertos" (`/v1/track-record` y
+    `/v1/track-record/daily`), pedida explícitamente para dejar de tratarla
+    como un follow-up separado. Reutiliza exactamente el `market`/`direction`/
+    `metric`/`team_side`/`period`/`line` que `freeze_from_pick` ya congeló
+    desde el menú de "Mayor probabilidad" -no recalcula nada nuevo, así que
+    los IDs de mercado son por construcción los mismos que usa el
+    constructor de picks-. Cronológico y sin filtrar por acierto, igual que
+    `settlement_store.track_record` (DEC-158/161): un pick sin veredicto
+    todavía se publica como `"pending"` en vez de omitirse.
+    """
+
+    names = fixture_names or {}
+    hits = settled_count = pending = 0
+    picks: list[dict[str, Any]] = []
+    for pick in sorted(frozen, key=lambda row: (row.kickoff_ts, row.pick_key)):
+        outcome = settled_by_key.get(pick.pick_key)
+        home_name, away_name = names.get(pick.fixture_key, (None, None))
+        entry: dict[str, Any] = {
+            "pick_key": pick.pick_key,
+            "fixture_key": pick.fixture_key,
+            "league_slug": pick.league_slug,
+            "match_id": pick.match_id,
+            "kickoff_ts": pick.kickoff_ts.isoformat(),
+            "home_team_name": home_name,
+            "away_team_name": away_name,
+            "market": pick.market,
+            "direction": pick.direction,
+            "metric": pick.metric,
+            "team_side": pick.team_side,
+            "period": pick.period,
+            "line": pick.line,
+            "model_probability": pick.model_probability,
+            "observed_rate_declared": pick.observed_rate_declared,
+        }
+        if outcome is None:
+            entry["status"] = "pending"
+            pending += 1
+        else:
+            entry["status"] = "hit" if outcome.hit else "miss"
+            entry["observed_value"] = outcome.observed_value
+            settled_count += 1
+            hits += int(outcome.hit)
+        picks.append(entry)
+    return {
+        "picks": picks,
+        "summary": {
+            "hits": hits, "settled": settled_count, "pending": pending,
+            "total": len(picks),
+        },
     }
 
 

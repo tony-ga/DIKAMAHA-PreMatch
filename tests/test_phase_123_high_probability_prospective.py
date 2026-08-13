@@ -15,6 +15,7 @@ from src.high_probability_settlement import (
     fixture_key,
     freeze_from_pick,
     pick_key,
+    pick_view,
     prospective_reliability,
     resolve_goal_market,
     resolve_team_market,
@@ -273,6 +274,128 @@ def test_prospective_reliability_reports_rate_once_enough_sample() -> None:
     assert cell["observed_rate_prospective"] == 16 / 20
     assert summary["total_frozen"] == 20
     assert summary["total_settled"] == 20
+
+
+def test_settlements_for_reads_only_the_requested_keys() -> None:
+    repository = _repository()
+    fixture = _fixture()
+    frozen = freeze_from_pick(_pick(market="1x2"), fixture, "sha", FROZEN_AT)
+    other = freeze_from_pick(
+        _pick(market="over_2_5"), fixture, "sha", FROZEN_AT)
+    repository.freeze_if_absent(frozen)
+    repository.freeze_if_absent(other)
+    verdict = resolve_goal_market(frozen, _settlement())
+    assert verdict is not None
+    repository.settle_if_absent(verdict)
+
+    found = repository.settlements_for([frozen.pick_key, other.pick_key])
+
+    assert set(found) == {frozen.pick_key}
+    assert found[frozen.pick_key].hit is True
+
+
+def test_settlements_for_degrades_to_empty_dict_without_keys() -> None:
+    assert _repository().settlements_for([]) == {}
+
+
+def test_frozen_for_reads_only_the_requested_keys() -> None:
+    repository = _repository()
+    fixture = _fixture()
+    kept = freeze_from_pick(_pick(market="1x2"), fixture, "sha", FROZEN_AT)
+    other = freeze_from_pick(
+        _pick(market="over_2_5"), fixture, "sha", FROZEN_AT)
+    repository.freeze_if_absent(kept)
+    repository.freeze_if_absent(other)
+
+    found = repository.frozen_for([kept.pick_key])
+
+    assert set(found) == {kept.pick_key}
+    assert found[kept.pick_key].market == "1x2"
+
+
+def test_frozen_for_degrades_to_empty_dict_without_keys() -> None:
+    assert _repository().frozen_for([]) == {}
+
+
+def test_pick_view_lists_a_pending_pick_without_dropping_it() -> None:
+    fixture = _fixture()
+    frozen = [freeze_from_pick(_pick(market="1x2"), fixture, "sha", FROZEN_AT)]
+
+    view = pick_view(frozen, settled_by_key={})
+
+    assert len(view["picks"]) == 1
+    assert view["picks"][0]["status"] == "pending"
+    assert "observed_value" not in view["picks"][0]
+    assert view["summary"] == {"hits": 0, "settled": 0, "pending": 1, "total": 1}
+
+
+def test_pick_view_reuses_the_exact_market_ids_frozen_from_the_menu() -> None:
+    """Los IDs de mercado publicados son los mismos que congeló el menú de
+    "Mayor probabilidad" -no se recalculan-, verificado campo por campo."""
+
+    fixture = _fixture()
+    pick = _pick(
+        market="home_corners", direction="over", metric="corners",
+        team_side="home", period="first_half", line=4.5)
+    frozen = freeze_from_pick(pick, fixture, "sha", FROZEN_AT)
+    settlement = SettlementRecord(
+        fixture_key=frozen.fixture_key, league_slug="esp.1", match_id=900001,
+        competition_id="900001", kickoff_ts=KICKOFF,
+        settled_at=KICKOFF + timedelta(hours=3),
+        home_team_name="Local", away_team_name="Visitante",
+        score_home=2, score_away=0, prediction_hash="a" * 64,
+        official_verdicts={})
+    outcome = resolve_team_market(
+        frozen, {"periods": {"home": {"first_half": {"corners": 6}}}},
+        settlement.settled_at)
+    assert outcome is not None
+
+    view = pick_view(
+        [frozen], {outcome.pick_key: outcome},
+        fixture_names={frozen.fixture_key: ("Local", "Visitante")})
+
+    entry = view["picks"][0]
+    assert entry["market"] == "home_corners"
+    assert entry["direction"] == "over"
+    assert entry["metric"] == "corners"
+    assert entry["team_side"] == "home"
+    assert entry["period"] == "first_half"
+    assert entry["line"] == 4.5
+    assert entry["status"] == "hit"
+    assert entry["home_team_name"] == "Local"
+    assert entry["away_team_name"] == "Visitante"
+    assert view["summary"] == {"hits": 1, "settled": 1, "pending": 0, "total": 1}
+
+
+def test_pick_view_never_filters_by_outcome_and_stays_chronological() -> None:
+    """DEC-158/161: la ventana es cronológica e incluye los fallos."""
+
+    fixture_a = _fixture(match_id=1)
+    fixture_b = _fixture(match_id=2, kickoff_ts=(
+        KICKOFF + timedelta(hours=2)).isoformat())
+    miss_pick = freeze_from_pick(
+        _pick(market="1x2", direction="home"), fixture_a, "sha", FROZEN_AT)
+    hit_pick = freeze_from_pick(
+        _pick(market="1x2", direction="home"), fixture_b, "sha", FROZEN_AT)
+    miss_settlement = _settlement(
+        fixture_key=miss_pick.fixture_key,
+        official_verdicts={
+            "one_x_two": {
+                "predicted": "Local", "actual": "Visitante", "hit": False},
+            "over_2_5": {"predicted": "No", "actual": "No", "hit": True},
+            "btts": {"predicted": "No", "actual": "No", "hit": True},
+        })
+    miss_outcome = resolve_goal_market(miss_pick, miss_settlement)
+    hit_outcome = resolve_goal_market(hit_pick, _settlement(
+        fixture_key=hit_pick.fixture_key))
+    assert miss_outcome is not None and hit_outcome is not None
+
+    view = pick_view(
+        [hit_pick, miss_pick],
+        {miss_outcome.pick_key: miss_outcome, hit_outcome.pick_key: hit_outcome})
+
+    assert [entry["status"] for entry in view["picks"]] == ["miss", "hit"]
+    assert view["summary"] == {"hits": 1, "settled": 2, "pending": 0, "total": 2}
 
 
 # Version: 1.0.0

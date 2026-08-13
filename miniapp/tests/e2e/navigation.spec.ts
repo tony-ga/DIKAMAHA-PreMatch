@@ -812,3 +812,73 @@ test("shows every calculated market and line for a settled match, not just 1X2/O
 
   await expect(page.getByText("Puebla + Guadalajara · Córners · partido completo")).toBeVisible();
 });
+
+test("shows Mayor probabilidad picks in Aciertos even when the channel settled nothing that day", async ({ page }) => {
+  // DEC-184: el canal (1X2/Más de 2.5/Ambos marcan) y el menú de "Mayor
+  // probabilidad" son dos ciclos independientes -exactamente el caso que
+  // reportó el usuario: partidos jugados y picks congelados, pero la
+  // ventana en blanco porque `matches` seguía vacío.
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      status: "available", window: { requested: 60, available: 0 },
+      official: {}, shadow: { markets: {} }, matches: [],
+      high_probability: { status: "unavailable", picks: [], summary: { hits: 0, settled: 0, pending: 0, total: 0 } },
+    }),
+  }));
+  await page.route("**/api/track-record/daily**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      status: "available", date: "2026-08-13",
+      official: {}, shadow: { markets: {} }, matches: [],
+      high_probability: {
+        status: "available",
+        summary: { hits: 1, settled: 2, pending: 1, total: 3 },
+        picks: [
+          {
+            pick_key: "esp.1:900001:1x2:match:full_match:na:home",
+            fixture_key: "esp.1:900001", league_slug: "esp.1", match_id: 900001,
+            kickoff_ts: "2026-08-13T20:00:00Z",
+            home_team_name: "Real Madrid", away_team_name: "Barcelona",
+            market: "1x2", direction: "home", metric: "result",
+            team_side: "match", period: "full_match", line: null,
+            model_probability: 0.72, observed_rate_declared: 0.8,
+            status: "hit", observed_value: { verdict: { hit: true } },
+          },
+          {
+            pick_key: "esp.1:900002:home_corners:home:first_half:4_5:over",
+            fixture_key: "esp.1:900002", league_slug: "esp.1", match_id: 900002,
+            kickoff_ts: "2026-08-13T18:00:00Z",
+            home_team_name: "Sevilla", away_team_name: "Betis",
+            market: "home_corners", direction: "over", metric: "corners",
+            team_side: "home", period: "first_half", line: 4.5,
+            model_probability: 0.68, observed_rate_declared: 0.7,
+            status: "miss", observed_value: { observed: 2, line: 4.5 },
+          },
+          {
+            pick_key: "esp.1:900003:over_2_5:match:full_match:na:over",
+            fixture_key: "esp.1:900003", league_slug: "esp.1", match_id: 900003,
+            kickoff_ts: "2026-08-13T22:00:00Z",
+            home_team_name: "Villarreal", away_team_name: "Girona",
+            market: "over_2_5", direction: "over", metric: "result",
+            team_side: "match", period: "full_match", line: null,
+            model_probability: 0.66, observed_rate_declared: 0.71,
+            status: "pending",
+          },
+        ],
+      },
+    }),
+  }));
+
+  await page.goto("/historial");
+
+  await expect(page.getByText("Todavía no se liquidó ningún partido de hoy.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
+  await expect(page.getByText("Resultado (1X2)", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Sevilla · Córners · 1ª mitad · Más de 4.5/)).toBeVisible();
+  await expect(page.getByText("Más de 2.5 goles", { exact: true })).toBeVisible();
+  await expect(page.getByText("Acierto").first()).toBeVisible();
+  await expect(page.getByText("Fallo").first()).toBeVisible();
+  await expect(page.getByText("Pendiente").first()).toBeVisible();
+  await expect(page.getByText("1/2")).toBeVisible();
+});

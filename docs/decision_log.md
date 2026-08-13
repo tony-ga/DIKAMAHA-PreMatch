@@ -3784,6 +3784,105 @@ ajustada (`test_first_half_groups_use_the_canonical_period_name`, que
 afirmaba córners en 1ª mitad y ahora usa tarjetas amarillas, la métrica de
 1ª mitad que sí conserva `weight > 0.0`).
 
+DEC-184
+Fecha: 2026-08-13
+Problema: reporte del usuario -tarea de auditoría nocturna- de que la ventana
+"Aciertos" no publicó nada el día de hoy pese a haber partidos jugados y, en
+teoría, predicciones congeladas. Auditoría contra el código y contra logs
+reales de producción (`DIKAMAHA-PreMatch`, Railway, 2026-08-13): `/v1/track-
+record` y `/v1/track-record/daily` -las dos rutas que alimentan "Resultados
+de hoy"/"Historial de aciertos" en la Mini App- leen exclusivamente
+`prediction_settlements` (Fase 118), poblada sólo por el ciclo propio del
+canal (`TelegramChannelPublisher._daily`/`_freeze_all`/`_results`). El menú
+"Mayor probabilidad" (Fase 122/123) congela y liquida sus propios picks en
+`high_probability_pick_freezes`/`high_probability_pick_settlements`, un ciclo
+independiente (`run_freeze_cycle`/`run_settle_cycle`) que nunca se conectó a
+Aciertos: DEC-177 evaluó esa conexión explícitamente y la descartó "como
+ampliación posible y separada si se pide explícitamente" para no mezclar una
+selección curada de picks con la ventana cronológica y sin sesgo de
+desempeño que exigen DEC-158/161. Ese pedido explícito es exactamente esta
+tarea. Logs de producción del 2026-08-13 (`channel_cycle_completed`) muestran
+conteos en cero -`frozen`/`summaries`/`cards`/`markets`/`results`/
+`track_record`/`track_record_daily`- en cada ciclo de ~5 minutos durante toda
+la ventana observada (desde la tarde anterior), mientras
+`phase123_cycle_completed` reporta 43 picks estancados en `still_pending`,
+0 liquidados, sin variar entre ciclos ni entre ocho redeploys del servicio
+ese mismo día. No aparece ningún `channel_result_rejected` ni
+`settlement_persist_failed` en ese periodo, así que no se pudo confirmar de
+forma concluyente si el ciclo del canal estuvo genuinamente ocioso -ningún
+fixture cruzó `kickoff + 3h` por primera vez en esa ventana- o si
+`_settled_result`/`_final_fixture` está fallando en silencio: `DATABASE_URL`
+y `DIKAMAHA_API_KEY` llegan redactados por esta conexión Railway (misma
+limitación ya documentada en Fase 122 para el smoke autenticado), y una
+inspección SQL directa habría exigido una acción de escritura (desplegar un
+diagnóstico temporal) fuera del alcance de una auditoría de sólo lectura sin
+aprobación del usuario.
+Opciones: (a) dejar Aciertos como sólo-canal-oficial y explicar que "Mayor
+probabilidad" sigue siendo una superficie separada; (b) conectar los picks ya
+congelados/liquidados de Fase 123 a Aciertos de forma aditiva -sin reemplazar
+ni filtrar la lista cronológica existente-, publicando también los picks
+todavía pendientes para no violar DEC-158/161.
+Decisión: (b). `src/high_probability_settlement.py::pick_view` construye un
+bloque cronológico (`picks` + `summary`) a partir de picks congelados y, si
+existe, su veredicto -pendiente cuando no hay veredicto todavía-, reutilizando
+sin recalcular el `market`/`direction`/`metric`/`team_side`/`period`/`line`
+que `freeze_from_pick` ya congeló del menú. Dos métodos nuevos de
+`HighProbabilityPickRepository` (`settlements_for`, `frozen_for`) hacen la
+búsqueda en lote necesaria. `src/dikamaha_service.py` agrega
+`app.state.high_probability_pick_store` -mismo patrón de degradación segura
+que `settlement_store`, sin `DATABASE_URL` responde `"unavailable"`- y añade
+la clave `high_probability` a ambas rutas: `/v1/track-record/daily` incluye
+pendientes (ventana íntegra del día); `/v1/track-record` sólo picks ya
+liquidados (mismo principio que `store.recent`, que tampoco expone
+predicciones sin liquidar). La Mini App añade la tarjeta "Mayor probabilidad"
+(`HighProbabilityPicks`, `miniapp/components/track-record.tsx`) a
+`DailyTrackRecord` y `TrackRecord`; crucialmente, `DailyTrackRecord` ya no
+regresa temprano cuando `matches` está vacío -el síntoma exacto reportado-,
+sino que sigue mostrando el bloque de "Mayor probabilidad" si tiene datos,
+porque son dos ciclos independientes y uno puede estar vacío mientras el otro
+no.
+Motivo: reutilizar exactamente los IDs de mercado congelados (no
+recalculados) garantiza que Aciertos y "Mayor probabilidad" señalan
+literalmente el mismo pick, cumpliendo el requisito explícito de esta tarea.
+El diseño aditivo -nunca oculta un pick por su resultado, publica
+"Pendiente" en vez de omitirlo- preserva la garantía de DEC-158/161 que
+motivó el rechazo original de DEC-177, así que esta decisión no la revierte:
+la extiende bajo la condición que DEC-177 dejó explícita. Reutiliza el mismo
+patrón de tarjeta cronológica + métrica agregada que ya usa `MatchRow`/
+`DailyTrackRecord`, sin inventar un lenguaje visual nuevo.
+Estado: congelada
+Impacto en contratos/fases: `/v1/track-record` y `/v1/track-record/daily`
+ganan la clave nueva `high_probability` (aditivo, ninguna clave existente
+cambia de forma o se elimina). Sin migración de esquema: reutiliza las tablas
+de Fase 123 ya creadas. No toca `run_freeze_cycle`/`run_settle_cycle`
+-el estancamiento observado de 43 picks en `still_pending` sigue sin
+explicación confirmada y esta corrección no lo resuelve, ver limitación
+abierta-. `settlement_store.track_record`, `_daily`/`_results` del
+publicador del canal y el resto de Fase 118/121 quedan intactos.
+Evidencia requerida: pruebas nuevas para `settlements_for`/`frozen_for`/
+`pick_view` en `tests/test_phase_123_high_probability_prospective.py`;
+pruebas de wiring de ambos endpoints (degradado sin `DATABASE_URL`, bloque
+disponible con un pick liquidado, bloque diario con un pick pendiente) en
+`tests/test_phase_118_track_record.py`; suite Python completa sin
+regresiones nuevas -las mismas ~15 fallas de `test_catalog_caching.py`/
+`test_phase_122_high_probability.py` reproducidas idénticas en HEAD limpio
+antes de este cambio, confirmado reproduciendo la suite completa antes y
+después con `git stash`-; Vitest nuevo para `highProbabilityPicks`/
+`highProbabilityPickLabel`; 1 Playwright nueva que reproduce el síntoma
+reportado (canal sin liquidar nada ese día, "Mayor probabilidad" sí visible
+con acierto/fallo/pendiente); typecheck, build Next, Vitest y Playwright
+completos sin regresiones.
+Limitación abierta: no se confirmó la causa exacta de que
+`channel_cycle_completed`/`phase123_cycle_completed` reportaran cero
+actividad nueva durante toda la ventana observada en producción -pudo ser
+ociosidad genuina del calendario de partidos de ese tramo horario, o un
+fallo silencioso de `_settled_result`/`_final_fixture` que nunca emite log de
+error-. Sin acceso de lectura directa a PostgreSQL de producción (valores de
+`DATABASE_URL` redactados por esta conexión) no fue posible distinguir entre
+ambas. Recomendado como siguiente paso: una inspección SQL de sólo lectura
+con credenciales propias del usuario, o una tarea de diagnóstico aparte con
+aprobación explícita para desplegar una consulta temporal.
+
 ```text
 DEC-NNN
 Fecha:

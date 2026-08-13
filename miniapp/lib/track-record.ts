@@ -1,4 +1,5 @@
 import { record } from "@/lib/client-api";
+import { metricLabel, teamLabel } from "@/lib/audited-ladder";
 
 const SHADOW_METRIC_LABELS: Record<string, string> = {
   shots: "Tiros", shots_on_target: "Tiros a puerta", corners: "Córners",
@@ -6,6 +7,10 @@ const SHADOW_METRIC_LABELS: Record<string, string> = {
 };
 const SHADOW_PERIOD_LABELS: Record<string, string> = {
   first_half: "1ª mitad", second_half: "2ª mitad", full_match: "partido completo",
+};
+
+const HIGH_PROBABILITY_GOAL_MARKET_LABELS: Record<string, string> = {
+  "1x2": "Resultado (1X2)", over_2_5: "Más de 2.5 goles", btts: "Ambos marcan",
 };
 
 export const SHADOW_PREVIEW_SIZE = 4;
@@ -48,4 +53,34 @@ export function shadowSummary(shadow: unknown): { hits: number; total: number } 
     }),
     { hits: 0, total: 0 },
   );
+}
+
+/** Extrae la lista de picks de Fase 123 (`GET /v1/track-record[...]`). */
+export function highProbabilityPicks(value: unknown): Array<Record<string, unknown>> {
+  const picks = record(value).picks;
+  return Array.isArray(picks) ? picks.map(record) : [];
+}
+
+/**
+ * Traduce un pick de "Mayor probabilidad" ya congelado a una etiqueta legible.
+ *
+ * Reutiliza `metricLabel`/`teamLabel` de la escalera auditada -mismo
+ * vocabulario, sin duplicar el diccionario- porque `market`, `direction`,
+ * `metric`, `team_side`, `period` y `line` de un pick son exactamente los
+ * que `freeze_from_pick` congeló del menú, sin recalcular nada.
+ */
+export function highProbabilityPickLabel(
+  entry: Record<string, unknown>, homeName: string, awayName: string,
+): string {
+  const market = String(entry.market ?? "");
+  const goalLabel = HIGH_PROBABILITY_GOAL_MARKET_LABELS[market];
+  if (goalLabel) return goalLabel;
+  const side = teamLabel(String(entry.team_side ?? ""), homeName, awayName);
+  const metric = metricLabel(String(entry.metric ?? ""));
+  const period = SHADOW_PERIOD_LABELS[String(entry.period ?? "")] ?? "";
+  const base = [side, metric, period].filter(Boolean).join(" · ");
+  const line = entry.line;
+  if (line === null || line === undefined) return base;
+  const direction = entry.direction === "under" ? "Menos de" : "Más de";
+  return `${base} · ${direction} ${Number(line)}`;
 }

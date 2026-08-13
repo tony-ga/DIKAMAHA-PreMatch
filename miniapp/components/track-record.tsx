@@ -5,7 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
-import { SHADOW_PREVIEW_SIZE, shadowMarketLabel, shadowMatchEntries, shadowSummary } from "@/lib/track-record";
+import {
+  SHADOW_PREVIEW_SIZE, highProbabilityPickLabel, highProbabilityPicks,
+  shadowMarketLabel, shadowMatchEntries, shadowSummary,
+} from "@/lib/track-record";
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
   ["one_x_two", "Resultado (1X2)"],
@@ -15,6 +18,55 @@ const OFFICIAL_LABELS: Array<[string, string]> = [
 
 function VerdictMark({ hit }: { hit: boolean }) {
   return <strong className={hit ? "verdict-hit" : "verdict-miss"}>{hit ? "Acierto" : "Fallo"}</strong>;
+}
+
+function PickStatusMark({ status }: { status: string }) {
+  if (status === "pending") return <strong className="muted">Pendiente</strong>;
+  return <VerdictMark hit={status === "hit"} />;
+}
+
+/**
+ * Picks del menú de "Mayor probabilidad" (Fase 123) dentro de Aciertos.
+ *
+ * Cronológico y sin filtrar por estado -incluye "Pendiente" para un pick
+ * congelado cuyo partido todavía no liquidó-, mismo principio de DEC-158/161
+ * que ya gobierna `MatchRow`. Reutiliza exactamente el `market`/`direction`/
+ * `metric`/`team_side`/`period`/`line` que el menú congeló.
+ */
+function HighProbabilityPicks({ value }: { value: unknown }) {
+  const block = record(value);
+  const picks = highProbabilityPicks(value);
+  if (block.status !== "available" || !picks.length) return null;
+  const summary = record(block.summary);
+  return (
+    <article className="model-card">
+      <div className="model-card-header"><h3>Mayor probabilidad</h3><ShadowBadge /></div>
+      <p className="ladder-caption">
+        Picks del menú "Mayor probabilidad" congelados antes del kickoff, con el mismo
+        mercado que se mostró entonces. Cronológico, incluye pendientes y fallos.
+      </p>
+      <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
+        <Metric label="Aciertos" value={`${Number(summary.hits ?? 0)}/${Number(summary.settled ?? 0)}`} accent />
+        <Metric label="Pendientes" value={String(summary.pending ?? 0)} />
+      </div>
+      <div className="stack" style={{ marginTop: 14 }}>
+        {picks.map((entry) => {
+          const homeName = String(entry.home_team_name ?? "");
+          const awayName = String(entry.away_team_name ?? "");
+          const matchLabel = homeName && awayName ? `${homeName} vs ${awayName}` : entry.league_slug;
+          return (
+            <div className="ladder-group" key={String(entry.pick_key)}>
+              <div className="ladder-head">
+                <span>{highProbabilityPickLabel(entry, homeName, awayName)}</span>
+                <PickStatusMark status={String(entry.status)} />
+              </div>
+              <small className="ladder-edge">{String(matchLabel)}</small>
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
 }
 
 function MarketSummary({ label, value }: { label: string; value: unknown }) {
@@ -117,45 +169,57 @@ export function DailyTrackRecord() {
     return null;
   }
   const matches = Array.isArray(payload.matches) ? payload.matches : [];
+  const highProbability = <HighProbabilityPicks value={payload.high_probability} />;
   if (!matches.length) {
+    // El canal (predicciones 1X2/Más de 2.5/Ambos marcan) puede no haber
+    // liquidado nada hoy mientras el menú de "Mayor probabilidad" sí tiene
+    // picks congelados o ya resueltos -son dos ciclos independientes-, así
+    // que la ventana no debe quedar en blanco sólo porque uno de los dos
+    // esté vacío.
     return (
-      <article className="model-card">
-        <div className="model-card-header"><h3>Resultados de hoy</h3></div>
-        <p className="ladder-caption">Todavía no se liquidó ningún partido de hoy.</p>
-      </article>
+      <div className="stack">
+        <article className="model-card">
+          <div className="model-card-header"><h3>Resultados de hoy</h3></div>
+          <p className="ladder-caption">Todavía no se liquidó ningún partido de hoy.</p>
+        </article>
+        {highProbability}
+      </div>
     );
   }
   const official = record(payload.official);
   const shadow = shadowSummary(payload.shadow);
   return (
-    <article className="model-card">
-      <div className="model-card-header"><h3>Resultados de hoy</h3></div>
-      <p className="ladder-caption">
-        Todos los partidos liquidados hoy, acertados y no acertados, con todos los mercados
-        y líneas calculadas para cada uno.
-      </p>
-      <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
-        {OFFICIAL_LABELS.map(([key, label]) => {
-          const market = record(official[key]);
-          return (
-            <Metric
-              key={key}
-              label={label}
-              value={`${Number(market.hits ?? 0)}/${Number(market.total ?? 0)}`}
-              accent={key === "one_x_two"}
-            />
-          );
-        })}
-        {shadow.total > 0 ? (
-          <Metric label="Córners, tiros y tarjetas" value={`${shadow.hits}/${shadow.total}`} />
-        ) : null}
-      </div>
-      <div className="stack" style={{ marginTop: 14 }}>
-        {matches.map((match, index) => (
-          <MatchRow key={String(record(match).fixture_key ?? index)} value={match} />
-        ))}
-      </div>
-    </article>
+    <div className="stack">
+      <article className="model-card">
+        <div className="model-card-header"><h3>Resultados de hoy</h3></div>
+        <p className="ladder-caption">
+          Todos los partidos liquidados hoy, acertados y no acertados, con todos los mercados
+          y líneas calculadas para cada uno.
+        </p>
+        <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
+          {OFFICIAL_LABELS.map(([key, label]) => {
+            const market = record(official[key]);
+            return (
+              <Metric
+                key={key}
+                label={label}
+                value={`${Number(market.hits ?? 0)}/${Number(market.total ?? 0)}`}
+                accent={key === "one_x_two"}
+              />
+            );
+          })}
+          {shadow.total > 0 ? (
+            <Metric label="Córners, tiros y tarjetas" value={`${shadow.hits}/${shadow.total}`} />
+          ) : null}
+        </div>
+        <div className="stack" style={{ marginTop: 14 }}>
+          {matches.map((match, index) => (
+            <MatchRow key={String(record(match).fixture_key ?? index)} value={match} />
+          ))}
+        </div>
+      </article>
+      {highProbability}
+    </div>
   );
 }
 
@@ -230,6 +294,7 @@ export function TrackRecord() {
             ))}
           </div>
         </article>
+        <HighProbabilityPicks value={payload.high_probability} />
         <div className="notice">{String(payload.disclosure ?? "")}</div>
       </div>
     </>

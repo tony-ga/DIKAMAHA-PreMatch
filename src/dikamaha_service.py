@@ -85,6 +85,17 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     )
 
 try:
+    from src.high_probability_settlement import (
+        build_repository as build_high_probability_pick_repository,
+        pick_view,
+    )
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from high_probability_settlement import (
+        build_repository as build_high_probability_pick_repository,
+        pick_view,
+    )
+
+try:
     from src.universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
     from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
     from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
@@ -1102,6 +1113,76 @@ def _settlement_store() -> Any | None:
         return None
 
 
+def _high_probability_unavailable() -> dict[str, Any]:
+    """Bloque degradado del menú de mayor probabilidad dentro de Aciertos."""
+
+    return {
+        "status": "unavailable",
+        "picks": [],
+        "summary": {"hits": 0, "settled": 0, "pending": 0, "total": 0},
+    }
+
+
+def _high_probability_recent_block(
+    hp_store: Any, window: int,
+    fixture_names: dict[str, tuple[str | None, str | None]],
+) -> dict[str, Any]:
+    """Arma el bloque `high_probability` de la ventana por conteo.
+
+    Sólo picks ya liquidados -mismo principio que `store.recent`, que
+    tampoco expone predicciones todavía pendientes de kickoff+3h-.
+    """
+
+    settled_records = hp_store.settled_recent(window)
+    frozen_by_key = hp_store.frozen_for([row.pick_key for row in settled_records])
+    frozen = [
+        frozen_by_key[row.pick_key] for row in settled_records
+        if row.pick_key in frozen_by_key
+    ]
+    settled_by_key = {row.pick_key: row for row in settled_records}
+    block = pick_view(frozen, settled_by_key, fixture_names)
+    block["status"] = "available"
+    return block
+
+
+def _high_probability_daily_block(
+    hp_store: Any, target: date,
+    fixture_names: dict[str, tuple[str | None, str | None]],
+) -> dict[str, Any]:
+    """Arma el bloque `high_probability` de la ventana por fecha local.
+
+    Incluye picks todavía sin liquidar (`status: "pending"`): DEC-158/161
+    exigen una ventana íntegra, no sólo lo ya resuelto.
+    """
+
+    frozen = hp_store.frozen_on_date(target, MEXICO_TZ)
+    settled_by_key = hp_store.settlements_for([row.pick_key for row in frozen])
+    block = pick_view(frozen, settled_by_key, fixture_names)
+    block["status"] = "available"
+    return block
+
+
+def _high_probability_pick_store() -> Any | None:
+    """Conecta el repositorio de picks de Fase 123 sólo si hay base de datos.
+
+    Mismo patrón que `_settlement_store`: su ausencia degrada el bloque
+    `high_probability` de la ventana de Aciertos a `unavailable` en vez de
+    impedir el arranque del servicio.
+    """
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        return build_high_probability_pick_repository(database_url)
+    except Exception as exc:  # noqa: BLE001 - la API no debe caer por esto
+        LOGGER.warning(json.dumps({
+            "event": "high_probability_pick_store_unavailable",
+            "error_type": type(exc).__name__,
+        }, sort_keys=True))
+        return None
+
+
 def _catalog_cache_store() -> Any | None:
     """Conecta el nivel persistente de la caché si hay base de datos.
 
@@ -1129,6 +1210,7 @@ def create_app(
     live_runtime: Any | None = None,
     provider_context: Any | None = None,
     settlement_store: Any | None = None,
+    high_probability_pick_store: Any | None = None,
 ) -> FastAPI:
     """Crea la aplicación local con dependencias inyectadas.
 
@@ -1195,6 +1277,9 @@ def create_app(
     app.state.shadow_catalog = shadow_catalog
     app.state.settlement_store = (
         settlement_store if settlement_store is not None else _settlement_store())
+    app.state.high_probability_pick_store = (
+        high_probability_pick_store if high_probability_pick_store is not None
+        else _high_probability_pick_store())
     app.state.metrics = MetricsStore()
     app.state.upcoming_cache = AsyncPredictionCache()
     # TTL corto y por debajo del refresco de cliente documentado en Fase 115
@@ -1491,11 +1576,23 @@ def create_app(
                 "reason": "settlement_store_not_configured",
                 "window": {"requested": int(window), "available": 0},
                 "official": {}, "shadow": {"markets": {}}, "matches": [],
+                "high_probability": _high_probability_unavailable(),
             }
         requested = max(1, min(int(window), MAXIMUM_WINDOW))
-        payload = track_record(store.recent(requested))
+        records = store.recent(requested)
+        payload = track_record(records)
         payload["status"] = "available"
         payload["window"]["requested"] = requested
+        hp_store = getattr(app.state, "high_probability_pick_store", None)
+        if hp_store is None:
+            payload["high_probability"] = _high_probability_unavailable()
+        else:
+            fixture_names = {
+                row.fixture_key: (row.home_team_name, row.away_team_name)
+                for row in records
+            }
+            payload["high_probability"] = _high_probability_recent_block(
+                hp_store, requested, fixture_names)
         return payload
 
     @app.get("/v1/track-record/daily", tags=["inference"])
@@ -1516,10 +1613,22 @@ def create_app(
                 "reason": "settlement_store_not_configured",
                 "date": target.isoformat(),
                 "official": {}, "shadow": {"markets": {}}, "matches": [],
+                "high_probability": _high_probability_unavailable(),
             }
-        payload = track_record(store.on_date(target, MEXICO_TZ))
+        records = store.on_date(target, MEXICO_TZ)
+        payload = track_record(records)
         payload["status"] = "available"
         payload["date"] = target.isoformat()
+        hp_store = getattr(app.state, "high_probability_pick_store", None)
+        if hp_store is None:
+            payload["high_probability"] = _high_probability_unavailable()
+        else:
+            fixture_names = {
+                row.fixture_key: (row.home_team_name, row.away_team_name)
+                for row in records
+            }
+            payload["high_probability"] = _high_probability_daily_block(
+                hp_store, target, fixture_names)
         return payload
 
     @app.get("/v1/media/image", tags=["explorer"])

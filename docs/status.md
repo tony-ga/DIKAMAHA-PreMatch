@@ -2,6 +2,40 @@
 
 **Actualizado:** 2026-08-13
 
+## Integración de "Mayor probabilidad" en la ventana de Aciertos (auditoría nocturna)
+
+Ver `DEC-184`. Reporte del usuario: "Aciertos" no publicó nada hoy pese a
+haber partidos jugados y predicciones congeladas. Causa raíz: `/v1/track-
+record` y `/v1/track-record/daily` sólo leían `prediction_settlements`
+(Fase 118), poblada exclusivamente por el ciclo propio del canal
+(`_daily`/`_freeze_all`/`_results`); el menú "Mayor probabilidad" congela y
+liquida sus picks en un ciclo aparte (`high_probability_pick_freezes`/
+`high_probability_pick_settlements`, Fase 122/123) que DEC-177 dejó
+deliberadamente sin conectar a Aciertos "como ampliación posible y separada
+si se pide explícitamente" -este pedido es exactamente ese caso-. Logs de
+producción del propio 2026-08-13 muestran `channel_cycle_completed` en cero
+en todos sus contadores durante toda la ventana observada (~5 min por ciclo,
+ocho redeploys) y `phase123_cycle_completed` con 43 picks estancados en
+`still_pending`/0 liquidados sin variar; sin acceso SQL directo (`DATABASE_
+URL` redactado por la conexión Railway usada) no se pudo confirmar si el
+ciclo del canal estuvo genuinamente ocioso o si `_settled_result` falla en
+silencio -queda como limitación abierta en `DEC-184`, no resuelta aquí-.
+Reparado el problema pedido explícitamente: `src/high_probability_settlement.
+py::pick_view` (+ `settlements_for`/`frozen_for` en el repositorio) publica
+los picks de Fase 123 -pendientes incluidos, nunca se ocultan por resultado,
+DEC-158/161- reutilizando exactamente el `market`/`direction`/`metric`/
+`team_side`/`period`/`line` que el menú ya congeló, sin recalcular nada.
+`/v1/track-record` y `/v1/track-record/daily` ganan la clave aditiva
+`high_probability`; la Mini App suma la tarjeta "Mayor probabilidad" a
+`DailyTrackRecord`/`TrackRecord`, y `DailyTrackRecord` ya no queda en blanco
+cuando el canal no liquidó nada ese día -el síntoma reportado- porque ahora
+también revisa ese segundo bloque. Sin migración de esquema: reutiliza las
+tablas de Fase 123 ya creadas. Gates: suite Python completa sin regresiones
+nuevas (mismas ~15 fallas de `test_catalog_caching.py`/`test_phase_122_high_
+probability.py`, order-dependent, reproducidas idénticas en HEAD limpio antes
+de este cambio), Vitest y Playwright nuevos, typecheck y build Next sin
+regresiones.
+
 ## Córners sin variabilidad por equipo en "Mayor probabilidad" (auditoría nocturna)
 
 Ver `DEC-183`. Reporte del usuario: el menú muestra prácticamente las mismas
