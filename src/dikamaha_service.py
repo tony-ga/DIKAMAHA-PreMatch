@@ -988,7 +988,12 @@ def create_app(
     # 63 ligas en ESPN al mismo tiempo tras un despliegue, y esa contención
     # hizo que predicciones sin relación agotaran su timeout de 30s.
     app.state.upcoming_catalog_cache = AsyncPredictionCache(ttl_seconds=45.0)
-    app.state.live_catalog_cache = AsyncPredictionCache(ttl_seconds=15.0)
+    # 25s, no 15s: la Mini App refresca cada 20s (`refetchInterval` en
+    # `live/page.tsx`). Con TTL=15s casi cada refresco periódico expiraba la
+    # caché primero y pagaba de nuevo el barrido completo (~30s medidos en
+    # frío contra las 63 ligas x 3 días) en vez de servir la respuesta ya
+    # calculada. Ver DEC-181.
+    app.state.live_catalog_cache = AsyncPredictionCache(ttl_seconds=25.0)
     app.state.high_probability_view = HighProbabilityView()
     app.state.request_gate = RequestGate(
         effective.max_concurrent_requests,
@@ -1154,6 +1159,23 @@ def create_app(
             "provenance": provenance,
         }
 
+    def _live_catalog_selection(
+        limit: int, leagues: str | None,
+    ) -> tuple[str, int]:
+        """Resuelve las ligas y el tope compartidos por catálogo y progreso."""
+
+        selected = leagues or os.getenv("DIKAMAHA_LIVE_LEAGUES")
+        if not selected:
+            selected = ",".join(
+                str(row["slug"]) for row in app.state.data_explorer.leagues())
+        return selected, min(max(int(limit), 1), 20)
+
+    def _live_catalog_key(selected: str, bounded: int, date: str | None) -> str:
+        """Clave compartida por la caché del catálogo y el progreso del barrido."""
+
+        return json.dumps(
+            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
+
     @app.get("/v1/live", tags=["inference"])
     async def live_catalog(
         limit: int = 12, leagues: str | None = None,
@@ -1163,20 +1185,15 @@ def create_app(
 
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
-        selected = leagues or os.getenv("DIKAMAHA_LIVE_LEAGUES")
-        if not selected:
-            selected = ",".join(
-                str(row["slug"]) for row in app.state.data_explorer.leagues())
-        bounded = min(max(int(limit), 1), 20)
-        key = json.dumps(
-            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
+        selected, bounded = _live_catalog_selection(limit, leagues)
+        key = _live_catalog_key(selected, bounded, date)
 
         async def calculate() -> dict[str, Any]:
             """Ejecuta el descubrimiento live real sólo cuando la caché expira."""
 
             return await _infer_with_timeout(
                 lambda values: app.state.live_runtime.list_active(*values),
-                (selected, bounded, date),
+                (selected, bounded, date, key),
                 effective.inference_timeout_seconds * 6,
             )
 
@@ -1186,6 +1203,24 @@ def create_app(
         except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo live: %s", exc)
             raise _error("live_catalog_unavailable") from exc
+
+    @app.get("/v1/live/progress", tags=["inference"])
+    def live_scan_progress(
+        limit: int = 12, leagues: str | None = None, date: str | None = None,
+    ) -> dict[str, Any]:
+        """Avance en tiempo real del barrido live que gobierna estos filtros.
+
+        Lectura en memoria, sin llamadas externas: no necesita
+        `external_calls_enabled` ni participa del presupuesto de tiempo del
+        barrido real. `status` es `"idle"` si nunca se inició un barrido con
+        esta combinación exacta de filtros (por ejemplo, la caché del
+        catálogo todavía está vigente y no hizo falta escanear), `"scanning"`
+        mientras corre, y `"done"` con la cifra final una vez termina.
+        """
+
+        selected, bounded = _live_catalog_selection(limit, leagues)
+        key = _live_catalog_key(selected, bounded, date)
+        return app.state.live_runtime.scan_progress.snapshot(key)
 
     @app.get("/v1/models", tags=["inference"])
     def models() -> dict[str, Any]:

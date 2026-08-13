@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -60,6 +61,55 @@ def _valid_date(value: str | None) -> str:
     except ValueError as error:
         raise ValueError("invalid_live_date") from error
     return candidate
+
+
+class LiveScanProgress:
+    """Avance en memoria de un barrido live en curso, por clave de catálogo.
+
+    Existe porque un barrido en frío de las 63 ligas × 3 días (D-1/D/D+1)
+    mide en la práctica ~30 s reales contra ESPN -no es un cuello de botella
+    del proceso, sino de cuántas conexiones concurrentes tolera ESPN antes de
+    frenar la respuesta de cada una-, y hasta ahora la Mini App no mostraba
+    ninguna señal de avance durante esa espera. Un solo proceso (esta app
+    corre en una réplica) hace que un diccionario protegido por un lock baste;
+    no hace falta un almacén externo. Se indexa por la misma clave que ya usa
+    la caché del catálogo (`leagues`/`limit`/`date`), así que un barrido
+    ajeno (otro filtro de liga) no pisa el progreso de éste.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._state: dict[str, dict[str, Any]] = {}
+
+    def start(self, key: str, total: int) -> None:
+        """Registra el inicio de un barrido nuevo, reemplazando el previo de esa clave."""
+
+        with self._lock:
+            self._state[key] = {"status": "scanning", "scanned": 0, "total": int(total)}
+
+    def increment(self, key: str) -> None:
+        """Suma un objetivo completado -éxito o fallo aislado, ambos cuentan-."""
+
+        with self._lock:
+            entry = self._state.get(key)
+            if entry is not None:
+                entry["scanned"] = int(entry["scanned"]) + 1
+
+    def finish(self, key: str) -> None:
+        """Marca el barrido como terminado sin borrar la cifra final."""
+
+        with self._lock:
+            entry = self._state.get(key)
+            if entry is not None:
+                entry["status"] = "done"
+
+    def snapshot(self, key: str) -> dict[str, Any]:
+        """Lee el estado actual sin mutar -`idle` si nunca se registró esa clave."""
+
+        with self._lock:
+            entry = self._state.get(key)
+            return dict(entry) if entry is not None else {
+                "status": "idle", "scanned": 0, "total": 0}
 
 
 def _candidate_live_dates(
@@ -353,6 +403,7 @@ class LivePredictionRuntime:
         monte_carlo_simulations: int = 20_000,
         fallback_enabled: bool = True,
         refresh_seconds: int = 15,
+        scan_progress: LiveScanProgress | None = None,
     ) -> None:
         self._prematch = prematch_engine
         self._inference = inference_engine
@@ -367,6 +418,7 @@ class LivePredictionRuntime:
         self._probability_engine_official = probability_engine_official
         self._fallback_enabled = fallback_enabled
         self._refresh_seconds = max(5, min(int(refresh_seconds), 60))
+        self.scan_progress = scan_progress or LiveScanProgress()
 
     @staticmethod
     def _connector(league: str) -> EspnProspectiveConnector:
@@ -380,8 +432,17 @@ class LivePredictionRuntime:
 
     def list_active(
         self, leagues: str, limit: int = 12, selected_date: str | None = None,
+        progress_key: str | None = None,
     ) -> dict[str, Any]:
-        """Lista fixtures ESPN cuyo estado actual es live/in."""
+        """Lista fixtures ESPN cuyo estado actual es live/in.
+
+        `progress_key` identifica este barrido para `self.scan_progress` -el
+        llamador (`dikamaha_service.py`) pasa la misma clave que ya usa para
+        cachear la respuesta, así que `GET /v1/live/progress` puede consultar
+        el avance de exactamente este barrido con los mismos filtros. Sin
+        clave -llamadas directas o de prueba- el avance simplemente no se
+        publica; el barrido funciona igual.
+        """
 
         slugs = list(dict.fromkeys(
             _valid_league(value) for value in leagues.split(",") if value.strip()
@@ -391,10 +452,17 @@ class LivePredictionRuntime:
         days = _candidate_live_dates(selected_date)
         bounded = min(max(int(limit), 1), 20)
         targets = [(slug, day) for slug in slugs for day in days]
-        with ThreadPoolExecutor(max_workers=min(12, len(targets))) as pool:
-            batches = list(pool.map(
-                lambda target: self._league_active(*target), targets,
-            ))
+        if progress_key is not None:
+            self.scan_progress.start(progress_key, len(targets))
+        try:
+            with ThreadPoolExecutor(max_workers=min(12, len(targets))) as pool:
+                batches = list(pool.map(
+                    lambda target: self._league_active(*target, progress_key=progress_key),
+                    targets,
+                ))
+        finally:
+            if progress_key is not None:
+                self.scan_progress.finish(progress_key)
         rows = [row for batch, _ in batches for row in batch]
         errors = sum(error for _, error in batches)
         unique = {int(row["match_id"]): row for row in rows}
@@ -415,7 +483,7 @@ class LivePredictionRuntime:
         }
 
     def _league_active(
-        self, league: str, day: str,
+        self, league: str, day: str, progress_key: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         try:
             payload = self._connector_factory(league).scoreboard(day)
@@ -428,6 +496,9 @@ class LivePredictionRuntime:
             return rows, 0
         except (EspnConnectorError, EspnResourceUnavailable, ValueError, OSError):
             return [], 1
+        finally:
+            if progress_key is not None:
+                self.scan_progress.increment(progress_key)
 
     def predict_fixture(
         self, league_slug: str, match_id: int,

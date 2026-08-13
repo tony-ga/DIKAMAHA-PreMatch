@@ -1,6 +1,23 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-12
+**Actualizado:** 2026-08-13
+
+## Investigación — lentitud del catálogo live y progreso real
+
+Ver `DEC-181`. Medido contra ESPN real: un barrido en frío de "Partidos en
+vivo" (63 ligas x 3 días D-1/D/D+1 = 189 combinaciones) tarda **33.4 s** con
+12 conexiones concurrentes; subir a 32 no ayuda (32.3 s, ESPN throttlea por
+concurrencia, no es un cuello de botella del proceso). La causa evitable real
+era el TTL de la caché (15 s) por debajo del ciclo de refresco de la Mini App
+(20 s): casi cada refresco pagaba de nuevo el barrido completo. Subido a 25
+s. Se añadió progreso real del barrido -`LiveScanProgress` en memoria,
+`GET /v1/live/progress`, sondeado cada 400 ms- que muestra "N de 189
+combinaciones liga/fecha revisadas" con una barra cuyo ancho es el avance
+real, no una animación indeterminada. La ventana D-1/D/D+1 no se tocó: es la
+protección de Fase 115 contra catálogo vacío cerca de medianoche UTC. Gates:
+6 pruebas nuevas de progreso, 1 de endpoint, 2 Playwright, suite completa sin
+regresiones.
+
 **Fase activa:** Fase 123 Validación prospectiva del menú de mayor probabilidad
 **Objetivo Fase 123:** convertir la evidencia histórica post-hoc de Fase 122 en
 confirmación prospectiva real, congelando los picks del menú antes del

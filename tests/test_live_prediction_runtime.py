@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+import threading
+import time
+
 import src.live_prediction_runtime as live_runtime
 from src.dikamaha_inference import DikamahaInferenceEngine
 from src.live_prediction_runtime import (
     LivePredictionRuntime,
+    LiveScanProgress,
     _candidate_live_dates,
     _match_dynamics,
     _observed_live_presentation,
@@ -343,3 +347,142 @@ def test_match_dynamics_applies_signed_weights_and_centered_smoothing() -> None:
     }]
     assert result["not_model_feature"] is True
     assert result["smoothing"]["window_minutes"] == 5
+
+
+# --------------------------------------------------------------------------
+# Progreso real del barrido live
+#
+# Un barrido en frío mide ~30s reales contra ESPN (63 ligas x 3 días, ver
+# DEC-181): estas pruebas cubren que el avance publicado durante ese tiempo
+# es real -cuenta objetivos de verdad completados, no un número inventado-.
+# --------------------------------------------------------------------------
+
+def test_scan_progress_defaults_to_idle_for_an_unknown_key() -> None:
+    """Una clave nunca iniciada reporta `idle`, no un error ni datos viejos."""
+
+    progress = LiveScanProgress()
+    assert progress.snapshot("nunca-visto") == {
+        "status": "idle", "scanned": 0, "total": 0}
+
+
+def test_scan_progress_tracks_start_increment_and_finish() -> None:
+    """El ciclo completo queda reflejado en el snapshot en cada paso."""
+
+    progress = LiveScanProgress()
+    key = "esp.1:12:None"
+
+    progress.start(key, total=3)
+    assert progress.snapshot(key) == {"status": "scanning", "scanned": 0, "total": 3}
+
+    progress.increment(key)
+    progress.increment(key)
+    assert progress.snapshot(key) == {"status": "scanning", "scanned": 2, "total": 3}
+
+    progress.increment(key)
+    progress.finish(key)
+    assert progress.snapshot(key) == {"status": "done", "scanned": 3, "total": 3}
+
+
+def test_scan_progress_keys_are_independent() -> None:
+    """Un barrido con otro filtro de liga no pisa el progreso de éste."""
+
+    progress = LiveScanProgress()
+    progress.start("esp.1", total=5)
+    progress.increment("esp.1")
+
+    progress.start("eng.1", total=2)
+    progress.increment("eng.1")
+    progress.increment("eng.1")
+    progress.finish("eng.1")
+
+    assert progress.snapshot("esp.1") == {"status": "scanning", "scanned": 1, "total": 5}
+    assert progress.snapshot("eng.1") == {"status": "done", "scanned": 2, "total": 2}
+
+
+def test_list_active_publishes_real_progress_when_given_a_key(tmp_path) -> None:
+    """`list_active` con `progress_key` deja el avance final correcto."""
+
+    windows = tmp_path / "event_windows.json"
+    windows.write_text(json.dumps(_historical_rows()), encoding="utf-8")
+    runtime = LivePredictionRuntime(
+        UniversalPrematchEngine(
+            windows, team_markets_enabled=False,
+            official_goal_chain_enabled=False,
+        ),
+        DikamahaInferenceEngine(),
+        connector_factory=lambda _: _ScoreboardConnector(),
+    )
+
+    runtime.list_active("esp.1", 12, "20260808", progress_key="test-key")
+
+    assert runtime.scan_progress.snapshot("test-key") == {
+        "status": "done", "scanned": 1, "total": 1}
+
+
+def test_list_active_without_a_key_never_touches_scan_progress(tmp_path) -> None:
+    """Sin `progress_key` el barrido funciona igual y no publica avance."""
+
+    windows = tmp_path / "event_windows.json"
+    windows.write_text(json.dumps(_historical_rows()), encoding="utf-8")
+    runtime = LivePredictionRuntime(
+        UniversalPrematchEngine(
+            windows, team_markets_enabled=False,
+            official_goal_chain_enabled=False,
+        ),
+        DikamahaInferenceEngine(),
+        connector_factory=lambda _: _ScoreboardConnector(),
+    )
+
+    catalog = runtime.list_active("esp.1", 12, "20260808")
+
+    assert catalog["count"] == 1
+    assert runtime.scan_progress.snapshot("esp.1") == {
+        "status": "idle", "scanned": 0, "total": 0}
+
+
+class _SlowConnector:
+    """Conector sintético con latencia real para observar progreso a mitad de barrido."""
+
+    def scoreboard(self, date: str) -> dict[str, object]:
+        time.sleep(0.2)
+        return {"events": []}
+
+
+def test_scan_progress_advances_while_the_scan_is_still_running(tmp_path) -> None:
+    """El avance es observable desde otro hilo mientras el barrido corre.
+
+    20 ligas x 1 día con sólo 12 trabajadores concurrentes (el mismo tope que
+    usa `list_active` en producción) fuerza dos tandas: las primeras 12
+    terminan ~0.2s, las 8 restantes esperan turno y terminan después. Al
+    muestrear a mitad de camino el conteo debe ser mayor que cero y menor
+    que el total -ni estancado, ni ya terminado-, la prueba de que el número
+    refleja trabajo real en curso y no una animación inventada.
+    """
+
+    windows = tmp_path / "event_windows.json"
+    windows.write_text(json.dumps(_historical_rows()), encoding="utf-8")
+    runtime = LivePredictionRuntime(
+        UniversalPrematchEngine(
+            windows, team_markets_enabled=False,
+            official_goal_chain_enabled=False,
+        ),
+        DikamahaInferenceEngine(),
+        connector_factory=lambda _: _SlowConnector(),
+    )
+    leagues = ",".join(f"league{i}" for i in range(20))
+    observed: list[dict[str, object]] = []
+
+    def scan() -> None:
+        runtime.list_active(leagues, 12, "20260808", progress_key="slow-key")
+
+    thread = threading.Thread(target=scan)
+    thread.start()
+    time.sleep(0.3)
+    observed.append(runtime.scan_progress.snapshot("slow-key"))
+    thread.join(timeout=5)
+
+    assert observed[0]["total"] == 20
+    assert 0 < observed[0]["scanned"] < 20, (
+        "a mitad del barrido el conteo no debe ser ni cero ni el total")
+    assert runtime.scan_progress.snapshot("slow-key") == {
+        "status": "done", "scanned": 20, "total": 20}

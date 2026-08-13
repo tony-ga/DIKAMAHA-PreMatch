@@ -110,6 +110,7 @@ class _CountingLiveRuntime:
 
     def list_active(
         self, leagues: str, limit: int, selected_date: str | None,
+        progress_key: str | None = None,
     ) -> dict[str, Any]:
         """Registra la llamada y devuelve un catálogo mínimo."""
 

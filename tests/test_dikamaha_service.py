@@ -411,8 +411,15 @@ class _FakeLiveRuntime:
         "rho_next_event": 0.0,
     }
 
+    def __init__(self) -> None:
+        """Expone un `scan_progress` real, aunque este runtime no lo alimente."""
+
+        from src.live_prediction_runtime import LiveScanProgress
+        self.scan_progress = LiveScanProgress()
+
     def list_active(
         self, leagues: str, limit: int, selected_date: str | None,
+        progress_key: str | None = None,
     ) -> dict[str, object]:
         return {
             "fixtures": [{
@@ -474,6 +481,26 @@ def test_live_catalog_prediction_and_model_inventory_are_exposed() -> None:
     counters = client.get("/v1/metrics").json()["counters"]
     assert counters["live_responses"] == 1
     assert counters["pre_match_responses"] == 0
+
+
+def test_live_scan_progress_endpoint_defaults_to_idle_and_needs_no_external_calls() -> None:
+    """`/v1/live/progress` responde en memoria, sin exigir llamadas externas.
+
+    Con el runtime falso -no toca `scan_progress`, a diferencia del real- el
+    resultado es `idle`: prueba que el endpoint calcula la misma clave que
+    `/v1/live` (mismos `leagues`/`limit`/`date`) y no revienta si nunca hubo
+    un barrido real para ella.
+    """
+
+    app = create_app(ServiceConfig(
+        mode="operational_readonly", external_calls_enabled=False,
+    ), live_runtime=_FakeLiveRuntime())
+    client = TestClient(app)
+
+    response = client.get("/v1/live/progress", params={"leagues": "esp.1"})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "idle", "scanned": 0, "total": 0}
 
 
 def test_provider_predictor_endpoint_is_external_benchmark_only() -> None:

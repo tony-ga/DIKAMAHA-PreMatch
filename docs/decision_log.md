@@ -3549,6 +3549,71 @@ completa 813 aprobadas/8 omitidas; typecheck, y Playwright de
 `high-probability.spec.ts` (7, con una reescrita para verificar que varios
 mercados del mismo partido aparecen juntos) sin regresiones.
 
+DEC-181
+Fecha: 2026-08-13
+Problema: el usuario reportó que "Partidos en vivo" tarda mucho en mostrarse
+y pidió investigar la causa y añadir una barra de progreso real con estatus.
+Medido contra ESPN real (`docs/league_catalog_v1.json`, 63 ligas, ventana
+D-1/D/D+1 de `_candidate_live_dates`): un barrido en frío de las 189
+combinaciones liga/día tarda **33.4 s** con 12 conexiones concurrentes
+(`ThreadPoolExecutor(max_workers=12)` en `list_active`). Subir a 32
+trabajadores no ayudó -32.3 s, casi igual-: el tiempo medio por llamada subió
+de 2.08 s a 5.31 s, señal de que ESPN (o un CDN/WAF delante) throttlea por
+concurrencia, no que el proceso sea el cuello de botella. Además,
+`live_catalog_cache` tenía TTL de 15 s mientras la Mini App refresca cada 20
+s (`refetchInterval` en `live/page.tsx`): casi cada refresco periódico
+encontraba la caché ya expirada y pagaba de nuevo el barrido completo, en vez
+de servir la respuesta ya calculada.
+Opciones: (a) subir la concurrencia del `ThreadPoolExecutor` para acelerar el
+barrido -descartada por la medición: no reduce el tiempo real y arriesga
+sobrecargar la conexión con ESPN sin beneficio-; (b) sólo subir el TTL de la
+caché para que los refrescos periódicos no repitan el barrido completo,
+dejando la primera carga igual de lenta y sin ninguna señal visual; (c) (b) +
+progreso real del barrido -contador de combinaciones liga/día ya
+completadas, expuesto en memoria y sondeado por el frontend- en vez de una
+barra indeterminada como la que ya usa `LoadingProgress` para predicciones.
+Decisión: (c). `live_catalog_cache` sube de 15 s a 25 s -por encima del ciclo
+de refresco de 20 s de la Mini App, así que sólo la primera carga de cada
+ventana paga el barrido completo-. `LiveScanProgress` (nuevo,
+`src/live_prediction_runtime.py`) es un diccionario protegido por un `Lock`,
+indexado por la misma clave que ya usa `live_catalog_cache`
+(`leagues`/`limit`/`date`): `list_active` llama `start(key, total)` antes del
+barrido y cada `_league_active` llama `increment(key)` en su `finally` -éxito
+o fallo aislado, ambos cuentan-, así que el conteo crece en tiempo real
+mientras el `ThreadPoolExecutor` corre. `GET /v1/live/progress` (nuevo,
+sin llamadas externas ni gate de `external_calls_enabled`) publica ese
+snapshot. La Mini App sondea ese endpoint cada 400 ms sólo mientras
+`query.isLoading`, y dibuja una barra cuyo ancho es `scanned/total` real
+(`.progress-fill-real`, CSS nuevo sin la animación indeterminada de
+`.progress-fill`); sin total conocido todavía cae al mismo mensaje honesto
+que ya usa `LoadingProgress`, nunca inventa un porcentaje.
+Motivo: (a) se descarta por evidencia medida, no por intuición -más hilos no
+compran velocidad aquí-. El propio diseño de `LoadingProgress`
+(`components/loading-progress.tsx`) ya declaró el principio "no inventar un
+número que suba solo": este barrido sí tiene sub-pasos reales y contables
+(189 combinaciones liga/día), así que la vía honesta es exponer ese conteo
+real, no reutilizar la barra indeterminada por comodidad. Bajar la carga
+sobre ESPN (vía TTL más alto) es además la única palanca que sí redujo el
+tiempo real percibido por un usuario que mantiene la pantalla abierta.
+Estado: congelada
+Impacto en contratos/fases: `GET /v1/live/progress` es una lectura en
+memoria nueva, sin tocar `/v1/live` ni su contrato de respuesta -sólo gana un
+parámetro interno (`progress_key`) que los dobles de prueba existentes
+(`_FakeLiveRuntime`, `_CountingLiveRuntime`) debieron aceptar aunque no lo
+usen-. No se tocó la ventana D-1/D/D+1 (`_candidate_live_dates`) pese a ser
+la otra palanca posible de reducir el barrido: acotarla por hora del día
+reabriría el riesgo de catálogo vacío cerca de medianoche UTC que esa ventana
+existe para evitar (Fase 115), fuera de alcance de este pedido.
+Evidencia requerida: 6 pruebas nuevas en `tests/test_live_prediction_
+runtime.py` (`LiveScanProgress` aislado, `list_active` con y sin
+`progress_key`, avance observable a mitad de barrido desde otro hilo con un
+conector lento sintético); 1 prueba nueva de endpoint en
+`tests/test_dikamaha_service.py`; 2 pruebas Playwright nuevas
+(`live-catalog-progress.spec.ts`: la barra crece con sondeos sucesivos y
+desaparece al resolver, y el mensaje genérico honesto cuando no hay total
+conocido); suite Python completa sin regresiones; typecheck y build Next
+aprobados.
+
 ```text
 DEC-NNN
 Fecha:
