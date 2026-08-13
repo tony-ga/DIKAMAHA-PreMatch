@@ -31,6 +31,7 @@ from src.settlement_store import (
     MINIMUM_SAMPLE,
     SettlementRecord,
     SettlementRepository,
+    observed_team_count,
     team_market_hit,
     track_record,
 )
@@ -40,6 +41,16 @@ LOGGER = logging.getLogger(__name__)
 MEXICO_TZ = ZoneInfo("America/Mexico_City")
 SUMMARY_TIME = time(9, 0)
 SETTLEMENT_DELAY = timedelta(hours=3)
+# Umbral para el respaldo de liquidación (DEC-189). `_final_fixture` ubica el
+# partido por fecha de calendario -México y UTC del kickoff original- y
+# `_is_final` lee su `status_detail`; ninguno de los dos deja rastro cuando
+# falla, así que un aplazamiento o un partido que ESPN reindexa bajo otra
+# fecha deja la fila atascada para siempre sin ningún log. Doce horas después
+# del kickoff -muy por encima de `SETTLEMENT_DELAY` y de la duración de
+# cualquier partido real- se intenta una segunda vía inmune a esa fragilidad:
+# el estado que trae `explorer_statistics`, indexado por `match_id`, no por
+# fecha.
+STALE_FIXTURE_LOOKUP_GRACE = timedelta(hours=12)
 # Espera adicional del resumen diario DESPUÉS de que `settled_at` confirma el
 # último partido del día -no una estimación desde el kickoff, el instante real
 # en que `_seal_settlement` verificó ese partido como final y reconciliado.
@@ -466,30 +477,48 @@ class TelegramChannelPublisher:
                 row.fixture_key)
         published = 0
         for target_text, fixture_keys in sorted(frozen_by_day.items()):
-            complete_key = f"track_record_daily:{target_text}:complete"
-            if self._repository.publication_exists(complete_key):
-                continue
-            target = date.fromisoformat(target_text)
-            records = self._settlements.on_date(target, MEXICO_TZ)
-            settled_keys = {record.fixture_key for record in records}
-            if settled_keys != fixture_keys:
-                continue
-            # SQLite (usado en pruebas y como respaldo local) no conserva el
-            # offset de un DateTime(timezone=True) al leerlo, a diferencia de
-            # PostgreSQL en producción -mismo defecto ya documentado en
-            # Fase 121-, así que se normaliza explícitamente en vez de asumir.
-            last_settled = _utc(max(record.settled_at for record in records))
-            if now < last_settled + DAILY_DIGEST_DELAY:
-                continue
-            chunks = _daily_track_record_chunks(target, records)
-            published += sum(self._publish(
-                f"track_record_daily:{target_text}:{index}",
-                "track_record_daily", text, now)
-                for index, text in enumerate(chunks))
-            self._repository.record_publication(
-                complete_key, "track_record_daily_complete", "internal",
-                f"track_record_daily_complete:{target_text}:{len(chunks)}",
-                now)
+            try:
+                published += self._publish_daily_track_record(
+                    target_text, fixture_keys, now)
+            except Exception:  # noqa: BLE001 - un día roto no bloquea a los demás
+                # Días ordenados cronológicamente: sin este aislamiento, un
+                # día con datos de liquidación corruptos bloqueaba en
+                # silencio el resumen de todos los días posteriores en cada
+                # ciclo, indefinidamente (mismo patrón que DEC-189/191).
+                LOGGER.warning(
+                    "channel_daily_track_record_failed target=%s",
+                    target_text, exc_info=True)
+        return published
+
+    def _publish_daily_track_record(
+        self, target_text: str, fixture_keys: set[str], now: datetime,
+    ) -> int:
+        """Publica el resumen de un solo día, si ya está íntegro y listo."""
+
+        complete_key = f"track_record_daily:{target_text}:complete"
+        if self._repository.publication_exists(complete_key):
+            return 0
+        target = date.fromisoformat(target_text)
+        records = self._settlements.on_date(target, MEXICO_TZ)
+        settled_keys = {record.fixture_key for record in records}
+        if settled_keys != fixture_keys:
+            return 0
+        # SQLite (usado en pruebas y como respaldo local) no conserva el
+        # offset de un DateTime(timezone=True) al leerlo, a diferencia de
+        # PostgreSQL en producción -mismo defecto ya documentado en
+        # Fase 121-, así que se normaliza explícitamente en vez de asumir.
+        last_settled = _utc(max(record.settled_at for record in records))
+        if now < last_settled + DAILY_DIGEST_DELAY:
+            return 0
+        chunks = _daily_track_record_chunks(target, records)
+        published = sum(self._publish(
+            f"track_record_daily:{target_text}:{index}",
+            "track_record_daily", text, now)
+            for index, text in enumerate(chunks))
+        self._repository.record_publication(
+            complete_key, "track_record_daily_complete", "internal",
+            f"track_record_daily_complete:{target_text}:{len(chunks)}",
+            now)
         return published
 
     def _daily(
@@ -534,12 +563,27 @@ class TelegramChannelPublisher:
     def _publish_predictions(
         self, rows: list[FrozenPrediction], now: datetime,
     ) -> tuple[int, int]:
-        """Intercala tarjeta principal y mercados de cada partido."""
+        """Intercala tarjeta principal y mercados de cada partido.
+
+        `rows` llega ordenado por kickoff ascendente. Cada partido se aísla
+        con su propio `try/except`: `_publish_card`/`_publish_markets` hacen
+        llamadas de red (Telegram, `predict_upcoming`) sin protección propia,
+        así que sin este aislamiento un solo fallo -en el partido con
+        kickoff más próximo- cortaba el `for` y dejaba sin tarjeta ni
+        mercados a todos los partidos posteriores del día, en ese ciclo,
+        mismo patrón que DEC-189/191 corrigieron en `_results`/
+        `run_settle_cycle`.
+        """
 
         cards, markets = 0, 0
         for row in rows:
-            cards += self._publish_card(row, now)
-            markets += self._publish_markets(row, now)
+            try:
+                cards += self._publish_card(row, now)
+                markets += self._publish_markets(row, now)
+            except Exception:  # noqa: BLE001 - un fixture roto no bloquea a los demás
+                LOGGER.warning(
+                    "channel_prediction_publish_failed fixture=%s",
+                    row.fixture_key, exc_info=True)
         return cards, markets
 
     def _tomorrow_fixtures(self, target: date) -> list[dict[str, Any]]:
@@ -573,11 +617,27 @@ class TelegramChannelPublisher:
     def _with_logos(
         self, fixtures: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Añade escudos oficiales sólo para presentación."""
+        """Añade escudos oficiales sólo para presentación.
+
+        Se llama desde `_daily()` **antes** de `_freeze_all`: sin aislar por
+        liga, una sola `explorer_teams(slug)` fallida abortaba la excepción
+        hacia arriba y con ella se perdía la congelación del día **completo**
+        -ninguna liga, aunque el resto estuviera disponible-, en cada ciclo
+        mientras esa liga siguiera fallando. `_attach_logos` ya degrada
+        limpio ante un catálogo ausente (escudo vacío), así que saltarse la
+        liga rota -mismo patrón que `_tomorrow_fixtures` ya usa para
+        `list_upcoming`- no pierde nada más que el escudo de esa liga.
+        """
 
         catalogs: dict[str, dict[str, str]] = {}
         for slug in {str(row.get("league_slug")) for row in fixtures}:
-            teams = self._gateway.explorer_teams(slug).get("teams", [])
+            try:
+                teams = self._gateway.explorer_teams(slug).get("teams", [])
+            except (OSError, RuntimeError, ValueError) as error:
+                LOGGER.warning(
+                    "channel_team_logos_skipped league=%s error=%s",
+                    slug, type(error).__name__)
+                continue
             catalogs[slug] = {
                 str(team.get("id")): str(team.get("logo") or "")
                 for team in teams if isinstance(team, dict)}
@@ -632,7 +692,19 @@ class TelegramChannelPublisher:
         return frozen
 
     def _results(self, now: datetime) -> int:
-        """Publica sólo resultados elegibles y reconciliados."""
+        """Publica sólo resultados elegibles y reconciliados.
+
+        `predictions()` devuelve las filas ordenadas por kickoff: la más
+        antigua sin liquidar primero. Antes, una excepción sin capturar en
+        `_settled_result` de **esa** fila abortaba el bucle entero -incluidas
+        todas las filas más nuevas detrás de ella-, así que un solo fixture
+        problemático bloqueaba la liquidación de todos los demás en cada
+        ciclo, indefinidamente, sin ningún error visible (DEC-189): el ciclo
+        seguía completando y publicando su log con conteos en cero, porque la
+        excepción nunca llegaba a `run_cycle`, sino que interrumpía `_results`
+        a medio bucle y `count` se perdía junto con el resto del método. Cada
+        fila se aísla ahora para que un fixture roto no bloquee a los demás.
+        """
 
         count = 0
         for row in self._repository.predictions():
@@ -640,7 +712,13 @@ class TelegramChannelPublisher:
             if (now < row.kickoff_ts + SETTLEMENT_DELAY
                     or self._repository.publication_exists(key)):
                 continue
-            result = self._settled_result(row)
+            try:
+                result = self._settled_result(row, now)
+            except Exception:  # noqa: BLE001 - un fixture roto no debe bloquear al resto
+                LOGGER.warning(
+                    "channel_settlement_row_failed fixture=%s", row.fixture_key,
+                    exc_info=True)
+                continue
             if result is not None:
                 self._seal_settlement(row, result, now)
                 count += self._publish(
@@ -697,16 +775,54 @@ class TelegramChannelPublisher:
         except Exception:  # noqa: BLE001 - shadow nunca bloquea el resultado
             return None
 
-    def _settled_result(self, row: FrozenPrediction) -> dict[str, Any] | None:
-        """Exige final, marcador y estadísticas reconciliadas."""
+    def _settled_result(
+        self, row: FrozenPrediction, now: datetime,
+    ) -> dict[str, Any] | None:
+        """Exige final, marcador y estadísticas reconciliadas.
+
+        La vía rápida (`_final_fixture`) ubica el partido por fecha de
+        calendario y es barata -un scoreboard por (liga, fecha) cubre todos
+        los partidos de ese día-, así que se intenta primero para no pagar
+        el costo de `explorer_statistics` (plays + summary) en cada fila de
+        cada ciclo. Si falla o el partido aún no aparece como final, y la
+        fila lleva más de `STALE_FIXTURE_LOOKUP_GRACE` sin resolverse, se
+        intenta un respaldo indexado por `match_id` -inmune a que la fecha
+        de calendario no coincida-, y se deja constancia en el log incluso
+        si tampoco resuelve nada: DEC-184 documentó picks atascados sin una
+        sola línea que explicara por qué (DEC-189).
+        """
 
         fixture = self._final_fixture(row)
-        if not isinstance(fixture, dict) or not _is_final(fixture):
+        if isinstance(fixture, dict) and _is_final(fixture):
+            stats = self._gateway.explorer_statistics(
+                row.league_slug, str(row.match_id), row.competition_id)
+            return self._score_from_statistics(row, stats)
+        if now - row.kickoff_ts < STALE_FIXTURE_LOOKUP_GRACE:
             return None
+        LOGGER.warning(
+            "channel_final_fixture_lookup_stale fixture=%s kickoff=%s "
+            "date_lookup_found=%s",
+            row.fixture_key, row.kickoff_ts.isoformat(),
+            isinstance(fixture, dict))
         stats = self._gateway.explorer_statistics(
             row.league_slug, str(row.match_id), row.competition_id)
+        if not stats.get("is_final"):
+            LOGGER.warning(
+                "channel_result_rejected fixture=%s reason=not_final "
+                "status_detail=%s",
+                row.fixture_key, stats.get("status_detail"))
+            return None
+        return self._score_from_statistics(row, stats)
+
+    def _score_from_statistics(
+        self, row: FrozenPrediction, stats: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Exige reconciliación y devuelve el marcador, o rechaza con log."""
+
         if not stats.get("reconciled") or not stats.get("score_reconciled"):
-            LOGGER.warning("channel_result_rejected fixture=%s reason=reconciliation", row.fixture_key)
+            LOGGER.warning(
+                "channel_result_rejected fixture=%s reason=reconciliation",
+                row.fixture_key)
             return None
         return stats.get("score") if isinstance(stats.get("score"), dict) else None
 
@@ -1256,9 +1372,8 @@ def _shadow_verdicts(
     for row in _snapshot_lines(snapshot):
         side, metric = str(row["team_side"]), str(row["metric"])
         period = str(row["period"])
-        counts = periods.get(side)
-        observed = (counts or {}).get(period, {}).get(metric)
-        if not isinstance(observed, (int, float)):
+        observed = observed_team_count(periods, side, period, metric)
+        if observed is None:
             continue
         line = float(row["line"])
         predicted_over = float(row["over_probability"]) >= 0.5

@@ -478,7 +478,8 @@ def test_track_record_endpoint_includes_a_settled_high_probability_pick() -> Non
     assert entries[0]["market"] == "1x2"
     assert entries[0]["status"] == "hit"
     assert payload["high_probability"]["summary"] == {
-        "hits": 1, "settled": 1, "pending": 0, "total": 1}
+        "hits": 1, "settled": 1, "pending": 0, "total": 1,
+        "withheld_legacy": 0}
 
 
 def test_daily_endpoint_lists_a_pending_high_probability_pick_for_that_day() -> None:
@@ -509,7 +510,8 @@ def test_daily_endpoint_lists_a_pending_high_probability_pick_for_that_day() -> 
     assert entries[0]["status"] == "pending"
     assert entries[0]["market"] == "over_2_5"
     assert payload["high_probability"]["summary"] == {
-        "hits": 0, "settled": 0, "pending": 1, "total": 1}
+        "hits": 0, "settled": 0, "pending": 1, "total": 1,
+        "withheld_legacy": 0}
 
 
 # Version: 1.0.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -15,13 +16,15 @@ from src.settlement_store import (
     SettlementRecord,
     SqlAlchemySettlementRepository,
 )
-from src.telegram_bot import PredictionGateway
+from src.telegram_bot import PredictionGateway, PredictionGatewayError
 from src.telegram_channel_publisher import (
     ChannelBroadcastBase,
     ChannelTransport,
+    FrozenPrediction,
     SqlAlchemyChannelRepository,
     TelegramChannelPublisher,
     _daily_track_record_chunks,
+    _shadow_verdicts,
     channel_prediction_messages,
 )
 from src.telegram_mobile_layout import mobile_layout_issues
@@ -40,6 +43,12 @@ class _Gateway(PredictionGateway):
         self.prediction_calls = 0
         self.include_recommended = False
         self.include_grid = False
+        # DEC-189: controles para reproducir el respaldo de liquidación y el
+        # aislamiento por fila sin depender de un aplazamiento real de ESPN.
+        self.date_lookup_finds_fixture = True
+        self.statistics_is_final = True
+        self.statistics_status_detail = "Final"
+        self.failing_match_ids: set[int] = set()
 
     def predict_fixture(self, payload: dict[str, Any]) -> dict[str, Any]:
         """No se usa en la difusión programada."""
@@ -93,8 +102,13 @@ class _Gateway(PredictionGateway):
         return {"fixtures": fixtures}
 
     def explorer_fixtures(self, league: str, date: str) -> dict[str, Any]:
-        """Devuelve marcador final explícito."""
+        """Devuelve marcador final explícito, salvo que se simule un
+        aplazamiento -`date_lookup_finds_fixture = False`- que reproduce el
+        caso en que ESPN archiva el partido bajo una fecha distinta a la del
+        kickoff original y `_final_fixture` nunca lo encuentra."""
 
+        if not self.date_lookup_finds_fixture:
+            return {"fixtures": []}
         return {"fixtures": [{
             **_fixture(), "home_score": "2", "away_score": "1",
             "status_detail": "Final",
@@ -105,10 +119,14 @@ class _Gateway(PredictionGateway):
     ) -> dict[str, Any]:
         """Entrega reconciliación configurable."""
 
+        if int(match_id) in self.failing_match_ids:
+            raise PredictionGatewayError("dikamaha_service_unavailable")
         return {
             "reconciled": self.reconciled,
             "score_reconciled": self.reconciled,
             "score": {"home": 2, "away": 1},
+            "is_final": self.statistics_is_final,
+            "status_detail": self.statistics_status_detail,
         }
 
 
@@ -242,6 +260,128 @@ def test_card_is_immediate_and_result_keeps_reconciliation_gates() -> None:
     assert "RESULTADO FINAL VERIFICADO" in transport.messages[-1]
 
 
+def test_stale_fixture_falls_back_to_match_id_indexed_statistics(caplog) -> None:
+    """DEC-189: un partido que ESPN reindexa bajo otra fecha no se atasca.
+
+    `_final_fixture` ubica el partido por fecha de calendario -México y UTC
+    del kickoff original- y nunca lo encuentra si el proveedor lo archiva
+    bajo otra fecha (aplazamiento, reindexado). Antes eso dejaba la fila en
+    `still_pending` para siempre, sin ninguna línea en el log que lo
+    explicara -el caso exacto de los 43 picks de DEC-184-. El respaldo
+    consulta `explorer_statistics`, indexado por `match_id` y por lo tanto
+    inmune a esa fragilidad, después de `STALE_FIXTURE_LOOKUP_GRACE`.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    gateway.date_lookup_finds_fixture = False
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    publisher.run_cycle(datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc))
+
+    # kickoff + 3h: elegible para SETTLEMENT_DELAY, pero todavía no para el
+    # respaldo -no debe intentar `explorer_statistics` ni publicar nada-.
+    just_after_kickoff = datetime(2026, 7, 30, 19, 0, tzinfo=timezone.utc)
+    with caplog.at_level(logging.WARNING):
+        result = publisher.run_cycle(just_after_kickoff)
+    assert result["results"] == 0
+    assert "channel_final_fixture_lookup_stale" not in caplog.text
+
+    # kickoff + 13h: ya pasó STALE_FIXTURE_LOOKUP_GRACE (12h). El respaldo se
+    # activa, deja constancia en el log y liquida usando el estado indexado
+    # por match_id en vez del scoreboard por fecha.
+    stale_time = datetime(2026, 7, 31, 5, 0, tzinfo=timezone.utc)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        result = publisher.run_cycle(stale_time)
+    assert result["results"] == 1
+    assert "channel_final_fixture_lookup_stale" in caplog.text
+    assert "mex.1:10" in caplog.text
+    assert "RESULTADO FINAL VERIFICADO" in transport.messages[-1]
+
+
+def test_stale_fixture_without_final_status_stays_pending_and_logs() -> None:
+    """Si tampoco el respaldo confirma un final, no se inventa un resultado.
+
+    Antes de esta corrección no había ningún registro de este caso: la fila
+    simplemente no aparecía nunca en `results`. Ahora al menos queda un log
+    con el motivo, para que una liga genuinamente en curso (o cualquier otro
+    estado no final) sea diagnosticable sin acceso directo a la base.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    gateway.date_lookup_finds_fixture = False
+    gateway.statistics_is_final = False
+    gateway.statistics_status_detail = "En curso"
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    publisher.run_cycle(datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc))
+
+    stale_time = datetime(2026, 7, 31, 5, 0, tzinfo=timezone.utc)
+    result = publisher.run_cycle(stale_time)
+    assert result["results"] == 0
+
+
+def test_one_broken_fixture_does_not_block_settlement_of_the_rest(caplog) -> None:
+    """DEC-189: aislamiento por fila en `_results`.
+
+    Antes, una excepción sin capturar al liquidar la fila más antigua
+    -`predictions()` ordena por kickoff- abortaba el bucle completo, así que
+    ninguna fila más nueva se liquidaba nunca en ningún ciclo posterior: el
+    fixture roto bloqueaba a todos los que llegaron después de él,
+    indefinidamente, sin que ningún log lo señalara. Este es el mecanismo más
+    verosímil detrás de "43 picks estancados, sin variar entre ciclos ni
+    entre ocho redeploys" que DEC-184 no pudo explicar.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+
+    def two_fixtures(
+        limit: int = 8, leagues: str | None = None, date: str | None = None,
+    ) -> dict[str, Any]:
+        if date != "20260730":
+            return {"fixtures": []}
+        older = {**_fixture(), "match_id": 10, "competition_id": "10",
+                 "kickoff_ts": "2026-07-30T15:00:00+00:00"}
+        newer = {**_fixture(), "match_id": 11, "competition_id": "11",
+                 "kickoff_ts": "2026-07-30T17:00:00+00:00"}
+        return {"fixtures": [older, newer]}
+
+    def both_final(league: str, date: str) -> dict[str, Any]:
+        return {"fixtures": [
+            {**_fixture(), "match_id": 10, "status_detail": "Final",
+             "home_score": "2", "away_score": "1"},
+            {**_fixture(), "match_id": 11, "status_detail": "Final",
+             "home_score": "2", "away_score": "1"},
+        ]}
+
+    gateway.list_upcoming = two_fixtures  # type: ignore[method-assign]
+    gateway.explorer_fixtures = both_final  # type: ignore[method-assign]
+    gateway.failing_match_ids = {10}
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    frozen = publisher.run_cycle(datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc))
+    assert frozen["frozen"] == 2
+
+    settle_time = datetime(2026, 7, 30, 21, 0, tzinfo=timezone.utc)
+    with caplog.at_level(logging.WARNING):
+        result = publisher.run_cycle(settle_time)
+
+    # `results == 1`: la fila 10 (más antigua, la primera en la cola por
+    # kickoff) falló y se registró, pero la 11 -detrás de ella- se liquidó
+    # igual en el mismo ciclo. Antes de aislar la excepción, `results`
+    # habría sido 0 -la fila 11 nunca se habría llegado a evaluar-.
+    assert result["results"] == 1
+    assert "channel_settlement_row_failed" in caplog.text
+    assert "mex.1:10" in caplog.text
+    assert "RESULTADO FINAL VERIFICADO" in transport.messages[-1]
+
+    # El fixture roto se reintenta cada ciclo -no se descarta-, pero ya no
+    # bloquea al que sí puede liquidarse.
+    gateway.failing_match_ids = set()
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        result = publisher.run_cycle(settle_time)
+    assert result["results"] == 1
+    assert "channel_settlement_row_failed" not in caplog.text
+
+
 def test_all_messages_stay_below_telegram_limit() -> None:
     """Verifica el límite conservador en resumen, tarjeta y resultado."""
 
@@ -253,6 +393,41 @@ def test_all_messages_stay_below_telegram_limit() -> None:
     assert transport.messages
     assert all(len(message) <= 3900 for message in transport.messages)
     assert all(not mobile_layout_issues(message) for message in transport.messages)
+
+
+def test_with_logos_skips_a_broken_league_and_keeps_the_rest() -> None:
+    """DEC-191: una liga con `explorer_teams` roto no debe tumbar el día entero.
+
+    `_with_logos` corre antes de `_freeze_all` en `_daily()`: sin aislar por
+    liga, una excepción aquí -para una sola de las varias ligas presentes en
+    los fixtures de mañana- abortaba la congelación del día **completo**, sin
+    ningún fixture de ninguna liga, en cada ciclo mientras esa liga siguiera
+    fallando. `_attach_logos` ya degrada limpio ante un catálogo ausente
+    (escudo vacío), así que saltarse la liga rota no debe perder nada más.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    original = gateway.explorer_teams
+
+    def flaky_teams(league: str) -> dict[str, Any]:
+        if league == "eng.1":
+            raise RuntimeError("espn_unavailable")
+        return original(league)
+
+    gateway.explorer_teams = flaky_teams  # type: ignore[method-assign]
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    fixtures = [
+        {**_fixture(), "league_slug": "eng.1", "match_id": 1,
+         "home_team_id": 1, "away_team_id": 2},
+        {**_fixture(), "league_slug": "mex.1", "match_id": 2,
+         "home_team_id": 1, "away_team_id": 2},
+    ]
+
+    result = publisher._with_logos(fixtures)
+
+    broken_league, healthy_league = result
+    assert broken_league["home_team_logo"] == ""
+    assert healthy_league["home_team_logo"] == "https://img.test/puebla.png"
 
 
 def test_lite_mode_freezes_only_three_nearest_fixtures() -> None:
@@ -281,6 +456,63 @@ def test_lite_mode_freezes_only_three_nearest_fixtures() -> None:
     assert result["cards"] == 3
     assert result["markets"] == 3
     assert len(transport.card_logos) == 3
+
+
+def _frozen(fixture_key: str, match_id: int, kickoff: datetime) -> FrozenPrediction:
+    """Construye una predicción congelada mínima, sin pasar por el repositorio."""
+
+    fixture = {
+        **_fixture(), "match_id": match_id, "home_team_name": "Puebla",
+        "away_team_name": "Guadalajara", "kickoff_ts": kickoff.isoformat(),
+    }
+    prediction = {
+        "probability_home": 0.6, "probability_draw": 0.25, "probability_away": 0.15,
+        "probability_over_2_5": 0.55, "probability_btts": 0.45,
+        "experimental_team_markets": {
+            "status": "experimental_shadow_not_promoted",
+            "user_market_view": _market_rows(),
+        },
+    }
+    return FrozenPrediction(
+        fixture_key=fixture_key, target_date=kickoff.date().isoformat(),
+        league_slug="mex.1", match_id=match_id, competition_id=str(match_id),
+        kickoff_ts=kickoff, fixture=fixture, prediction=prediction,
+        prediction_hash="a" * 64, frozen_at=kickoff - timedelta(hours=12))
+
+
+def test_publish_predictions_isolates_a_broken_fixture_from_the_rest() -> None:
+    """DEC-191: un fixture roto al publicar no debe bloquear a los siguientes.
+
+    `_publish_predictions` recorre los partidos del día en orden de kickoff.
+    `_publish_markets` puede pedir una predicción fresca a `predict_upcoming`
+    si el mercado variable todavía no está congelado; sin aislar por
+    fixture, una excepción ahí -para el partido con kickoff más próximo-
+    cortaba el `for` y ningún partido posterior del día recibía tarjeta ni
+    mercados en ese ciclo (mismo patrón que DEC-189/191 en `_results`/
+    `run_settle_cycle`).
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    original_predict = gateway.predict_upcoming
+
+    def flaky_predict(payload: dict[str, Any]) -> dict[str, Any]:
+        if int(payload.get("match_id", 0)) == 10:
+            raise Exception("espn_unavailable")  # noqa: TRY002 - error genérico simulado
+        return original_predict(payload)
+
+    gateway.predict_upcoming = flaky_predict  # type: ignore[method-assign]
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    now = datetime(2026, 7, 30, 10, 0, tzinfo=timezone.utc)
+    broken = _frozen("mex.1:10", 10, now + timedelta(hours=2))
+    healthy = _frozen("mex.1:11", 11, now + timedelta(hours=3))
+
+    cards, markets = publisher._publish_predictions([broken, healthy], now)
+
+    # Ambas tarjetas se publican (no dependen de `predict_upcoming`), pero
+    # sólo el partido sano consigue mercados: el roto falla y se registra.
+    assert cards == 2
+    assert markets == 1
+    assert any("Puebla" in message for message in transport.messages)
 
 
 def test_visual_grid_sends_one_dashboard_per_fixture() -> None:
@@ -628,6 +860,57 @@ def _market(
         "baseline_probability": baseline, "source_model": "markov",
         "status": "experimental_shadow_not_promoted",
     }
+
+
+def _grid_snapshot(period: str) -> dict[str, Any]:
+    """Rejilla congelada mínima con una sola línea, para probar `_shadow_verdicts`."""
+
+    return {"bounded_market_grid_view": [{
+        "key": "home_corners", "team_side": "home", "metric": "corners",
+        "period": period,
+        "lines": [{"line": 4.5, "over_probability": 0.7}],
+    }]}
+
+
+def test_shadow_verdicts_translate_full_match_to_the_total_period_key() -> None:
+    """DEC-190: `explorer_statistics` nunca trae la clave `"full_match"`.
+
+    `bounded_market_grid_view` declara sus líneas de partido completo como
+    `period: "full_match"` -mismo vocabulario público que el resto del
+    sistema-, pero `_period_statistics` (`src/espn_user_explorer.py`) sólo
+    expone `first_half`/`second_half`/`total`. Antes de esta corrección,
+    `_shadow_verdicts` buscaba la clave inexistente y omitía la línea en
+    silencio siempre: ninguna línea de partido completo -la mayoría del
+    universo, medido en producción- llegaba nunca a "Resultados de hoy".
+    """
+
+    statistics = {"periods": {"home": {"total": {"corners": 6}}}}
+
+    verdicts = _shadow_verdicts(_grid_snapshot("full_match"), statistics)
+
+    assert verdicts
+    entry = next(iter(verdicts.values()))
+    assert entry["hit"] is True
+    assert entry["actual"] == "6 observados"
+
+
+def test_shadow_verdicts_read_half_periods_without_translation() -> None:
+    """Las mitades no necesitan traducción: son la misma clave en ambos lados."""
+
+    statistics = {"periods": {"home": {"first_half": {"corners": 6}}}}
+
+    verdicts = _shadow_verdicts(_grid_snapshot("first_half"), statistics)
+
+    assert verdicts
+    assert next(iter(verdicts.values()))["hit"] is True
+
+
+def test_shadow_verdicts_omit_a_line_with_no_matching_observation() -> None:
+    """Sin conteo real para ese lado/periodo, la línea se omite, no se inventa."""
+
+    statistics = {"periods": {"away": {"total": {"corners": 6}}}}
+
+    assert _shadow_verdicts(_grid_snapshot("full_match"), statistics) == {}
 
 
 # Version: 1.3.0

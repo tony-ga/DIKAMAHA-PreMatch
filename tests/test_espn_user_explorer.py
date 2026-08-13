@@ -7,6 +7,7 @@ from src.espn_user_explorer import (
     _play,
     _reconciled,
     _score_reconciled,
+    _summary_status,
     _teams,
 )
 
@@ -80,6 +81,52 @@ def test_header_goal_variants_reconcile_three_zero_score() -> None:
     assert result["home"]["total"]["goals"] == 3
     assert result["away"]["total"]["goals"] == 0
     assert _score_reconciled(result, {"home": 3, "away": 0})
+
+
+def test_summary_status_reads_the_same_shape_as_the_live_follower() -> None:
+    """`summary()` trae su propio bloque `status`, indexado por `match_id`.
+
+    DEC-189: este es el respaldo que `TelegramChannelPublisher` usa cuando
+    la búsqueda por fecha de calendario (`_final_fixture`) no encuentra el
+    partido -un aplazamiento, o ESPN reindexándolo bajo otra fecha-. La
+    forma exacta (`status.type.completed`/`.detail`) es la misma que ya usa
+    `espn_live_follower.py` para partidos en vivo.
+    """
+
+    summary = {"header": {"competitions": [{
+        "status": {"type": {
+            "completed": True, "state": "post", "detail": "Final",
+        }},
+    }]}}
+
+    detail, is_final = _summary_status(summary)
+
+    assert detail == "Final"
+    assert is_final is True
+
+
+def test_summary_status_is_not_final_while_in_progress() -> None:
+    """Un partido en curso no debe leerse como final."""
+
+    summary = {"header": {"competitions": [{
+        "status": {"type": {
+            "completed": False, "state": "in", "detail": "Segundo tiempo",
+        }},
+    }]}}
+
+    detail, is_final = _summary_status(summary)
+
+    assert detail == "Segundo tiempo"
+    assert is_final is False
+
+
+def test_summary_status_degrades_safely_without_a_status_block() -> None:
+    """Un `summary` sin bloque de estado no afirma finalidad ni revienta."""
+
+    assert _summary_status({}) == ("", False)
+    assert _summary_status({"header": {}}) == ("", False)
+    assert _summary_status(
+        {"header": {"competitions": [{}]}}) == ("", False)
 
 
 def test_team_parser_keeps_provider_identity() -> None:

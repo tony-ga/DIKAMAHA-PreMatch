@@ -29,6 +29,7 @@ Created: 2026-08-12
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -44,7 +45,8 @@ try:
     from src.ladder_audit import METRIC_LADDERS
     from src.prematch_raw_store import canonical_hash
     from src.settlement_store import (
-        MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
+        MINIMUM_SAMPLE, SettlementRecord, observed_team_count,
+        team_market_hit, wilson_interval,
     )
     from src.team_count_market_runtime import MARKET_METADATA
     from src.telegram_bot import PredictionGatewayError
@@ -52,13 +54,34 @@ except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
     from ladder_audit import METRIC_LADDERS
     from prematch_raw_store import canonical_hash
     from settlement_store import (
-        MINIMUM_SAMPLE, SettlementRecord, team_market_hit, wilson_interval,
+        MINIMUM_SAMPLE, SettlementRecord, observed_team_count,
+        team_market_hit, wilson_interval,
     )
     from team_count_market_runtime import MARKET_METADATA
     from telegram_bot import PredictionGatewayError
 
+LOGGER = logging.getLogger(__name__)
 GOAL_MARKET_KEYS = {"1x2": "one_x_two", "over_2_5": "over_2_5", "btts": "btts"}
 MAXIMUM_WINDOW = 500
+
+# Instante del commit que retiró `fallback_outside_band` y corrigió la
+# dirección de `observed_rate_declared` (DEC-182/183, 2026-08-13T09:41:34Z).
+# Los picks congelados antes llevan la tasa del `over` publicada también para
+# picks `under` y líneas que el generador actual no produciría nunca. DEC-182
+# los declaró "discontinuidad aceptada … se conservan append-only como
+# registro histórico y no se migran"; DEC-184 los volvió visibles en Aciertos
+# sin advertirlo, que es cómo "córners partido completo, menos de 1.5" llegó
+# a la interfaz. Se siguen conservando en la tabla: sólo dejan de publicarse.
+LADDER_DIRECTION_REPAIR_TS = datetime(2026, 8, 13, 9, 41, 34, tzinfo=timezone.utc)
+
+# Cota dura de plausibilidad, la misma que gobierna la selección vigente
+# (`src/ladder_pick_selection.py`). Es un segundo filtro independiente del
+# tiempo: ninguna cifra publicada fuera de este rango puede provenir del
+# generador actual, así que una fila así es basura histórica sin importar
+# cuándo se congeló -y cubre la ventana entre el commit y el despliegue real,
+# que ningún reloj de este repositorio conoce-.
+PUBLISHABLE_RATE_FLOOR = 0.50
+PUBLISHABLE_RATE_CEILING = 0.90
 _LADDER_BASE_METRICS = frozenset(base for base, _ in METRIC_LADDERS.values())
 _LADDER_SIDES = frozenset({"home", "away", "total"})
 
@@ -441,9 +464,9 @@ def resolve_team_market(
     periods = statistics.get("periods")
     if not isinstance(periods, dict):
         return None
-    counts = periods.get(pick.team_side)
-    observed = (counts or {}).get(pick.period, {}).get(pick.metric)
-    if not isinstance(observed, (int, float)) or pick.line is None:
+    observed = observed_team_count(
+        periods, pick.team_side, pick.period, pick.metric)
+    if observed is None or pick.line is None:
         return None
     hit = team_market_hit(pick.direction, pick.line, float(observed))
     return PickSettlementRecord(
@@ -493,29 +516,59 @@ def run_settle_cycle(
     gateway: Any, repository: HighProbabilityPickRepository,
     settlements: Any, now: datetime,
 ) -> dict[str, int]:
-    """Liquida los picks cuyo fixture ya está sellado en `prediction_settlements`."""
+    """Liquida los picks cuyo fixture ya está sellado en `prediction_settlements`.
+
+    `unsettled(now)` ordena por kickoff ascendente -el pick más antiguo
+    primero-. Cada pick se aísla con su propio `try/except`: sin esto, una
+    excepción de `settlements.get(...)` (lectura SQLAlchemy, sin protección
+    propia -a diferencia de la llamada a `explorer_statistics` unas líneas
+    más abajo, que sí la tenía-) en el pick más antiguo abortaba el bucle
+    completo y dejaba sin evaluar a todos los picks más nuevos detrás de él,
+    en cada ciclo, indefinidamente mientras el fallo persistiera (DEC-189/
+    DEC-191, mismo patrón que `TelegramChannelPublisher._results`).
+
+    Un `record is None` se registra con la identidad del pick -antes sólo se
+    contaba en `failed` sin ningún rastro de cuál era ni por qué-, para que
+    un fallo de liquidación persistente sea diagnosticable desde los logs de
+    Railway sin necesitar acceso directo a la base.
+    """
 
     settled = still_pending = failed = 0
     for pick in repository.unsettled(now):
-        settlement = settlements.get(pick.fixture_key)
-        if settlement is None:
-            still_pending += 1
-            continue
-        record = resolve_goal_market(pick, settlement)
-        if record is None:
-            try:
-                statistics = gateway.explorer_statistics(
-                    pick.league_slug, str(pick.match_id),
-                    settlement.competition_id)
-            except PredictionGatewayError:
-                failed += 1
+        try:
+            settlement = settlements.get(pick.fixture_key)
+            if settlement is None:
+                still_pending += 1
                 continue
-            record = resolve_team_market(pick, statistics, settlement.settled_at)
-        if record is None:
+            record = resolve_goal_market(pick, settlement)
+            if record is None:
+                try:
+                    statistics = gateway.explorer_statistics(
+                        pick.league_slug, str(pick.match_id),
+                        settlement.competition_id)
+                except PredictionGatewayError:
+                    failed += 1
+                    LOGGER.warning(
+                        "phase123_settle_failed pick_key=%s reason=gateway_error",
+                        pick.pick_key)
+                    continue
+                record = resolve_team_market(
+                    pick, statistics, settlement.settled_at)
+            if record is None:
+                failed += 1
+                LOGGER.warning(
+                    "phase123_settle_failed pick_key=%s reason=unresolved "
+                    "market=%s metric=%s team_side=%s period=%s",
+                    pick.pick_key, pick.market, pick.metric, pick.team_side,
+                    pick.period)
+                continue
+            if repository.settle_if_absent(record):
+                settled += 1
+        except Exception:  # noqa: BLE001 - un pick roto no debe bloquear al resto
             failed += 1
-            continue
-        if repository.settle_if_absent(record):
-            settled += 1
+            LOGGER.warning(
+                "phase123_settle_row_failed pick_key=%s", pick.pick_key,
+                exc_info=True)
     return {"settled": settled, "still_pending": still_pending, "failed": failed}
 
 
@@ -610,7 +663,11 @@ def pick_view(
     names = fixture_names or {}
     hits = settled_count = pending = 0
     picks: list[dict[str, Any]] = []
+    withheld = 0
     for pick in sorted(frozen, key=lambda row: (row.kickoff_ts, row.pick_key)):
+        if not is_publishable(pick):
+            withheld += 1
+            continue
         outcome = settled_by_key.get(pick.pick_key)
         home_name, away_name = names.get(pick.fixture_key, (None, None))
         entry: dict[str, Any] = {
@@ -643,9 +700,57 @@ def pick_view(
         "picks": picks,
         "summary": {
             "hits": hits, "settled": settled_count, "pending": pending,
-            "total": len(picks),
+            "total": len(picks), "withheld_legacy": withheld,
         },
     }
+
+
+def is_publishable(pick: PickFreezeRecord) -> bool:
+    """Decide si un pick congelado puede publicarse hoy en Aciertos.
+
+    Dos condiciones independientes, y basta fallar una:
+
+    1. **Generador**: congelado después de la reparación de dirección y de la
+       retirada del fallback (`LADDER_DIRECTION_REPAIR_TS`). Antes de ese
+       instante, `observed_rate_declared` de un pick `under` guarda la tasa
+       del `over`, así que la cifra que vería el usuario es literalmente el
+       complemento de la verdadera.
+    2. **Plausibilidad**: ambas cifras publicadas dentro de
+       `[PUBLISHABLE_RATE_FLOOR, PUBLISHABLE_RATE_CEILING]`. Cubre la ventana
+       entre el commit y el despliegue real, que no está registrada en
+       ninguna parte, y cualquier fila futura que se salga de las reglas.
+
+    Sólo aplica a los mercados de equipo. Los de gol (1X2/Over 2.5/Ambos
+    marcan) nunca pasaron por `ladder_pick_selection`: los gobierna el
+    artefacto sellado de Fase 122, con sus propios tramos de confianza, así
+    que ni sufrieron el defecto de dirección ni tienen por qué caber en esta
+    banda.
+
+    No borra ni migra nada: la tabla sigue siendo append-only y conserva las
+    filas como registro histórico, exactamente como DEC-182 estableció. Lo
+    único que cambia es que dejan de presentarse como predicciones vigentes.
+    """
+
+    if pick.market in GOAL_MARKET_KEYS:
+        return True
+    if _as_utc(pick.frozen_at) < LADDER_DIRECTION_REPAIR_TS:
+        return False
+    return all(
+        PUBLISHABLE_RATE_FLOOR <= value <= PUBLISHABLE_RATE_CEILING
+        for value in (pick.model_probability, pick.observed_rate_declared))
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Normaliza a UTC un `frozen_at` que SQLite devuelve sin zona.
+
+    PostgreSQL conserva la zona en `DateTime(timezone=True)`; el variante
+    SQLite que usan las pruebas la pierde, y comparar naive con aware lanza
+    `TypeError`. Se asume UTC porque es lo único que el ciclo de congelación
+    escribe (`run_prospective_cycle` usa `datetime.now(timezone.utc)`).
+    """
+
+    return value if value.tzinfo is not None else value.replace(
+        tzinfo=timezone.utc)
 
 
 # Version: 1.0.0

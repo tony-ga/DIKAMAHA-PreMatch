@@ -3,6 +3,7 @@ mayor probabilidad."""
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
@@ -19,8 +20,11 @@ from src.high_probability_settlement import (
     prospective_reliability,
     resolve_goal_market,
     resolve_team_market,
+    run_settle_cycle,
 )
+from src.high_probability_settlement import LADDER_DIRECTION_REPAIR_TS
 from src.settlement_store import SettlementRecord
+from src.telegram_bot import PredictionGatewayError
 
 KICKOFF = datetime(2026, 8, 20, 20, 0, tzinfo=timezone.utc)
 FROZEN_AT = KICKOFF - timedelta(hours=6)
@@ -163,12 +167,23 @@ def test_resolve_goal_market_returns_none_for_team_markets() -> None:
 
 
 def test_resolve_team_market_uses_the_pick_own_fixed_line() -> None:
+    """`period="full_match"` debe leer la clave `"total"` de `periods[side]`.
+
+    DEC-190: antes esta prueba armaba `statistics` con `{"full_match": {...}}`
+    -una forma que `explorer_statistics` nunca produce, sólo trae
+    `first_half`/`second_half`/`total`-, así que quedaba en verde aunque
+    `resolve_team_market` buscara exactamente esa clave inexistente y
+    devolviera `None` siempre en producción real. Usar `"total"`, la clave
+    real, es lo que expone el defecto -y lo que confirma que ya está
+    corregido-.
+    """
+
     fixture = _fixture()
     pick = freeze_from_pick(
         _pick(market="home_corners_over_4_5", metric="corners",
               team_side="home", period="full_match", line=4.5, direction="over"),
         fixture, "sha", FROZEN_AT)
-    statistics = {"periods": {"home": {"full_match": {"corners": 6}}}}
+    statistics = {"periods": {"home": {"total": {"corners": 6}}}}
 
     verdict = resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3))
 
@@ -183,7 +198,7 @@ def test_resolve_team_market_misses_when_line_not_covered() -> None:
         _pick(market="home_corners_over_4_5", metric="corners",
               team_side="home", period="full_match", line=4.5, direction="over"),
         fixture, "sha", FROZEN_AT)
-    statistics = {"periods": {"away": {"full_match": {"corners": 6}}}}
+    statistics = {"periods": {"away": {"total": {"corners": 6}}}}
 
     assert resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3)) is None
 
@@ -202,13 +217,44 @@ def test_resolve_team_market_accepts_a_ladder_sourced_market_key() -> None:
         _pick(market="home_corners", metric="corners",
               team_side="home", period="full_match", line=4.5, direction="over"),
         fixture, "sha", FROZEN_AT)
-    statistics = {"periods": {"home": {"full_match": {"corners": 6}}}}
+    statistics = {"periods": {"home": {"total": {"corners": 6}}}}
 
     verdict = resolve_team_market(pick, statistics, KICKOFF + timedelta(hours=3))
 
     assert verdict is not None
     assert verdict.hit is True
     assert verdict.settlement_source == "team_market_statistics"
+
+
+def test_resolve_team_market_reads_first_and_second_half_directly() -> None:
+    """Los periodos de mitad sí coinciden literal con la clave de `periods`.
+
+    Complementa la prueba de `full_match` -que exige traducir a `"total"`-
+    confirmando que `first_half`/`second_half` no necesitan traducción: son
+    la misma clave en ambos lados, y así fue como estos picks sí lograron
+    liquidarse en producción (los únicos 25 liquidados antes de DEC-190 son
+    todos de estos dos periodos, nunca de `full_match`).
+    """
+
+    fixture = _fixture()
+    first_half = freeze_from_pick(
+        _pick(market="home_corners_first_half", metric="corners",
+              team_side="home", period="first_half", line=1.5, direction="over"),
+        fixture, "sha", FROZEN_AT)
+    second_half = freeze_from_pick(
+        _pick(market="home_corners_second_half", metric="corners",
+              team_side="home", period="second_half", line=1.5, direction="over"),
+        fixture, "sha", FROZEN_AT)
+    statistics = {"periods": {"home": {
+        "first_half": {"corners": 2}, "second_half": {"corners": 2},
+        "total": {"corners": 4},
+    }}}
+
+    first = resolve_team_market(first_half, statistics, KICKOFF + timedelta(hours=3))
+    second = resolve_team_market(second_half, statistics, KICKOFF + timedelta(hours=3))
+
+    assert first is not None and first.hit is True
+    assert second is not None and second.hit is True
 
 
 def test_resolve_team_market_rejects_an_unrecognized_metric_or_side() -> None:
@@ -224,10 +270,88 @@ def test_resolve_team_market_rejects_an_unrecognized_metric_or_side() -> None:
         _pick(market="another_unknown_key", metric="corners",
               team_side="referee", period="full_match", line=4.5, direction="over"),
         fixture, "sha", FROZEN_AT)
-    statistics = {"periods": {"home": {"full_match": {"corners": 6}}}}
+    statistics = {"periods": {"home": {"total": {"corners": 6}}}}
 
     assert resolve_team_market(bad_metric, statistics, KICKOFF + timedelta(hours=3)) is None
     assert resolve_team_market(bad_side, statistics, KICKOFF + timedelta(hours=3)) is None
+
+
+class _BrokenSettlements:
+    """Simula `SettlementRepository.get` fallando para un fixture concreto."""
+
+    def __init__(self, broken_fixture_key: str, healthy: SettlementRecord) -> None:
+        self._broken = broken_fixture_key
+        self._healthy = healthy
+
+    def get(self, fixture_key: str) -> SettlementRecord | None:
+        if fixture_key == self._broken:
+            raise RuntimeError("boom")
+        return self._healthy if fixture_key == self._healthy.fixture_key else None
+
+
+def test_run_settle_cycle_isolates_a_broken_pick_from_the_rest() -> None:
+    """DEC-191: un pick roto no debe bloquear a los que vienen detrás.
+
+    `unsettled(now)` ordena por kickoff -el más antiguo primero-. Antes,
+    una excepción sin capturar en `settlements.get(...)` para el pick más
+    antiguo abortaba el bucle completo: el pick más nuevo, sano, nunca
+    llegaba a evaluarse en ese ciclo ni en ninguno posterior mientras el
+    primero siguiera roto. Mismo mecanismo que DEC-189 corrigió en
+    `TelegramChannelPublisher._results`, aquí en el pipeline hermano.
+    """
+
+    repository = _repository()
+    older = freeze_from_pick(
+        _pick(market="1x2"),
+        _fixture(match_id=1, kickoff_ts=KICKOFF.isoformat()),
+        "sha", FROZEN_AT)
+    newer = freeze_from_pick(
+        _pick(market="1x2"),
+        _fixture(match_id=2, kickoff_ts=(KICKOFF + timedelta(hours=1)).isoformat()),
+        "sha", FROZEN_AT)
+    repository.freeze_if_absent(older)
+    repository.freeze_if_absent(newer)
+    settlements = _BrokenSettlements(
+        older.fixture_key, _settlement(fixture_key=newer.fixture_key))
+
+    result = run_settle_cycle(
+        object(), repository, settlements, KICKOFF + timedelta(hours=4))
+
+    # El pick roto se cuenta como fallo -no desaparece sin explicación-, y el
+    # sano detrás de él sí se liquida en el mismo ciclo.
+    assert result == {"settled": 1, "still_pending": 0, "failed": 1}
+    settled = repository.settlements_for([newer.pick_key])
+    assert newer.pick_key in settled
+    assert settled[newer.pick_key].hit is True
+
+
+def test_run_settle_cycle_logs_the_pick_identity_when_unresolved(caplog) -> None:
+    """Un pick que no liquida deja rastro de cuál era y por qué, no sólo un contador.
+
+    Antes `record is None` sólo incrementaba `failed`; un fallo persistente
+    de liquidación era invisible salvo por una cifra agregada en el log.
+    """
+
+    class _Gateway:
+        def explorer_statistics(self, league, match_id, competition_id):
+            return {"periods": {}}
+
+    repository = _repository()
+    pick = freeze_from_pick(
+        _pick(market="unknown_market_key", metric="possession",
+              team_side="home", period="full_match", line=4.5),
+        _fixture(), "sha", FROZEN_AT)
+    repository.freeze_if_absent(pick)
+    settlements = _BrokenSettlements("nothing", _settlement())
+
+    with caplog.at_level(logging.WARNING):
+        result = run_settle_cycle(
+            _Gateway(), repository, settlements, KICKOFF + timedelta(hours=4))
+
+    assert result["failed"] == 1
+    assert "phase123_settle_failed" in caplog.text
+    assert pick.pick_key in caplog.text
+    assert "unknown_market_key" in caplog.text
 
 
 def test_prospective_reliability_hides_rate_below_minimum_sample() -> None:
@@ -326,7 +450,86 @@ def test_pick_view_lists_a_pending_pick_without_dropping_it() -> None:
     assert len(view["picks"]) == 1
     assert view["picks"][0]["status"] == "pending"
     assert "observed_value" not in view["picks"][0]
-    assert view["summary"] == {"hits": 0, "settled": 0, "pending": 1, "total": 1}
+    assert view["summary"] == {
+        "hits": 0, "settled": 0, "pending": 1, "total": 1,
+        "withheld_legacy": 0}
+
+
+def test_pick_view_withholds_the_impossible_legacy_corner_line() -> None:
+    """Reporte del usuario: "Corners partido completo menos 1.5" en Aciertos.
+
+    Fila congelada por el generador anterior a DEC-182: `under` con la tasa
+    del `over` publicada verbatim (0.99). El generador actual no puede
+    producirla -córners está fuera de la escalera y 0.99 excede la cota-, así
+    que se conserva en la tabla pero deja de publicarse.
+    """
+
+    fixture = _fixture()
+    legacy = freeze_from_pick(
+        _pick(market="home_corners", direction="under", metric="corners",
+              team_side="home", period="full_match", line=1.5,
+              model_probability=0.99, observed_rate=0.99,
+              bucket=[0.85, 1.0], edge_source="base_rate_driven"),
+        fixture, "sha", LADDER_DIRECTION_REPAIR_TS - timedelta(hours=2))
+
+    view = pick_view([legacy], settled_by_key={})
+
+    assert view["picks"] == []
+    assert view["summary"]["withheld_legacy"] == 1
+    assert view["summary"]["total"] == 0
+
+
+def test_pick_view_withholds_an_implausible_rate_frozen_after_the_cutoff() -> None:
+    """La cota de plausibilidad es independiente del reloj.
+
+    Cubre la ventana entre el commit de la reparación y el despliegue real,
+    que ningún registro de este repositorio conoce.
+    """
+
+    recent = freeze_from_pick(
+        _pick(market="home_corners", direction="under", metric="corners",
+              team_side="home", period="full_match", line=1.5,
+              model_probability=0.96, observed_rate=0.96),
+        _fixture(), "sha", LADDER_DIRECTION_REPAIR_TS + timedelta(hours=2))
+
+    view = pick_view([recent], settled_by_key={})
+
+    assert view["picks"] == []
+    assert view["summary"]["withheld_legacy"] == 1
+
+
+def test_pick_view_keeps_a_goal_pick_frozen_before_the_ladder_repair() -> None:
+    """Los mercados de gol nunca pasaron por la escalera ni por su defecto.
+
+    Los gobierna el artefacto sellado de Fase 122 con sus propios tramos, así
+    que el corte de la escalera no debe arrastrarlos.
+    """
+
+    legacy_goal = freeze_from_pick(
+        _pick(market="over_2_5"), _fixture(),
+        "sha", LADDER_DIRECTION_REPAIR_TS - timedelta(days=3))
+
+    view = pick_view([legacy_goal], settled_by_key={})
+
+    assert len(view["picks"]) == 1
+    assert view["picks"][0]["market"] == "over_2_5"
+    assert view["summary"]["withheld_legacy"] == 0
+
+
+def test_pick_view_keeps_a_team_pick_produced_by_the_current_rules() -> None:
+    """Un pick vigente y dentro de banda se publica sin cambios."""
+
+    current = freeze_from_pick(
+        _pick(market="home_shots", direction="over", metric="shots",
+              team_side="home", period="full_match", line=10.5,
+              model_probability=0.68, observed_rate=0.71),
+        _fixture(), "sha", LADDER_DIRECTION_REPAIR_TS + timedelta(days=1))
+
+    view = pick_view([current], settled_by_key={})
+
+    assert len(view["picks"]) == 1
+    assert view["picks"][0]["line"] == 10.5
+    assert view["summary"]["withheld_legacy"] == 0
 
 
 def test_pick_view_reuses_the_exact_market_ids_frozen_from_the_menu() -> None:
@@ -364,7 +567,9 @@ def test_pick_view_reuses_the_exact_market_ids_frozen_from_the_menu() -> None:
     assert entry["status"] == "hit"
     assert entry["home_team_name"] == "Local"
     assert entry["away_team_name"] == "Visitante"
-    assert view["summary"] == {"hits": 1, "settled": 1, "pending": 0, "total": 1}
+    assert view["summary"] == {
+        "hits": 1, "settled": 1, "pending": 0, "total": 1,
+        "withheld_legacy": 0}
 
 
 def test_pick_view_never_filters_by_outcome_and_stays_chronological() -> None:
@@ -395,7 +600,9 @@ def test_pick_view_never_filters_by_outcome_and_stays_chronological() -> None:
         {miss_outcome.pick_key: miss_outcome, hit_outcome.pick_key: hit_outcome})
 
     assert [entry["status"] for entry in view["picks"]] == ["miss", "hit"]
-    assert view["summary"] == {"hits": 1, "settled": 2, "pending": 0, "total": 2}
+    assert view["summary"] == {
+        "hits": 1, "settled": 2, "pending": 0, "total": 2,
+        "withheld_legacy": 0}
 
 
 # Version: 1.0.0

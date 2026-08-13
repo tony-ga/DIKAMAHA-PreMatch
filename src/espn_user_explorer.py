@@ -207,11 +207,13 @@ class EspnFootballDataExplorer(FootballDataExplorer):
         teams = _summary_teams(summary)
         periods = _period_statistics(plays.get("items", []), teams)
         score = _summary_score(summary)
+        status_detail, is_final = _summary_status(summary)
         return {
             "teams": teams, "periods": periods,
             "boxscore": _boxscore(summary), "reconciled": _reconciled(periods),
             "score": score,
             "score_reconciled": _score_reconciled(periods, score),
+            "status_detail": status_detail, "is_final": is_final,
         }
 
     def teams(self, league: str, query: str = "") -> list[dict[str, Any]]:
@@ -425,6 +427,35 @@ def _score_reconciled(
         and periods.get(side, {}).get("total", {}).get("goals") == score[side]
         for side in ("home", "away")
     )
+
+
+def _summary_status(summary: dict[str, Any]) -> tuple[str, bool]:
+    """Extrae el estado del partido desde `summary`, indexado por `match_id`.
+
+    Misma convención que `espn_live_follower.py` usa para partidos en vivo
+    (`status.type.state`/`.completed`/`.detail`): el resumen de ESPN trae su
+    propio bloque de estado en `header.competitions[0].status`, igual que el
+    scoreboard. La diferencia -y el motivo de exponerlo aquí- es que este
+    endpoint ya está indexado por `match_id`/`competition_id`, así que no
+    exige adivinar en qué fecha de calendario el proveedor archivó el
+    partido. `TelegramChannelPublisher._final_fixture` sí depende de esa
+    fecha -consulta `explorer_fixtures(league, date)` y busca el partido
+    dentro del día- y por eso puede fallar en silencio ante un aplazamiento
+    o un partido que ESPN reindexa bajo otra fecha: la búsqueda nunca
+    encuentra el fixture y no hay ninguna otra señal de que algo salió mal.
+    Exponer el estado aquí le da a ese camino un respaldo inmune a esa
+    fragilidad, ver `DEC-189`.
+    """
+
+    competition = ((summary.get("header") or {}).get(
+        "competitions") or [{}])[0]
+    status = competition.get("status") if isinstance(competition, dict) else {}
+    status_type = status.get("type") if isinstance(status, dict) else {}
+    if not isinstance(status_type, dict):
+        status_type = {}
+    detail = str(status_type.get("detail") or status_type.get(
+        "description") or "")
+    return detail, bool(status_type.get("completed") is True)
 
 
 def _team_identity(value: Any) -> dict[str, Any]:

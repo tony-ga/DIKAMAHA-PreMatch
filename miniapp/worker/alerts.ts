@@ -241,60 +241,80 @@ async function cycle(sql: postgres.Sql): Promise<void> {
   const fixtureIndex = new Map(liveFixtures.map((item) => [String(item.match_id), item]));
   const predictionCache = new Map<string, Json>();
 
+  // `subscriptions` viene ordenado por `created_at` -la más antigua primero-,
+  // hasta 500 por ciclo, de usuarios independientes entre sí. Cada una se
+  // aísla con su propio try/catch: `dikamaha(...)` (predicción en vivo) y el
+  // `UPDATE ... SET last_observation` no tenían protección propia -sólo el
+  // envío a Telegram, más abajo, la tenía-, así que una suscripción cuya
+  // predicción fallara de forma persistente cortaba el `for` y dejaba sin
+  // evaluar a TODAS las suscripciones más nuevas detrás de ella, de
+  // cualquier usuario, en cada ciclo, indefinidamente mientras el fallo
+  // persistiera. Mismo patrón ya corregido en el canal de Telegram y en
+  // Fase 123 (DEC-189/191).
   for (const subscription of subscriptions) {
-    const fixture = subscription.fixture_id
-      ? fixtureIndex.get(subscription.fixture_id) ?? null
-      : liveFixtures.find((item) => item.league_slug === subscription.league_slug) ?? null;
-    let prediction: Json | null = null;
-    if (fixture && ["probability_delta", "market_threshold", "model_status"].includes(subscription.rule_type)) {
-      const fixtureId = String(fixture.match_id);
-      prediction = predictionCache.get(fixtureId) ?? await dikamaha("/v1/predict/live/fixture", {
-        method: "POST",
-        body: JSON.stringify({
-          league_slug: fixture.league_slug,
-          match_id: Number(fixture.match_id),
-        }),
-      });
-      predictionCache.set(fixtureId, prediction);
-    }
-    const current = observation(subscription, fixture, prediction);
-    const cooldownElapsed = !subscription.last_triggered_at
-      || Date.now() - new Date(subscription.last_triggered_at).getTime()
-        >= subscription.cooldown_seconds * 1000;
-    const trigger = cooldownElapsed && shouldTrigger(subscription, current);
-    await sql`
-      UPDATE alert_subscriptions
-         SET last_observation = ${sql.json(current)}, last_evaluated_at = now(),
-             updated_at = now()
-       WHERE id = ${subscription.id}
-    `;
-    if (!trigger) continue;
-    const key = eventKey(subscription, current);
-    const reserved = await sql<{ id: string }[]>`
-      INSERT INTO alert_deliveries (subscription_id, event_key, status)
-      VALUES (${subscription.id}, ${key}, 'pending')
-      ON CONFLICT (subscription_id, event_key) DO NOTHING
-      RETURNING id
-    `;
-    if (!reserved.length) continue;
     try {
-      await sendTelegram(subscription.user_id, message(subscription, current));
-      await sql.begin(async (transaction) => {
-        await transaction`
-          UPDATE alert_deliveries SET status = 'sent', delivered_at = now()
+      const fixture = subscription.fixture_id
+        ? fixtureIndex.get(subscription.fixture_id) ?? null
+        : liveFixtures.find((item) => item.league_slug === subscription.league_slug) ?? null;
+      let prediction: Json | null = null;
+      if (fixture && ["probability_delta", "market_threshold", "model_status"].includes(subscription.rule_type)) {
+        const fixtureId = String(fixture.match_id);
+        prediction = predictionCache.get(fixtureId) ?? await dikamaha("/v1/predict/live/fixture", {
+          method: "POST",
+          body: JSON.stringify({
+            league_slug: fixture.league_slug,
+            match_id: Number(fixture.match_id),
+          }),
+        });
+        predictionCache.set(fixtureId, prediction);
+      }
+      const current = observation(subscription, fixture, prediction);
+      const cooldownElapsed = !subscription.last_triggered_at
+        || Date.now() - new Date(subscription.last_triggered_at).getTime()
+          >= subscription.cooldown_seconds * 1000;
+      const trigger = cooldownElapsed && shouldTrigger(subscription, current);
+      await sql`
+        UPDATE alert_subscriptions
+           SET last_observation = ${sql.json(current)}, last_evaluated_at = now(),
+               updated_at = now()
+         WHERE id = ${subscription.id}
+      `;
+      if (!trigger) continue;
+      const key = eventKey(subscription, current);
+      const reserved = await sql<{ id: string }[]>`
+        INSERT INTO alert_deliveries (subscription_id, event_key, status)
+        VALUES (${subscription.id}, ${key}, 'pending')
+        ON CONFLICT (subscription_id, event_key) DO NOTHING
+        RETURNING id
+      `;
+      if (!reserved.length) continue;
+      try {
+        await sendTelegram(subscription.user_id, message(subscription, current));
+        await sql.begin(async (transaction) => {
+          await transaction`
+            UPDATE alert_deliveries SET status = 'sent', delivered_at = now()
+             WHERE id = ${reserved[0].id}
+          `;
+          await transaction`
+            UPDATE alert_subscriptions SET last_triggered_at = now(), updated_at = now()
+             WHERE id = ${subscription.id}
+          `;
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message.slice(0, 80) : "telegram_failed";
+        await sql`
+          UPDATE alert_deliveries SET status = 'failed', error_code = ${code}, delivered_at = now()
            WHERE id = ${reserved[0].id}
         `;
-        await transaction`
-          UPDATE alert_subscriptions SET last_triggered_at = now(), updated_at = now()
-           WHERE id = ${subscription.id}
-        `;
-      });
+      }
     } catch (error) {
-      const code = error instanceof Error ? error.message.slice(0, 80) : "telegram_failed";
-      await sql`
-        UPDATE alert_deliveries SET status = 'failed', error_code = ${code}, delivered_at = now()
-         WHERE id = ${reserved[0].id}
-      `;
+      console.error(JSON.stringify({
+        event: "telegram_alert_subscription_failed",
+        subscription_id: subscription.id,
+        fixture_id: subscription.fixture_id,
+        league_slug: subscription.league_slug,
+        code: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+      }));
     }
   }
 }

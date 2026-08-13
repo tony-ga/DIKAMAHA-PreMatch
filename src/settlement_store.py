@@ -219,6 +219,41 @@ def team_market_hit(direction: str, line: float, observed: float) -> bool:
     return (direction == "over") == actual_over
 
 
+# `explorer_statistics()["periods"][side]` (`src/espn_user_explorer.py::
+# _period_statistics`) sólo tiene tres claves: `first_half`, `second_half` y
+# `total` -nunca `full_match`-. Los picks de mercados de equipo, en cambio,
+# declaran su periodo como `full_match` (`MARKET_METADATA`,
+# `_audited_market_ladder_view`, `bounded_market_grid_view`): es el mismo
+# vocabulario público que usa el resto del sistema
+# (`explorer_statistics.periods[side]` es la única excepción). Sin esta
+# traducción, `counts.get("full_match")` nunca encuentra nada y todo pick de
+# partido completo -el 70% del universo congelado, medido en producción
+# 2026-08-13- queda sin liquidar para siempre, sin ningún log que lo señale:
+# `resolve_team_market` y `_shadow_verdicts` devuelven `None`/omiten la línea
+# exactamente igual que cuando el dato observado falta de verdad. Ver
+# DEC-190.
+_STATISTICS_PERIOD_KEYS = {"full_match": "total"}
+
+
+def observed_team_count(
+    periods: dict[str, Any], side: str, period: str, metric: str,
+) -> float | None:
+    """Busca un conteo observado por lado/periodo/métrica, o `None`.
+
+    Único punto de traducción entre el vocabulario público de periodo
+    (`full_match`/`first_half`/`second_half`) y las claves reales que trae
+    `explorer_statistics`. Compartido por `resolve_team_market`
+    (`src/high_probability_settlement.py`) y `_shadow_verdicts`
+    (`src/telegram_channel_publisher.py`) para que nunca puedan volver a
+    divergir sobre esta traducción.
+    """
+
+    key = _STATISTICS_PERIOD_KEYS.get(period, period)
+    counts = periods.get(side)
+    observed = (counts or {}).get(key, {}).get(metric)
+    return observed if isinstance(observed, (int, float)) else None
+
+
 def wilson_interval(hits: int, total: int) -> tuple[float, float]:
     """Calcula el intervalo de Wilson al 95%, estable con muestras chicas."""
 

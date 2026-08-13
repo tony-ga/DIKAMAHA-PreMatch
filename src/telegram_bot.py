@@ -2546,7 +2546,21 @@ class LongPollingRunner:
         self._offset: int | None = None
 
     def poll_once(self) -> int:
-        """Procesa un lote y confirma cada update por offset."""
+        """Procesa un lote y confirma cada update por offset.
+
+        El offset avanza **siempre**, procese o no con éxito. Antes sólo
+        avanzaba tras un `process_update` exitoso: un update que hiciera
+        fallar a un handler -un botón de menú expirado, un callback
+        malformado, cualquier bug de un handler concreto- dejaba el offset
+        clavado en ese mismo update para siempre. Telegram lo reenvía en
+        cada `getUpdates` mientras no se confirme, así que el bot quedaba
+        atascado repitiendo indefinidamente ese único update "veneno" y
+        dejaba de procesar cualquier mensaje nuevo de cualquier usuario,
+        incluso tras un reinicio -el offset vive sólo en memoria, así que el
+        próximo arranque volvía a pedir el mismo update desde cero-. La
+        semántica de `offset` en la API de Telegram es de confirmación, no
+        de éxito: una vez visto, se descarta, se procese bien o mal.
+        """
 
         updates = self._transport.get_updates(self._offset, self._timeout)
         processed = 0
@@ -2554,9 +2568,14 @@ class LongPollingRunner:
             update_id = int(update["update_id"])
             if self._offset is not None and update_id < self._offset:
                 continue
-            self._bot.process_update(update)
-            self._offset = update_id + 1
-            processed += 1
+            try:
+                self._bot.process_update(update)
+                processed += 1
+            except Exception:  # noqa: BLE001 - un update roto no debe bloquear a los demás
+                LOGGER.exception(
+                    "telegram_update_processing_failed update_id=%s", update_id)
+            finally:
+                self._offset = update_id + 1
         return processed
 
     def run_forever(self) -> None:

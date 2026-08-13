@@ -444,6 +444,40 @@ def test_long_polling_ignores_duplicate_update() -> None:
     assert len(transport.sent) == 1
 
 
+def test_long_polling_advances_past_a_poison_update() -> None:
+    """Un update que hace fallar al handler no debe bloquear el offset para siempre.
+
+    Antes, `self._offset` sólo avanzaba tras un `process_update` exitoso: un
+    único update "veneno" -que siempre hace fallar a un handler- quedaba
+    reenviado por Telegram en cada `getUpdates` (el offset nunca lo supera),
+    así que el bot dejaba de procesar cualquier mensaje nuevo de cualquier
+    usuario, para siempre. La corrección exige que el offset avance aunque
+    el procesamiento falle -confirmación, no éxito-, y que el update sano
+    que viene después sí se procese en la misma pasada.
+    """
+
+    poison, healthy = _update(5, "/estado"), _update(6, "/estado")
+    transport, gateway = FakeTransport([poison, healthy]), FakeGateway()
+    bot = _bot(transport, gateway)
+    original = bot.process_update
+
+    def flaky(update: dict[str, Any]) -> None:
+        if update["update_id"] == 5:
+            raise RuntimeError("handler roto")
+        original(update)
+
+    bot.process_update = flaky  # type: ignore[method-assign]
+    runner = LongPollingRunner(bot, transport, 1)
+
+    processed = runner.poll_once()
+
+    # Sólo el update sano cuenta como procesado, pero el offset ya reconoce
+    # ambos -si no, el siguiente `poll_once` volvería a pedir el veneno-.
+    assert processed == 1
+    assert runner._offset == 7
+    assert len(transport.sent) == 1
+
+
 def test_messages_are_split_below_telegram_limit() -> None:
     """Divide mensajes sin exceder el límite conservador."""
 
