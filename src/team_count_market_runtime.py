@@ -22,14 +22,17 @@ import joblib
 import numpy as np
 
 from src.artifact_integrity import artifact_hash_matches
-from src.ladder_audit import METRIC_LADDERS, maximum_line
+from src.ladder_audit import METRIC_LADDERS, maximum_line, maximums_key
 from src.ladder_reliability_view import LadderReliabilityView
 from src.market_calibration import ArtifactMarketCalibrationProvider
-from src.metric_coverage import MetricCoverage
+from src.metric_coverage import ZERO_IMPLAUSIBLE, MetricCoverage
 from src.team_count_markets import (
+    FIRST_HALF,
+    FULL_MATCH,
     combined_dispersion,
     negative_binomial_distribution,
     negative_binomial_over_probability,
+    window_belongs_to,
 )
 from src.team_market_markov import TeamMarketMarkov
 
@@ -90,6 +93,14 @@ RECOMMENDATION_LIMIT = 6
 VISIBLE_LINE_MIN = 1.5
 VISIBLE_LINE_MAX = 9.5
 VISIBLE_GRID_SIZE = 3
+# Piso de P(over) para que la rejilla publique un grupo, aplicado **sólo** a
+# las métricas cuyo cero es implausible (`ZERO_IMPLAUSIBLE`). Un grupo sano de
+# córners ronda μ 4-9 y su línea 1.5 supera el 0.9; el caso roto ronda μ 0.18
+# y no llega al 0.02. Las tarjetas quedan fuera por la misma razón que ya las
+# exime `_drop_uncovered`: media tarjeta por mitad es una observación real,
+# no un hueco -medido en esp.1, `home_yellow_cards_first_half` μ 0.765 con
+# P(over 1.5) 0.168, un grupo perfectamente legítimo-.
+GRID_MINIMUM_PEAK = 0.20
 
 
 class TeamCountMarketProvider(ABC):
@@ -200,21 +211,36 @@ def _parse_ts(value: str) -> Any:
 
 
 def _metric_target(rows: list[dict[str, Any]], spec: dict[str, Any]) -> float:
-    """Agrega un conteo de equipo completo o de primera mitad."""
+    """Agrega un conteo de equipo del periodo que declare la especificación.
 
-    selected = rows
-    if bool(spec["first_half_only"]):
-        selected = [row for row in rows if int(row["window_index"]) < 3]
+    Acepta las dos formas del contrato: `period` (Fase 124, tres periodos) y
+    el `first_half_only` booleano anterior. La compatibilidad no es adorno:
+    permite volver a un artefacto previo con `git checkout` sin tocar código,
+    que es el procedimiento de rollback que este repositorio ya usa.
+    """
+
+    period = spec.get("period")
+    if period is None:
+        period = FIRST_HALF if bool(spec["first_half_only"]) else FULL_MATCH
+    selected = [
+        row for row in rows
+        if window_belongs_to(str(period), int(row["window_index"]))]
     return float(sum(_runtime_count(row, spec) for row in selected))
 
 
 def _runtime_count(
     row: dict[str, Any], spec: dict[str, Any],
 ) -> float:
-    """Replica la semántica comercial congelada de tiros."""
+    """Replica la semántica comercial congelada de tiros.
+
+    Se compara `source_field` y no `name` por el mismo motivo que en el
+    runner de entrenamiento: los nombres por periodo de Fase 124 no están en
+    el conjunto literal, y ambos lados tienen que contar idéntico o el
+    modelo entrenaría sobre una definición y serviría otra.
+    """
 
     value = float(row.get(spec["source_field"], 0.0) or 0.0)
-    if spec["name"] in {"shots", "shots_on_target"}:
+    if str(spec["source_field"]) in {"shots", "shots_on_target"}:
         value += float(row.get("goals", 0.0) or 0.0)
     return value
 
@@ -965,14 +991,22 @@ def _audited_market_ladder_view(
 
     `model_weights` es un tercer filtro, independiente de cobertura de liga:
     `_expected` mezcla `weight * modelo + (1 - weight) * baseline`, y
-    `baseline` depende sólo de (liga, localía) -nunca del equipo-, así que en
-    cualquier métrica con `weight == 0.0` (`corners`/`corners_first_half` en
-    el artefacto vigente, ver DEC-183) `expected` colapsa exactamente al
-    mismo número para **cualquier** partido de esa liga, sin importar qué dos
-    equipos jueguen. Publicar esa línea aquí -que se presenta como "depende
-    de estos dos equipos en concreto"- sería la misma clase de certeza
-    engañosa que las otras dos precondiciones existen para evitar; se omite
-    la métrica en vez de mostrarla como si fuera específica del partido.
+    `baseline` depende sólo de (liga, localía) -nunca del equipo-, así que
+    cualquier métrica con `weight == 0.0` colapsa al mismo número para
+    **cualquier** partido de esa liga, sin importar qué dos equipos jueguen.
+    Publicar esa línea aquí -que se presenta como "depende de estos dos
+    equipos en concreto"- sería la misma clase de certeza engañosa que las
+    otras dos precondiciones existen para evitar (DEC-183).
+
+    El filtro se conserva como invariante permanente, pero ya no excluye a
+    córners. DEC-183 lo introdujo al observar `model_weights["corners"] ==
+    0.0` y concluyó que era "la elección correcta y ya auditada", es decir,
+    que córners no tenía señal por equipo. No era eso: la selección del peso
+    de mezcla se hacía sobre las filas **contaminadas** que el resto del
+    pipeline de DEC-173 sí excluía, y esas filas -ligas donde el proveedor
+    reporta cero córners- empujaban el óptimo a cero. Con la selección
+    corregida el peso de córners es `0.9` en los tres periodos y sus
+    intensidades vuelven a variar por partido. Ver Fase 124.
     """
 
     if not reliability.available():
@@ -1002,8 +1036,7 @@ def _audited_market_ladder_view(
                 continue
             output.append({
                 "key": f"{side}_{spec_metric}", "metric": base_metric,
-                "team_side": side,
-                "period": "first_half" if period == "half" else period,
+                "team_side": side, "period": period,
                 "expected_count": float(mean), "lines": lines,
                 "source_model": "phase84a_negative_binomial_audited",
             })
@@ -1046,8 +1079,7 @@ def _ladder(
 ) -> list[dict[str, float]]:
     """Deriva over/under complementarios para medias líneas."""
 
-    period_key = "full_match" if period == "full_match" else "half"
-    maximum = LADDER_MAXIMUMS[metric][period_key]
+    maximum = LADDER_MAXIMUMS[metric][maximums_key(period)]
     return [
         _ladder_line(threshold, distribution, baseline)
         for threshold in range(maximum)
@@ -1092,7 +1124,22 @@ def _recommendations(
 def _bounded_market_grid(
     ladders: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Selecciona tres líneas informativas dentro de 1.5–9.5."""
+    """Selecciona tres líneas informativas dentro de 1.5–9.5.
+
+    `_centered_lines` busca la línea más cercana a P(over)=0.5, pero cuando
+    la intensidad esperada del grupo es prácticamente cero -el síntoma de un
+    dato que el proveedor no entrega, medido en 0.18 córners esperados- no
+    hay ninguna línea cerca del 50%: todas están cerca del 0%, así que el
+    "centro" colapsa en la más baja disponible y la rejilla acaba publicando
+    literalmente la constante `VISIBLE_LINE_MIN` como si fuera una
+    predicción. Ese es el origen exacto del "córners partido completo, menos
+    de 1.5" reportado en la ventana de aciertos.
+
+    La guarda es local y no depende del mapa de cobertura: si la línea más
+    informativa del grupo sigue por debajo del piso, el grupo no se publica.
+    Cierra el caso incluso en las ligas cuya muestra es demasiado pequeña
+    para emitir veredicto de cobertura (`uefa.super_cup`, 2 observaciones).
+    """
 
     output = []
     for row in ladders:
@@ -1101,6 +1148,12 @@ def _bounded_market_grid(
             if VISIBLE_LINE_MIN <= line["line"] <= VISIBLE_LINE_MAX]
         selected = _centered_lines(eligible)
         if len(selected) != VISIBLE_GRID_SIZE:
+            continue
+        peak = max(line["over_probability"] for line in selected)
+        if str(row["metric"]) in ZERO_IMPLAUSIBLE and peak < GRID_MINIMUM_PEAK:
+            LOGGER.info(
+                "grid_group_suppressed_degenerate key=%s expected=%.4f peak=%.4f",
+                row["key"], float(row["expected_count"]), peak)
             continue
         output.append({
             "key": row["key"], "metric": row["metric"],

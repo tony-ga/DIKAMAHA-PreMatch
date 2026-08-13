@@ -18,6 +18,7 @@ from src.team_count_market_runtime import (
     MARKOV_APPROVED_MARKETS,
     MARKOV_BASELINE_FALLBACKS,
     ArtifactTeamCountMarketProvider,
+    _bounded_market_grid,
     _verify_hash_manifest,
 )
 from src.universal_prematch import (
@@ -266,6 +267,58 @@ def test_cambridge_barnet_exposes_probabilities_for_every_period(
     assert not any(
         row["metric"] == "corners"
         for row in shadow["bounded_market_grid_view"])
+
+
+def _degenerate_ladder(metric: str, expected: float) -> dict[str, object]:
+    """Escalera de una métrica cuya intensidad esperada es casi cero.
+
+    Reproduce la forma exacta que producía el defecto: ninguna línea visible
+    cerca del 50%, así que la selección centrada se ancla en la más baja.
+    """
+
+    return {
+        "key": f"home_{metric}_full_match", "metric": metric,
+        "team_side": "home", "period": "full_match",
+        "expected_count": expected, "most_likely_count": 0,
+        "status": "experimental_shadow_not_promoted",
+        "ladder": [
+            {"line": line, "over_probability": probability,
+             "under_probability": 1.0 - probability,
+             "baseline_over_probability": probability}
+            for line, probability in (
+                (1.5, 0.018), (2.5, 0.004), (3.5, 0.001), (4.5, 0.0002))
+        ],
+    }
+
+
+def test_grid_drops_a_degenerate_corner_group_anchored_at_the_minimum_line() -> None:
+    """Origen del "córners partido completo, menos de 1.5" en Aciertos.
+
+    Con μ≈0.18 ninguna línea de 1.5 a 9.5 se acerca al 50%, así que
+    `_centered_lines` devolvía las tres más bajas y la rejilla publicaba la
+    constante `VISIBLE_LINE_MIN` como si fuera una predicción. La guarda es
+    independiente del mapa de cobertura: cubre también las ligas cuya
+    muestra es demasiado chica para emitir veredicto.
+    """
+
+    grid = _bounded_market_grid([_degenerate_ladder("corners", 0.18)])
+
+    assert grid == []
+
+
+def test_grid_keeps_a_genuinely_low_card_group() -> None:
+    """Las tarjetas quedan exentas: media tarjeta por mitad es real.
+
+    Medido en `esp.1`: `home_yellow_cards_first_half` tiene μ 0.765 y su
+    línea 1.5 apenas alcanza P(over) 0.168. Es un grupo legítimo, no un
+    hueco del proveedor, y aplicarle el mismo piso lo habría borrado -el
+    mismo motivo por el que `_drop_uncovered` ya exime a las tarjetas-.
+    """
+
+    grid = _bounded_market_grid([_degenerate_ladder("yellow_cards", 0.765)])
+
+    assert len(grid) == 1
+    assert grid[0]["metric"] == "yellow_cards"
 
 
 # Version: 1.0.0

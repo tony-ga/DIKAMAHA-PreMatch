@@ -55,20 +55,45 @@ VERDICT_INSUFFICIENT = "insufficient_sample"
 # fiabilidad -por ventaja del modelo o por tasa base- está medida.
 PUBLISHABLE_VERDICTS = frozenset({VERDICT_EDGE, VERDICT_BASE_RATE})
 
-# Qué escalera corresponde a cada métrica del artefacto de Fase 84A. El
-# nombre ya codifica el periodo -"corners_first_half" es la primera mitad-,
-# así que el máximo se elige por métrica base y mitad. Compartido entre el
-# script de auditoría (`scripts/run_ladder_audit.py`) y el runtime que expone
-# la escalera auditada, para que nunca puedan divergir sobre qué rango audita
-# cada métrica.
+# Qué escalera corresponde a cada métrica del artefacto de conteos. El valor
+# es `(métrica base, periodo público)`, y el periodo es el mismo vocabulario
+# que usa el resto del sistema -`MARKET_METADATA`,
+# `explorer_statistics.periods[side]`, el frontend-, no un convenio interno.
+#
+# Antes el periodo de media parte se codificaba como `"half"`, el nombre de
+# la clave de `LADDER_MAXIMUMS`, y había que traducirlo al publicarlo; esa
+# traducción a mano ya causó un fallo silencioso (DEC-179: la escalera
+# publicaba `"half"` y el frontend lo descartaba sin decir nada). Ahora la
+# normalización a la clave de máximos vive en `_maximums_key`, en un solo
+# sitio, y lo que viaja hacia fuera es directamente el periodo real.
+#
+# Las entradas de segunda mitad son la extensión de Fase 124: hasta entonces
+# `METRIC_LADDERS` sólo tenía partido completo y primera mitad, así que la
+# escalera auditada no podía cubrir el segundo tiempo por construcción.
+# Compartido entre `scripts/run_ladder_audit.py` y el runtime para que nunca
+# puedan divergir sobre qué rango audita cada métrica.
 METRIC_LADDERS: dict[str, tuple[str, str]] = {
     "corners": ("corners", "full_match"),
-    "corners_first_half": ("corners", "half"),
+    "corners_first_half": ("corners", "first_half"),
+    "corners_second_half": ("corners", "second_half"),
     "shots": ("shots", "full_match"),
+    "shots_first_half": ("shots", "first_half"),
+    "shots_second_half": ("shots", "second_half"),
     "shots_on_target": ("shots_on_target", "full_match"),
     "yellow_cards": ("yellow_cards", "full_match"),
-    "yellow_cards_first_half": ("yellow_cards", "half"),
+    "yellow_cards_first_half": ("yellow_cards", "first_half"),
+    "yellow_cards_second_half": ("yellow_cards", "second_half"),
 }
+
+
+def maximums_key(period: str) -> str:
+    """Traduce el periodo público a la clave de `LADDER_MAXIMUMS`.
+
+    Las dos mitades comparten techo: el máximo plausible de córners en 45
+    minutos no depende de qué mitad sea.
+    """
+
+    return "full_match" if period == "full_match" else "half"
 
 
 def maximum_line(metric: str, side: str, ladder_maximums: dict[str, dict[str, int]]) -> int:
@@ -78,7 +103,7 @@ def maximum_line(metric: str, side: str, ladder_maximums: dict[str, dict[str, in
     """
 
     base, period = METRIC_LADDERS[metric]
-    maximum = ladder_maximums[base][period]
+    maximum = ladder_maximums[base][maximums_key(period)]
     return maximum * 2 if side == "total" else maximum
 
 

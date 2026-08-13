@@ -65,10 +65,21 @@ LOGGER = logging.getLogger(__name__)
 # Métricas que el snapshot expone por ventana y que se suman por equipo-partido.
 WINDOW_METRICS = (
     "corners", "shots", "shots_on_target", "yellow_cards", "red_cards")
-# Métricas de primera mitad, derivadas de las ventanas de ese periodo.
-FIRST_HALF_METRICS = {
-    "corners": "corners_first_half",
-    "yellow_cards": "yellow_cards_first_half",
+# Métricas por periodo, derivadas de las ventanas de cada mitad. Deben
+# cubrir exactamente las mismas que `METRICS` del runner de entrenamiento:
+# una métrica sin veredicto de cobertura no se suprime nunca, así que un
+# hueco aquí es un hueco en el guard completo.
+PERIOD_METRICS = {
+    "first_half": {
+        "corners": "corners_first_half",
+        "shots": "shots_first_half",
+        "yellow_cards": "yellow_cards_first_half",
+    },
+    "second_half": {
+        "corners": "corners_second_half",
+        "shots": "shots_second_half",
+        "yellow_cards": "yellow_cards_second_half",
+    },
 }
 
 
@@ -100,9 +111,9 @@ def _snapshot_rows(path: Path) -> list[dict[str, Any]]:
         accumulated = totals[key]
         for metric in WINDOW_METRICS:
             accumulated[metric] += float(row.get(metric) or 0.0)
-        if str(row.get("period")) == "first_half":
-            for metric, target in FIRST_HALF_METRICS.items():
-                accumulated[target] += float(row.get(metric) or 0.0)
+        for metric, target in PERIOD_METRICS.get(
+                str(row.get("period")), {}).items():
+            accumulated[target] += float(row.get(metric) or 0.0)
     return [
         {"league_slug": leagues[key], "actual": dict(values)}
         for key, values in totals.items()

@@ -28,10 +28,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.team_count_markets import (  # noqa: E402
+    FIRST_HALF,
+    FULL_MATCH,
+    SECOND_HALF,
     CountMetricSpec,
     SklearnPoissonSolver,
     negative_binomial_over_probability,
     poisson_deviance,
+    window_belongs_to,
 )
 from src.temporal_integrity import (  # noqa: E402
     kickoff_buckets,
@@ -43,13 +47,17 @@ SOURCE = ROOT / "artifacts/phase_74_causal_sequence_corpus/micro_windows_15m.jso
 OUTPUT = ROOT / "artifacts/phase_84a_team_count_markets"
 ALPHAS = (0.1, 1.0, 10.0)
 METRICS = (
-    CountMetricSpec("corners", "corners", False, 4.5),
-    CountMetricSpec("corners_first_half", "corners", True, 2.2),
-    CountMetricSpec("yellow_cards", "yellow_cards", False, 1.8),
-    CountMetricSpec("yellow_cards_first_half", "yellow_cards", True, 0.8),
-    CountMetricSpec("red_cards", "red_cards", False, 0.05),
-    CountMetricSpec("shots", "shots", False, 10.0),
-    CountMetricSpec("shots_on_target", "shots_on_target", False, 3.5),
+    CountMetricSpec("corners", "corners", FULL_MATCH, 4.5),
+    CountMetricSpec("corners_first_half", "corners", FIRST_HALF, 2.2),
+    CountMetricSpec("corners_second_half", "corners", SECOND_HALF, 2.3),
+    CountMetricSpec("yellow_cards", "yellow_cards", FULL_MATCH, 1.8),
+    CountMetricSpec("yellow_cards_first_half", "yellow_cards", FIRST_HALF, 0.8),
+    CountMetricSpec("yellow_cards_second_half", "yellow_cards", SECOND_HALF, 1.0),
+    CountMetricSpec("red_cards", "red_cards", FULL_MATCH, 0.05),
+    CountMetricSpec("shots", "shots", FULL_MATCH, 10.0),
+    CountMetricSpec("shots_first_half", "shots", FIRST_HALF, 5.0),
+    CountMetricSpec("shots_second_half", "shots", SECOND_HALF, 5.0),
+    CountMetricSpec("shots_on_target", "shots_on_target", FULL_MATCH, 3.5),
 )
 MARKET_LINES = {
     "corners_total_over_9_5": ("corners", "total", 9),
@@ -99,12 +107,13 @@ def _aggregate_match(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _team_targets(rows: list[dict[str, Any]]) -> dict[str, int]:
-    """Calcula targets completos y de primera mitad."""
+    """Calcula targets por equipo para los tres periodos declarados."""
 
     output: dict[str, int] = {}
     for spec in METRICS:
-        selected = [row for row in rows if not spec.first_half_only
-                    or int(row["window_index"]) < 3]
+        selected = [
+            row for row in rows
+            if window_belongs_to(spec.period, int(row["window_index"]))]
         output[spec.name] = int(sum(
             _commercial_count(row, spec.name, spec.source_field)
             for row in selected))
@@ -114,10 +123,16 @@ def _team_targets(rows: list[dict[str, Any]]) -> dict[str, int]:
 def _commercial_count(
     row: dict[str, Any], metric: str, source_field: str,
 ) -> float:
-    """Alinea tiros de eventos con el total comercial ESPN."""
+    """Alinea tiros de eventos con el total comercial ESPN.
+
+    La condición mira `source_field` y no `metric`: con los periodos de Fase
+    124 el nombre pasa a ser `shots_first_half`/`shots_second_half`, que no
+    coincidirían con el conjunto literal y perderían el ajuste de goles en
+    silencio, dejando la primera y la segunda mitad por debajo del total.
+    """
 
     value = float(row.get(source_field, 0) or 0)
-    if metric in {"shots", "shots_on_target"}:
+    if source_field in {"shots", "shots_on_target"}:
         value += float(row.get("goals", 0) or 0)
     return value
 

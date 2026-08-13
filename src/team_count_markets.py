@@ -20,14 +20,38 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 
+FULL_MATCH = "full_match"
+FIRST_HALF = "first_half"
+SECOND_HALF = "second_half"
+# El corpus publica ventanas de 15 minutos: los tres primeros índices son la
+# primera mitad. Mismo corte que ya usa `src/team_market_markov.py`.
+FIRST_HALF_WINDOWS = 3
+
+
 @dataclass(frozen=True, slots=True)
 class CountMetricSpec:
-    """Define un conteo y su valor seguro de arranque."""
+    """Define un conteo, su periodo y su valor seguro de arranque.
+
+    `period` sustituye al `first_half_only: bool` original. El booleano sólo
+    podía expresar dos de los tres periodos que el corpus soporta, así que la
+    segunda mitad no era representable y la escalera auditada nunca pudo
+    cubrirla -de ahí que `METRIC_LADDERS` no tuviera ninguna entrada de 2T-.
+    """
 
     name: str
     source_field: str
-    first_half_only: bool
+    period: str
     safe_default: float
+
+
+def window_belongs_to(period: str, window_index: int) -> bool:
+    """Indica si una ventana de 15 minutos pertenece a ese periodo."""
+
+    if period == FIRST_HALF:
+        return window_index < FIRST_HALF_WINDOWS
+    if period == SECOND_HALF:
+        return window_index >= FIRST_HALF_WINDOWS
+    return True
 
 
 class CountMarketSolver(ABC):

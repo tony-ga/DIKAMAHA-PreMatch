@@ -74,6 +74,10 @@ function groupByFixture(picks: Pick[]): FixtureGroup[] {
 function PickRow({ pick, homeName, awayName }: { pick: Pick; homeName: string; awayName: string }) {
   const modelEdge = String(pick.edge_source) === "model_edge";
   const side = pick.team_side === "away" ? "away" : "home";
+  // Nivel 2 de la selección: este mercado no tenía ninguna línea dentro de la
+  // banda validada y se publica la más cercana a ella para no dejarlo vacío.
+  // Se declara porque no es evidencia del mismo grado que el nivel 1.
+  const outsideBand = String(pick.selection) === "outside_band";
   return (
     <div className="market-probability">
       <div>
@@ -84,6 +88,7 @@ function PickRow({ pick, homeName, awayName }: { pick: Pick; homeName: string; a
       <small className="ladder-edge">
         {modelEdge ? "Ventaja del modelo" : "Ventaja de la tasa base"} · el modelo declara{" "}
         {percentage(pick.model_probability)}
+        {outsideBand ? " · fuera de la banda objetivo" : ""}
       </small>
     </div>
   );

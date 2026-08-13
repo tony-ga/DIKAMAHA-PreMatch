@@ -9,8 +9,13 @@ import {
   previewLines, teamLabel,
 } from "@/lib/audited-ladder";
 
+// Los tres periodos que `METRIC_LADDERS` audita desde Fase 124. El segundo
+// tiempo se añadió con su propia medición de calibración y fiabilidad, no
+// reutilizando el veredicto de la primera mitad; si sus líneas no pasan los
+// gates, la sección simplemente no aparece.
 const PERIODS = [
   { key: "first_half", label: "Primer tiempo" },
+  { key: "second_half", label: "Segundo tiempo" },
   { key: "full_match", label: "Partido completo" },
 ];
 

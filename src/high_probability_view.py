@@ -162,10 +162,17 @@ class HighProbabilityView:
     def _team_picks(self, prediction: dict[str, Any]) -> list[dict[str, Any]]:
         """Un pick por cada mercado de equipo que cubra la escalera auditada.
 
-        Nunca vacío por indecisión: `select_ladder_picks` garantiza un pick
-        por grupo disponible. Sólo queda vacío si la escalera misma llega
-        vacía (liga sin cobertura, artefacto de fiabilidad ausente aguas
-        arriba en `src/ladder_reliability_view.py`).
+        No hay tope por partido: se publican **todos** los grupos que
+        produzcan pick, así que la diversidad de mercados que ve el usuario
+        depende de cuántos sobrevivan aguas arriba (cobertura de liga, peso
+        de modelo, veredicto de fiabilidad), no de un recorte aquí.
+
+        `select_ladder_picks` **no** garantiza un pick por grupo: DEC-182
+        retiró esa garantía y DEC-187 la repuso sólo dentro de una cota dura,
+        de modo que un grupo cuyas líneas sean todas obvias o todas volados
+        sigue sin publicarse. La lista también queda vacía si la escalera
+        misma llega vacía (liga sin cobertura medida, artefacto de fiabilidad
+        ausente aguas arriba en `src/ladder_reliability_view.py`).
         """
 
         shadow = prediction.get("experimental_team_markets")

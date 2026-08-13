@@ -39,12 +39,26 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    from src.settlement_store import wilson_interval
+except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
+    from settlement_store import wilson_interval
+
 ROOT = Path(__file__).resolve().parents[1]
 COVERAGE_ARTIFACT = ROOT / "artifacts/metric_coverage/coverage_map.json"
 
 # Métricas cuyo cero en un equipo-partido profesional es implausible. Las
 # tarjetas quedan deliberadamente fuera: su cero es real.
-ZERO_IMPLAUSIBLE = frozenset({"corners", "corners_first_half", "shots"})
+#
+# Las variantes por periodo entran por el mismo motivo que la de partido
+# completo: una liga que no publica córners tampoco los publica por mitad, y
+# dejarlas fuera reintroduciría por la puerta de atrás el sesgo que DEC-173
+# midió y corrigió -el ajuste aprendería 0.18 córners esperados de ligas
+# donde el proveedor nunca entregó el dato-.
+ZERO_IMPLAUSIBLE = frozenset({
+    "corners", "corners_first_half", "corners_second_half",
+    "shots", "shots_first_half", "shots_second_half",
+})
 
 # Marca el bloque completo de estadísticas como no recibido. Un equipo no
 # remata cero veces en 90 minutos; en las ligas con cobertura sana esto ocurre
@@ -53,7 +67,8 @@ BLOCK_SENTINEL = "shots"
 
 # Métricas que dependen del mismo bloque del proveedor que `shots`.
 BLOCK_DEPENDENT = frozenset({
-    "corners", "corners_first_half", "shots", "shots_on_target"})
+    "corners", "corners_first_half", "corners_second_half",
+    "shots", "shots_first_half", "shots_second_half", "shots_on_target"})
 
 # Una liga se declara sin cobertura cuando supera esta fracción de ceros en
 # una métrica implausible. La separación medida es tan amplia (0-4% sanas
@@ -67,8 +82,9 @@ ABSENT_THRESHOLD = 0.60
 ALIAS_CHECK = ("shots", "shots_on_target")
 ALIAS_THRESHOLD = 0.60
 
-# Por debajo de esta muestra no se emite veredicto: no hay evidencia para
-# afirmar ausencia ni cobertura.
+# Por debajo de esta muestra no se emite veredicto de **cobertura**: no hay
+# evidencia para afirmar que la métrica funciona. La ausencia sí puede
+# concluirse antes, ver `_status`.
 MINIMUM_OBSERVATIONS = 20
 
 
@@ -107,7 +123,7 @@ def _league_verdicts(observations: list[dict[str, Any]]) -> dict[str, Any]:
         entry = {
             "observations": total,
             "zero_rate": rate,
-            "status": _status(metric, rate, total),
+            "status": _status(metric, zeros, total),
         }
         if metric == aliased_metric:
             entry["alias_rate"] = alias_rate
@@ -135,14 +151,36 @@ def _alias_rate(
     return matched / len(observations) if observations else 0.0
 
 
-def _status(metric: str, zero_rate: float, total: int) -> str:
-    """Clasifica una métrica como cubierta, ausente o sin evidencia."""
+def _status(metric: str, zeros: int, total: int) -> str:
+    """Clasifica una métrica como cubierta, ausente o sin evidencia.
 
-    if total < MINIMUM_OBSERVATIONS:
-        return "insufficient_evidence"
+    El umbral de muestra es **asimétrico a propósito**, y esa asimetría es la
+    corrección de esta versión. Antes, `total < MINIMUM_OBSERVATIONS`
+    cortocircuitaba antes de mirar los ceros, así que una liga con 8 de 8
+    equipos-partido sin un solo córner salía `insufficient_evidence` -es
+    decir, no se suprimía nada- y el runtime publicaba una escalera de
+    córners construida sobre un dato que el proveedor nunca entregó. Es el
+    caso real de `uru.1` y `esp.super_cup`.
+
+    Ocho ceros de ocho no es "poca evidencia sobre si hay córners": es
+    evidencia fuerte de que no los hay. Se distingue con el límite inferior
+    de Wilson al 95% sobre la tasa de ceros -la misma función que ya usa la
+    selección de picks-, que exige más unanimidad cuanto menor es la
+    muestra: 8/8 da 0.676 y 12/12 da 0.758, ambos por encima del umbral;
+    2/2 sólo da 0.342 y sigue sin concluir nada, que es lo correcto.
+
+    Afirmar **cobertura** sigue exigiendo la muestra completa: la pregunta
+    inversa -"¿hay evidencia de que este dato existe y es fiable?"- no se
+    puede responder con ocho partidos.
+    """
+
     if metric not in ZERO_IMPLAUSIBLE:
-        return "covered"
-    return "absent" if zero_rate >= ABSENT_THRESHOLD else "covered"
+        return "covered" if total >= MINIMUM_OBSERVATIONS else "insufficient_evidence"
+    zero_rate = zeros / total if total else 0.0
+    if total >= MINIMUM_OBSERVATIONS:
+        return "absent" if zero_rate >= ABSENT_THRESHOLD else "covered"
+    lower, _ = wilson_interval(zeros, total)
+    return "absent" if lower >= ABSENT_THRESHOLD else "insufficient_evidence"
 
 
 def observation_is_absent(actual: dict[str, Any], metric: str) -> bool:

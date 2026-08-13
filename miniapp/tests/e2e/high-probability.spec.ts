@@ -114,6 +114,47 @@ test("groups every market of a match under its own fixture card", async ({ page 
   await expect(page.getByText(/Ventaja de la tasa base/)).toBeVisible();
 });
 
+test("declares a pick recovered outside the target band", async ({ page }) => {
+  // Nivel 2 de la selección (DEC-187): el mercado no tenía ninguna línea en
+  // `[0.60, 0.85]` y se publica la más cercana dentro de `[0.55, 0.90]` en vez
+  // de dejarlo vacío. Debe verse que su evidencia no es la del nivel 1.
+  await page.route("**/api/high-probability**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "ok",
+      picks: [pick({
+        market: "home_yellow_cards_first_half", metric: "yellow_cards",
+        period: "first_half", line: 0.5, direction: "over",
+        model_probability: 0.58, observed_rate: 0.58,
+        edge_source: "base_rate_driven",
+        selection: "outside_band", bucket: [0.55, 0.9],
+      })],
+      count: 1, fixtures_scanned: 6,
+      provenance: { eligible_cells: 9 },
+    }),
+  }));
+
+  await page.goto("/mayor-probabilidad");
+  await expect(page.getByText("Tarjetas de Real Betis · Más de 0.5")).toBeVisible();
+  await expect(page.getByText(/fuera de la banda objetivo/)).toBeVisible();
+});
+
+test("does not label a pick selected inside the target band", async ({ page }) => {
+  await page.route("**/api/high-probability**", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      status: "ok", picks: [pick()], count: 1, fixtures_scanned: 6,
+      provenance: { eligible_cells: 9 },
+    }),
+  }));
+
+  await page.goto("/mayor-probabilidad");
+  await expect(page.getByText("Córners de Real Betis · Más de 4.5")).toBeVisible();
+  await expect(page.getByText(/fuera de la banda objetivo/)).toHaveCount(0);
+});
+
 test("prefers an honest empty state over a weak pick", async ({ page }) => {
   await page.route("**/api/high-probability**", (route) => route.fulfill({
     status: 200,

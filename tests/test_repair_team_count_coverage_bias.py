@@ -27,6 +27,20 @@ from src.metric_coverage import MetricCoverage, build_coverage_map
 from src.team_count_market_runtime import APPROVED_MARKETS
 
 
+def _metric_names() -> tuple[str, ...]:
+    """Nombres de las métricas que el runner entrena realmente.
+
+    Se derivan de `METRICS` en vez de repetirse a mano: cuando Fase 124 añadió
+    las tres métricas de segunda mitad, las listas fijas de estas pruebas
+    quedaron desincronizadas y `_calibrated_specs` falló con `KeyError` sobre
+    una métrica que el fixture no traía.
+    """
+
+    from scripts.run_phase_84a_team_count_markets import METRICS
+
+    return tuple(spec.name for spec in METRICS)
+
+
 def _coverage(tmp_path, rows) -> MetricCoverage:
     import json
     artifact = tmp_path / "coverage_map.json"
@@ -254,14 +268,8 @@ def test_calibrated_specs_replace_a_misspecified_prior() -> None:
     matches = [
         {
             "split": "fit", "league_slug": "esp.1",
-            "home": {name: 8.0 for name in (
-                "corners", "corners_first_half", "yellow_cards",
-                "yellow_cards_first_half", "red_cards", "shots",
-                "shots_on_target")},
-            "away": {name: 8.0 for name in (
-                "corners", "corners_first_half", "yellow_cards",
-                "yellow_cards_first_half", "red_cards", "shots",
-                "shots_on_target")},
+            "home": {name: 8.0 for name in _metric_names()},
+            "away": {name: 8.0 for name in _metric_names()},
         }
         for _ in range(40)
     ]
@@ -281,9 +289,7 @@ def test_calibrated_specs_ignore_selection_and_confirmation() -> None:
         def absent_metrics(self, league):
             return frozenset()
 
-    names = ("corners", "corners_first_half", "yellow_cards",
-             "yellow_cards_first_half", "red_cards", "shots",
-             "shots_on_target")
+    names = _metric_names()
     matches = [
         {"split": "fit", "league_slug": "esp.1",
          "home": {name: 5.0 for name in names},

@@ -344,7 +344,24 @@ def _select_alpha_clean(
     fit: list[dict[str, Any]], selection: list[dict[str, Any]], metric: str,
     coverage: MetricCoverage,
 ) -> tuple[float, dict[str, Any], float, int]:
-    """Selecciona regularización sobre datos limpios, misma lógica que Fase 84A."""
+    """Selecciona regularización y mezcla sobre datos limpios.
+
+    La versión anterior filtraba la contaminación del ajuste y de la
+    selección de `alpha`, pero pasaba la lista **sin filtrar** a
+    `_select_count_weight`: el peso de mezcla se elegía sobre las mismas
+    filas que el resto del script existe para excluir. El efecto no era
+    menor. Para córners son 5,082 filas de ligas donde el proveedor nunca
+    entregó el dato y el pipeline lo almacenó como cero; en ellas el
+    baseline de liga -aprendido de esos mismos ceros, ~0.18- le gana a
+    cualquier predicción real, así que el mínimo de la curva se desplazaba a
+    `weight == 0.0` y la métrica quedaba fijada a la media de la liga.
+
+    Medido con las filas limpias y el mismo solver: el peso óptimo de
+    córners es `0.9`, no `0.0`, y la mejora se sostiene en el split de
+    confirmación. DEC-183 dio ese `0.0` por bueno -"la elección correcta y
+    ya auditada"- y retiró córners de la escalera sobre esa base; era el
+    resto del defecto de DEC-173, no una propiedad del dato.
+    """
 
     x_fit, y_fit, dropped_fit = _matrix_clean(fit, metric, coverage)
     x_selection, y_selection, dropped_selection = _matrix_clean(
@@ -360,8 +377,10 @@ def _select_alpha_clean(
             poisson_deviance(actual, expected)
             for actual, expected in zip(y_selection, predicted)]))
     selected = min(ALPHAS, key=lambda value: scores[str(value)])
+    clean_selection = [
+        row for row in selection if not _contaminated(row, metric, coverage)]
     weight, blend_scores = _select_count_weight(
-        solvers[selected], selection, metric)
+        solvers[selected], clean_selection, metric)
     return selected, {"alpha_deviance": scores, "blend_deviance": blend_scores}, (
         weight), dropped_fit + dropped_selection
 

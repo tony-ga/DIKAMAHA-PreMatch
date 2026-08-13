@@ -8,30 +8,44 @@ módulo no añade una capa de evidencia nueva: decide, dentro de cada grupo
 (métrica × lado × periodo) ya auditado, cuál de sus líneas exponer como "la
 estadística más probable" de ese mercado en el menú de mayor probabilidad.
 
-Dos reglas gobiernan la selección, y la segunda manda sobre la cobertura:
+La selección tiene **dos niveles**, y una cota dura que ninguno puede cruzar:
 
-1. **Nada obvio.** Una línea cuya probabilidad ronda la certeza -"más de 0.5
-   córners" ≈ 99%- no aporta información aunque acierte casi siempre; es el
-   mismo sesgo que Fase 122 documentó como "aciertos inflados por líneas
-   extremas". Tampoco sirve el volado, apenas por encima del 50%.
-2. **Antes vacío que obvio.** Si ningún line del grupo cae en la banda
-   `[CONFIDENCE_FLOOR, CONFIDENCE_CEILING]`, el mercado **no se publica**.
-   Una versión anterior exponía igual la línea más cercana a la banda
-   (`fallback_outside_band`) para garantizar "al menos una línea por
-   mercado"; en la práctica eso publicó exactamente las obviedades que la
-   regla 1 existe para evitar -incluida una línea imposible en producción,
-   ver DEC-182-, así que la garantía de cobertura cede ante la regla de
-   obviedad.
+1. **Banda objetivo.** Una línea cuya probabilidad ronda la certeza -"más de
+   0.5 córners" ≈ 99%- no aporta información aunque acierte casi siempre; es
+   el mismo sesgo que Fase 122 documentó como "aciertos inflados por líneas
+   extremas". Tampoco sirve el volado, apenas por encima del 50%. El nivel 1
+   exige `[CONFIDENCE_FLOOR, CONFIDENCE_CEILING]`.
+2. **Cobertura por mercado, con tope.** Si ningún line del grupo cae en la
+   banda, se publica la más cercana a ella -y sólo si además cabe dentro de
+   `[HARD_FLOOR, HARD_CEILING]`-, etiquetada `selection: "outside_band"` para
+   que la interfaz la distinga. Si tampoco hay ninguna, el mercado **no se
+   publica**.
 
-La banda se comprueba **dos veces**, contra dos cifras que pueden divergir:
-la confianza del modelo para este partido y la tasa histórica observada de
-esa línea, que es la cifra que el menú realmente publica. Una línea cuyo
-modelo declara 0.62 pero cuyo histórico es 0.96 sigue siendo una obviedad
-para el usuario, porque 96% es lo que ve.
+El nivel 2 repone la garantía "al menos una línea por mercado" que DEC-182
+retiró, sin reabrir el defecto que motivó su retirada. La versión de DEC-179
+(`fallback_outside_band`) no tenía tope: publicaba la línea más cercana
+**fuera cual fuera**, y así llegó a producción "menos de 0.5 córners, 96%".
+Con la cota dura esa misma línea queda rechazada -0.9617 excede
+`HARD_CEILING`- mientras que el tramo 0.55-0.60 y 0.85-0.90, hoy descartado
+por completo, vuelve a estar disponible. La regla de obviedad sigue mandando;
+lo que se recupera es el margen que la banda estricta tiraba de más.
 
-Version: 2.0.0
+Efecto medido sobre los 1,895 partidos de `team_predictions.json`: la
+cobertura por grupo pasa de 32.4% a 96.5% en tarjetas de primera mitad, de
+84.9% a 100% en tarjetas de partido completo y de 93.0% a 96.7% en tiros,
+sin publicar ninguna cifra fuera de `[0.55, 0.90]`. Tiros a puerta se queda
+en 70.8% porque su escalera es genuinamente extrema, y eso se respeta.
+
+Ambos niveles comprueban **dos cifras** que pueden divergir: la confianza del
+modelo para este partido y la tasa histórica observada de esa línea, que es
+la cifra que el menú realmente publica. Una línea cuyo modelo declara 0.62
+pero cuyo histórico es 0.96 sigue siendo una obviedad para el usuario, porque
+96% es lo que ve.
+
+Version: 3.0.0
 Created: 2026-08-13
-Updated: 2026-08-13 (DEC-182: dirección del histórico y regla de obviedad)
+Updated: 2026-08-13 (DEC-182: dirección del histórico y regla de obviedad;
+    DEC-187: nivel 2 con cota dura para recuperar cobertura por mercado)
 """
 
 from __future__ import annotations
@@ -45,6 +59,19 @@ except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
 
 CONFIDENCE_FLOOR = 0.60
 CONFIDENCE_CEILING = 0.85
+# Cota que ni el nivel 2 puede cruzar. Deja fuera la obviedad (≥0.90) -el
+# caso reportado en DEC-182, "menos de 0.5 córners" con tasa histórica
+# 0.9617- y el volado.
+#
+# El piso es 0.55 y no 0.50 porque 0.50 sería vacuo del lado del modelo:
+# `_candidate` publica siempre la dirección dominante, así que su confianza
+# es `max(over, under)` y nunca baja de 0.5; con el piso en 0.50 el nivel 2
+# habría admitido líneas de 51%, que es exactamente el volado que la regla 1
+# existe para evitar. Medido sobre los 1,895 partidos del artefacto, subirlo
+# a 0.55 cuesta 0.4 puntos de cobertura (90.5% → 90.1%) y garantiza que
+# ninguna cifra publicada baje de 0.55.
+HARD_FLOOR = 0.55
+HARD_CEILING = 0.90
 
 
 def select_ladder_picks(
@@ -52,8 +79,9 @@ def select_ladder_picks(
 ) -> list[dict[str, Any]]:
     """Elige como mucho una línea por grupo de la escalera auditada.
 
-    Un grupo sin líneas aptas no produce pick: preferimos que un mercado
-    falte a que aparezca con una cifra que no informa.
+    Un grupo cuyas líneas no caben ni siquiera en la cota dura no produce
+    pick: preferimos que un mercado falte a que aparezca con una cifra que no
+    informa.
     """
 
     picks = []
@@ -70,21 +98,48 @@ def _select_group(group: dict[str, Any]) -> dict[str, Any] | None:
     candidates = [_candidate(line) for line in group.get("lines") or []]
     in_band = [
         candidate for candidate in candidates
-        if _within_band(candidate["confidence"])
-        and _within_band(candidate["observed_rate"])
-    ]
-    if not in_band:
+        if _within(candidate, CONFIDENCE_FLOOR, CONFIDENCE_CEILING)]
+    if in_band:
+        # La menos extrema dentro de la banda: es la que más depende de estos
+        # dos equipos en concreto, en vez de la más fácil de acertar.
+        chosen = min(in_band, key=lambda candidate: candidate["confidence"])
+        return _pick(group, chosen, "target_band",
+                     (CONFIDENCE_FLOOR, CONFIDENCE_CEILING))
+    tolerated = [
+        candidate for candidate in candidates
+        if _within(candidate, HARD_FLOOR, HARD_CEILING)]
+    if not tolerated:
         return None
-    # La menos extrema dentro de la banda: es la que más depende de estos dos
-    # equipos en concreto, en vez de la más fácil de acertar.
-    chosen = min(in_band, key=lambda candidate: candidate["confidence"])
-    return _pick(group, chosen)
+    # Fuera de banda se elige por cercanía a ella, no por confianza mínima:
+    # dentro de la cota, la línea más informativa es la que menos se aleja
+    # del tramo que sí se validó.
+    chosen = min(tolerated, key=_distance_to_band)
+    return _pick(group, chosen, "outside_band", (HARD_FLOOR, HARD_CEILING))
 
 
-def _within_band(value: float) -> bool:
-    """Comprueba que una probabilidad no sea ni volado ni obviedad."""
+def _within(candidate: dict[str, Any], floor: float, ceiling: float) -> bool:
+    """Comprueba las dos cifras publicadas contra un tramo."""
 
-    return CONFIDENCE_FLOOR <= value <= CONFIDENCE_CEILING
+    return all(
+        floor <= candidate[key] <= ceiling
+        for key in ("confidence", "observed_rate"))
+
+
+def _distance_to_band(candidate: dict[str, Any]) -> float:
+    """Mide cuánto se aleja de la banda objetivo la peor de sus dos cifras."""
+
+    return max(
+        _gap(candidate["confidence"]), _gap(candidate["observed_rate"]))
+
+
+def _gap(value: float) -> float:
+    """Distancia de una probabilidad al tramo `[FLOOR, CEILING]`."""
+
+    if value < CONFIDENCE_FLOOR:
+        return CONFIDENCE_FLOOR - value
+    if value > CONFIDENCE_CEILING:
+        return value - CONFIDENCE_CEILING
+    return 0.0
 
 
 def _candidate(line: dict[str, Any]) -> dict[str, Any]:
@@ -117,14 +172,18 @@ def _candidate(line: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _pick(group: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+def _pick(
+    group: dict[str, Any], candidate: dict[str, Any], selection: str,
+    bucket: tuple[float, float],
+) -> dict[str, Any]:
     """Construye el pick final en el shape que consume `high_probability_view`.
 
     `bucket` reutiliza el mismo campo que ya usan los picks de gol (Fase 122)
     para declarar la zona de confianza, sin añadir una columna nueva a
-    `high_probability_pick_freezes`. `observed_ci95` es un intervalo de Wilson
-    calculado sobre los aciertos de **la dirección publicada**, no sobre los
-    del `over`.
+    `high_probability_pick_freezes`; es también lo que distingue un pick de
+    nivel 1 de uno de nivel 2 ya congelado, sin migración de esquema.
+    `observed_ci95` es un intervalo de Wilson calculado sobre los aciertos de
+    **la dirección publicada**, no sobre los del `over`.
     """
 
     line = candidate["line"]
@@ -142,11 +201,11 @@ def _pick(group: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
         "observed_ci95": [ci_low, ci_high],
         "sample_size": sample_size,
         "edge_source": str(line["reliability"]),
-        "bucket": [CONFIDENCE_FLOOR, CONFIDENCE_CEILING],
-        "selection": "target_band",
+        "bucket": [bucket[0], bucket[1]],
+        "selection": selection,
     }
 
 
-# Version: 2.0.0
+# Version: 3.0.0
 # Created: 2026-08-13
 # Updated: 2026-08-13

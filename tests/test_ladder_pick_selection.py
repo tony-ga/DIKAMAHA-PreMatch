@@ -68,14 +68,20 @@ def test_band_bounds_are_inclusive() -> None:
 
 
 # --------------------------------------------------------------------------
-# Regla principal: antes vacío que obvio (DEC-182)
+# Regla principal: antes vacío que obvio (DEC-182), con cobertura por
+# mercado recuperada bajo cota dura (DEC-187)
 # --------------------------------------------------------------------------
 
-def test_market_is_dropped_when_every_line_is_below_the_floor() -> None:
-    """Un mercado que sólo ofrece volados no se publica."""
+def test_market_is_dropped_when_every_line_is_below_the_hard_floor() -> None:
+    """Un mercado que sólo ofrece volados no se publica.
+
+    Ajustado a la cota dura: lo que ancla es la regla, no los números. Con
+    `HARD_FLOOR = 0.55`, una línea de 52-54% sigue siendo un volado y el
+    grupo sigue sin publicarse ni en el nivel 2.
+    """
 
     group = _group("away_corners", "corners", "away", "full_match", [
-        _line(4.5, 0.55), _line(5.5, 0.52), _line(6.5, 0.51)])
+        _line(4.5, 0.54), _line(5.5, 0.52), _line(6.5, 0.51)])
     assert select_ladder_picks([group]) == []
 
 
@@ -84,10 +90,74 @@ def test_market_is_dropped_when_every_line_is_an_obviousness() -> None:
 
     Es exactamente el caso que el usuario reportó: preferimos que falte el
     mercado a mostrar una línea que acierta casi siempre sin informar nada.
+    Ni siquiera el nivel 2 las rescata: la cota dura las excluye a las tres.
     """
 
     group = _group("home_corners", "corners", "home", "full_match", [
-        _line(0.5, 0.99), _line(1.5, 0.97), _line(2.5, 0.90)])
+        _line(0.5, 0.99), _line(1.5, 0.97), _line(2.5, 0.95)])
+    assert select_ladder_picks([group]) == []
+
+
+def test_the_reported_impossible_line_stays_rejected_by_the_hard_ceiling() -> None:
+    """Regresión directa del caso Tobol-Partizan (DEC-182).
+
+    "Primer tiempo · córners de ambos equipos · menos de 0.5" tenía tasa
+    histórica real 0.9617 en la dirección publicada. El nivel 2 sólo existe
+    para recuperar el margen 0.85-0.90; 0.9617 sigue fuera.
+    """
+
+    group = _group("total_corners_first_half", "corners", "total", "first_half", [
+        _line(0.5, 0.9617, observed=0.9617)])
+
+    assert select_ladder_picks([group]) == []
+
+
+def test_level_two_publishes_the_closest_line_and_labels_it() -> None:
+    """Recupera el mercado que la banda estricta dejaba vacío.
+
+    Medido contra el artefacto vigente: `yellow_cards` de primera mitad sólo
+    conseguía pick en el 32.4% de los partidos con la banda estricta y llega
+    al 96.5% con el nivel 2, sin publicar nada fuera de la cota.
+    """
+
+    group = _group("home_yellow_cards_first_half", "yellow_cards", "home",
+                   "first_half", [
+                       _line(0.5, 0.88), _line(1.5, 0.58), _line(2.5, 0.45)])
+
+    picks = select_ladder_picks([group])
+
+    assert len(picks) == 1
+    # 0.88 se aleja 0.03 del techo, 0.58 se aleja 0.02 del piso y la de 2.5
+    # publica su `under` a 0.55, que se aleja 0.05. Gana la de 0.58.
+    assert picks[0]["line"] == 1.5
+    assert picks[0]["selection"] == "outside_band"
+    assert picks[0]["bucket"] == [0.55, 0.90]
+
+
+def test_level_one_always_wins_over_level_two() -> None:
+    """Con una línea en banda, el nivel 2 no se consulta siquiera."""
+
+    group = _group("home_shots", "shots", "home", "full_match", [
+        _line(9.5, 0.88), _line(10.5, 0.72), _line(11.5, 0.55)])
+
+    picks = select_ladder_picks([group])
+
+    assert picks[0]["line"] == 10.5
+    assert picks[0]["selection"] == "target_band"
+    assert picks[0]["bucket"] == [0.60, 0.85]
+
+
+def test_level_two_checks_both_figures_not_just_the_model() -> None:
+    """Un modelo dentro de la cota con histórico obvio sigue sin publicarse.
+
+    Es la misma doble comprobación del nivel 1: la cifra que el usuario ve es
+    la histórica, así que un 0.96 observado descalifica la línea aunque el
+    modelo declare 0.58.
+    """
+
+    group = _group("home_corners", "corners", "home", "full_match", [
+        _line(4.5, 0.58, observed=0.96)])
+
     assert select_ladder_picks([group]) == []
 
 

@@ -4,11 +4,15 @@
   "count_gates": {
     "corners": true,
     "corners_first_half": true,
+    "corners_second_half": true,
     "red_cards": false,
     "shots": true,
+    "shots_first_half": true,
     "shots_on_target": true,
+    "shots_second_half": true,
     "yellow_cards": true,
-    "yellow_cards_first_half": false
+    "yellow_cards_first_half": false,
+    "yellow_cards_second_half": false
   },
   "enabled_shadow_markets": [
     "away_corners_over_4_5",

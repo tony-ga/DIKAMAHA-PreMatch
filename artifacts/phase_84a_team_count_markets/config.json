@@ -2,29 +2,41 @@
   "alphas": {
     "corners": 1.0,
     "corners_first_half": 1.0,
+    "corners_second_half": 1.0,
     "red_cards": 0.1,
-    "shots": 1.0,
+    "shots": 10.0,
+    "shots_first_half": 1.0,
     "shots_on_target": 0.1,
-    "yellow_cards": 0.1,
-    "yellow_cards_first_half": 1.0
+    "shots_second_half": 10.0,
+    "yellow_cards": 1.0,
+    "yellow_cards_first_half": 1.0,
+    "yellow_cards_second_half": 1.0
   },
   "correlations": {
-    "corners": -0.3246250562555701,
-    "corners_first_half": -0.09340303612752518,
-    "red_cards": 0.08701945709312728,
-    "shots": -0.2864967325715365,
-    "shots_on_target": -0.035323192545667174,
-    "yellow_cards": 0.1861199288347223,
-    "yellow_cards_first_half": 0.13906441723115923
+    "corners": -0.22446465424328796,
+    "corners_first_half": -0.019630326241529026,
+    "corners_second_half": -0.12888252439759015,
+    "red_cards": 0.08683987106314267,
+    "shots": -0.2291709702828234,
+    "shots_first_half": -0.16558305583149444,
+    "shots_on_target": -0.035753090431899295,
+    "shots_second_half": -0.25019935822986783,
+    "yellow_cards": 0.18532342307287195,
+    "yellow_cards_first_half": 0.13903806466812346,
+    "yellow_cards_second_half": 0.13920665590320433
   },
   "dispersions": {
-    "corners": 0.29513322360601085,
-    "corners_first_half": 0.3523386846762494,
-    "red_cards": 0.4200328576186805,
-    "shots": 0.10235672545879126,
-    "shots_on_target": 0.047337570434258916,
+    "corners": 0.23203919608536622,
+    "corners_first_half": 0.30321869400746004,
+    "corners_second_half": 0.3108091509624008,
+    "red_cards": 0.41627942129729917,
+    "shots": 0.08029629863430124,
+    "shots_first_half": 0.0834223625862359,
+    "shots_on_target": 0.04695493675263571,
+    "shots_second_half": 0.12355805416612445,
     "yellow_cards": 0.0001,
-    "yellow_cards_first_half": 0.0001
+    "yellow_cards_first_half": 0.0001,
+    "yellow_cards_second_half": 0.0001
   },
   "market_lines": {
     "away_corners_over_4_5": [
@@ -85,57 +97,85 @@
   },
   "metrics": [
     {
-      "first_half_only": false,
       "name": "corners",
-      "safe_default": 8.085864015049717,
+      "period": "full_match",
+      "safe_default": 8.090212422694274,
       "source_field": "corners"
     },
     {
-      "first_half_only": true,
       "name": "corners_first_half",
-      "safe_default": 3.527546358505778,
+      "period": "first_half",
+      "safe_default": 3.5294433987631084,
       "source_field": "corners"
     },
     {
-      "first_half_only": false,
+      "name": "corners_second_half",
+      "period": "second_half",
+      "safe_default": 4.587970540098199,
+      "source_field": "corners"
+    },
+    {
       "name": "yellow_cards",
+      "period": "full_match",
       "safe_default": 2.087442761535752,
       "source_field": "yellow_cards"
     },
     {
-      "first_half_only": true,
       "name": "yellow_cards_first_half",
+      "period": "first_half",
       "safe_default": 0.6286544557942938,
       "source_field": "yellow_cards"
     },
     {
-      "first_half_only": false,
+      "name": "yellow_cards_second_half",
+      "period": "second_half",
+      "safe_default": 1.4587883057414583,
+      "source_field": "yellow_cards"
+    },
+    {
       "name": "red_cards",
+      "period": "full_match",
       "safe_default": 0.11315604085945756,
       "source_field": "red_cards"
     },
     {
-      "first_half_only": false,
       "name": "shots",
-      "safe_default": 11.618999108620908,
+      "period": "full_match",
+      "safe_default": 11.623391514842655,
       "source_field": "shots"
     },
     {
-      "first_half_only": false,
+      "name": "shots_first_half",
+      "period": "first_half",
+      "safe_default": 4.929927379283985,
+      "source_field": "shots"
+    },
+    {
+      "name": "shots_second_half",
+      "period": "second_half",
+      "safe_default": 6.69346413555867,
+      "source_field": "shots"
+    },
+    {
       "name": "shots_on_target",
+      "period": "full_match",
       "safe_default": 3.314426040061633,
       "source_field": "shots_on_target"
     }
   ],
   "model_status": "experimental_shadow_not_promoted",
   "model_weights": {
-    "corners": 0.0,
-    "corners_first_half": 0.0,
+    "corners": 0.9,
+    "corners_first_half": 0.9,
+    "corners_second_half": 0.9,
     "red_cards": 0.6,
-    "shots": 0.1,
+    "shots": 1.0,
+    "shots_first_half": 1.0,
     "shots_on_target": 1.0,
-    "yellow_cards": 0.8,
-    "yellow_cards_first_half": 1.0
+    "shots_second_half": 1.0,
+    "yellow_cards": 0.9,
+    "yellow_cards_first_half": 1.0,
+    "yellow_cards_second_half": 0.8
   },
   "version": "team_count_markets_v3_kickoff_integrity"
 }

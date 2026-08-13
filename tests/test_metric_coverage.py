@@ -90,13 +90,53 @@ def test_yellow_cards_are_never_suppressed_despite_being_mostly_zero() -> None:
         "status"] == "covered"
 
 
-def test_small_sample_never_asserts_absence() -> None:
-    """Sin muestra no se afirma ausencia: el guard exige evidencia positiva."""
+def test_a_unanimous_small_sample_does_assert_absence() -> None:
+    """Invierte el invariante anterior, con motivo medido.
+
+    La versión previa devolvía `insufficient_evidence` para cualquier muestra
+    por debajo de `MINIMUM_OBSERVATIONS`, sin mirar los ceros. Efecto real en
+    producción: `uru.1` (8 de 8 equipos-partido sin un solo córner) y
+    `esp.super_cup` (12 de 12) no se suprimían, y la rejilla publicaba una
+    escalera de córners sobre un dato que el proveedor nunca entregó -la
+    familia del "menos de 1.5" reportado por el usuario-.
+
+    Seis ceros de seis dan un límite inferior de Wilson de 0.61, por encima
+    de `ABSENT_THRESHOLD`: es evidencia suficiente de ausencia aunque la
+    muestra no baste para afirmar lo contrario.
+    """
 
     coverage = build_coverage_map(_rows("esp.super_cup", _corner_blind(6)))
 
     assert coverage["leagues"]["esp.super_cup"]["metrics"]["corners"][
+        "status"] == "absent"
+
+
+def test_a_tiny_sample_still_concludes_nothing() -> None:
+    """Dos de dos no basta: el límite de Wilson cae a 0.34.
+
+    Es la contraparte necesaria del test anterior. La regla no es "ceros =
+    ausente", es "ceros suficientes para descartar el azar"; `uefa.super_cup`,
+    con dos observaciones, sigue sin veredicto y queda para la guarda de
+    plausibilidad de la rejilla.
+    """
+
+    coverage = build_coverage_map(_rows("uefa.super_cup", _corner_blind(2)))
+
+    assert coverage["leagues"]["uefa.super_cup"]["metrics"]["corners"][
         "status"] == "insufficient_evidence"
+
+
+def test_a_small_sample_with_real_corners_stays_unconcluded() -> None:
+    """Muestra chica pero con córners reales no puede declararse ausente.
+
+    `concacaf.nations.league` tiene 8 observaciones y `zero_rate` 0.0: el
+    dato existe, sólo falta muestra para afirmar cobertura.
+    """
+
+    coverage = build_coverage_map(_rows("concacaf.nations.league", _healthy(8)))
+
+    assert coverage["leagues"]["concacaf.nations.league"]["metrics"][
+        "corners"]["status"] == "insufficient_evidence"
 
 
 def test_observation_absence_follows_the_statistics_block() -> None:
