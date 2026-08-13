@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { EntityImage } from "@/components/entity-image";
 import { LoadingProgress } from "@/components/loading-progress";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
-import { api, percentage, queryString, record } from "@/lib/client-api";
+import { api, percentage, probabilityWidth, queryString, record } from "@/lib/client-api";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10).replaceAll("-", "");
@@ -20,11 +20,13 @@ const METRICS: Record<string, string> = {
   result: "Resultado",
 };
 
-const PERIODS: Record<string, string> = {
-  first_half: "1T",
-  second_half: "2T",
-  full_match: "",
+const PERIOD_LABELS: Record<string, string> = {
+  first_half: "Primer tiempo",
+  second_half: "Segundo tiempo",
+  full_match: "Partido completo",
 };
+
+const PERIOD_ORDER = ["first_half", "second_half", "full_match"];
 
 // El lado se nombra con el equipo al que pertenece: "Córners de Betis" dice
 // bastante más que "Córners local", sobre todo en un menú que mezcla partidos.
@@ -39,29 +41,61 @@ function subjectLabel(
   return metric;
 }
 
-function pickLabel(
-  pick: Record<string, unknown>, homeName: string, awayName: string,
-): string {
+// El periodo ya se agrupa en un encabezado propio (ver `FixtureCard`), así
+// que la etiqueta de la fila sólo lleva el sujeto y la línea.
+function pickLabel(pick: Record<string, unknown>, homeName: string, awayName: string): string {
   const subject = subjectLabel(pick, homeName, awayName);
-  const period = PERIODS[String(pick.period)] ?? "";
   const line = pick.line;
-  if (typeof line !== "number") {
-    return [subject, period].filter(Boolean).join(" · ");
-  }
+  if (typeof line !== "number") return subject;
   const sense = String(pick.direction) === "under" ? "Menos de" : "Más de";
-  return [subject, period, `${sense} ${line}`].filter(Boolean).join(" · ");
+  return `${subject} · ${sense} ${line}`;
 }
 
-function PickCard({ value }: { value: Record<string, unknown> }) {
-  const fixture = record(value.fixture);
-  const interval = Array.isArray(value.observed_ci95) ? value.observed_ci95 : [];
+type Pick = Record<string, unknown>;
+type FixtureGroup = { fixture: Record<string, unknown>; picks: Pick[] };
+
+function groupByFixture(picks: Pick[]): FixtureGroup[] {
+  const order: string[] = [];
+  const groups = new Map<string, FixtureGroup>();
+  for (const pick of picks) {
+    const fixture = record(pick.fixture);
+    const key = String(fixture.match_id);
+    let group = groups.get(key);
+    if (!group) {
+      group = { fixture, picks: [] };
+      groups.set(key, group);
+      order.push(key);
+    }
+    group.picks.push(pick);
+  }
+  return order.map((key) => groups.get(key)!);
+}
+
+function PickRow({ pick, homeName, awayName }: { pick: Pick; homeName: string; awayName: string }) {
+  const modelEdge = String(pick.edge_source) === "model_edge";
+  const fallback = String(pick.selection) === "fallback_outside_band";
+  const side = pick.team_side === "away" ? "away" : "home";
+  return (
+    <div className="market-probability">
+      <div>
+        <span>{pickLabel(pick, homeName, awayName)}{fallback ? " · única disponible" : ""}</span>
+        <strong>{percentage(pick.observed_rate)}</strong>
+      </div>
+      <i><b className={side} style={{ width: probabilityWidth(pick.observed_rate) }} /></i>
+      <small className="ladder-edge">
+        {modelEdge ? "Ventaja del modelo" : "Ventaja de la tasa base"} · el modelo declara{" "}
+        {percentage(pick.model_probability)}
+      </small>
+    </div>
+  );
+}
+
+function FixtureCard({ fixture, picks }: FixtureGroup) {
   const homeName = String(fixture.home_team_name || `Equipo ${fixture.home_team_id}`);
   const awayName = String(fixture.away_team_name || `Equipo ${fixture.away_team_id}`);
   const kickoff = typeof fixture.kickoff_ts === "string"
     ? new Date(fixture.kickoff_ts).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
     : "—";
-  const modelEdge = String(value.edge_source) === "model_edge";
-  const fallback = String(value.selection) === "fallback_outside_band";
   return (
     <article className="data-panel">
       <div className="ladder-head">
@@ -73,34 +107,22 @@ function PickCard({ value }: { value: Record<string, unknown> }) {
         <span>VS</span>
         <div><EntityImage source={String(fixture.away_team_logo || "")} label={awayName} size={34} /><strong>{awayName}</strong></div>
       </div>
-      <div className="ladder-group high-prob-pick">
-        <div className="ladder-head">
-          <span>{pickLabel(value, homeName, awayName)}</span>
-          <strong>{percentage(value.observed_rate)}</strong>
-        </div>
-        <small className="ladder-edge">
-          Acierto histórico de este mercado en este nivel de confianza, sobre{" "}
-          {String(value.sample_size)} picks. Entre {percentage(interval[0])} y {percentage(interval[1])}.
-        </small>
-        <div className="subscription-row">
-          <span>{modelEdge ? "Ventaja del modelo" : "Ventaja de la tasa base"}</span>
-          <strong>{modelEdge ? "✓ mide" : "≈ mercado"}</strong>
-        </div>
-        <small className="ladder-edge">
-          {modelEdge
-            ? "El modelo supera de forma estadísticamente significativa a la estrategia base en este tramo."
-            : "El pick acierta mucho porque el mercado ya acierta mucho por sí solo; el modelo no añade ventaja demostrada."}
-        </small>
-        <div className="subscription-row">
-          <span>El modelo declara</span><strong>{percentage(value.model_probability)}</strong>
-        </div>
-        {fallback ? (
-          <small className="ladder-edge">
-            Única línea disponible para este mercado en este partido: ninguna cae en el rango de
-            confianza ideal (60%–85%), así que se muestra igual la más cercana en vez de omitir el
-            mercado.
-          </small>
-        ) : null}
+      <div className="stack" style={{ marginTop: 12 }}>
+        {PERIOD_ORDER.map((period) => {
+          const rows = picks.filter((pick) => pick.period === period);
+          if (!rows.length) return null;
+          return (
+            <section className="period-market" key={period}>
+              <p className="eyebrow">{PERIOD_LABELS[period] ?? period}</p>
+              {rows.map((pick, index) => (
+                <PickRow
+                  key={`${String(pick.market)}-${String(pick.line)}-${index}`}
+                  pick={pick} homeName={homeName} awayName={awayName}
+                />
+              ))}
+            </section>
+          );
+        })}
       </div>
     </article>
   );
@@ -114,6 +136,7 @@ export default function HighProbabilityPage() {
     refetchOnWindowFocus: true,
   });
   const picks = Array.isArray(query.data?.picks) ? query.data.picks.map(record) : [];
+  const fixtureGroups = groupByFixture(picks);
   const provenance = record(query.data?.provenance);
   const unavailable = String(query.data?.status) === "unavailable";
 
@@ -125,16 +148,17 @@ export default function HighProbabilityPage() {
         action={<button className="icon-button" onClick={() => void query.refetch()} aria-label="Actualizar picks">↻</button>}
       />
       <div className="notice">
-        El porcentaje que ves es el <strong>acierto histórico real</strong> de ese mercado, no la
-        probabilidad que declara el modelo. Córners, tiros, tiros a puerta y tarjetas vienen de la
-        escalera auditada: siempre se muestra al menos la línea más informativa de cada mercado que
-        cubra -ni la más obvia (tipo &quot;más de 0.5&quot;) ni un volado casi 50/50-. 1X2, Más de
-        2.5 y Ambos marcan siguen un gate distinto e histórico; ninguno lo superó en ningún tramo,
-        así que no aparecen aquí.
+        El porcentaje de cada línea es el <strong>acierto histórico real</strong> de ese mercado, no
+        la probabilidad que declara el modelo. Cada partido muestra todos los mercados de equipo que
+        cubre la escalera auditada -córners, tiros, tiros a puerta y tarjetas, completos y de primera
+        mitad-, con la línea más informativa de cada uno: ni la más obvia (tipo &quot;más de
+        0.5&quot;) ni un volado casi 50/50. Cuando ninguna línea cae en ese rango ideal se marca
+        &quot;única disponible&quot; en vez de omitir el mercado. 1X2, Más de 2.5 y Ambos marcan
+        siguen un gate distinto e histórico; ninguno lo superó en ningún tramo, así que no aparecen.
       </div>
       <div className="metric-grid compact-metrics">
         <Metric label="Picks del día" value={(query.data?.count as number | undefined) ?? "—"} accent />
-        <Metric label="Partidos revisados" value={(query.data?.fixtures_scanned as number | undefined) ?? "—"} />
+        <Metric label="Partidos con picks" value={(query.data?.fixtures_with_picks as number | undefined) ?? "—"} />
         <Metric label="Celdas de gol aptas" value={(provenance.eligible_cells as number | undefined) ?? "—"} />
       </div>
       {query.isError ? (
@@ -148,8 +172,12 @@ export default function HighProbabilityPage() {
         </StatePanel>
       ) : query.isLoading ? (
         <LoadingProgress title="Evaluando partidos de hoy" />
-      ) : picks.length ? (
-        <div className="stack">{picks.map((pick, index) => <PickCard key={`${String(record(pick.fixture).match_id)}-${String(pick.market)}-${index}`} value={pick} />)}</div>
+      ) : fixtureGroups.length ? (
+        <div className="stack">
+          {fixtureGroups.map((group) => (
+            <FixtureCard key={String(group.fixture.match_id)} fixture={group.fixture} picks={group.picks} />
+          ))}
+        </div>
       ) : (
         <StatePanel title="Hoy no hay ningún pick disponible">
           No hay partidos con predicción utilizable en el catálogo de hoy, o ninguna liga tiene

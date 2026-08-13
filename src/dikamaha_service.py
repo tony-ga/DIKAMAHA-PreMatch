@@ -757,6 +757,35 @@ def _high_probability_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _select_by_fixture(
+    picks: list[dict[str, Any]], max_fixtures: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Agrupa los picks por partido y acota por partido, no por pick suelto.
+
+    Antes `limit` ordenaba todos los picks del catálogo (de todos los
+    partidos y todos los mercados) por tasa observada y cortaba los primeros
+    N: un partido con varias líneas fuertes podía llenar el menú entero,
+    dejando fuera los mercados de los demás partidos -el usuario veía "un
+    solo mercado" en vez de la escalera completa por partido-. Ahora se
+    eligen partidos (orden cronológico) y cada uno aporta todos sus picks.
+    """
+
+    grouped: dict[int, list[dict[str, Any]]] = {}
+    for pick in picks:
+        grouped.setdefault(int(pick["fixture"]["match_id"]), []).append(pick)
+    ordered = sorted(
+        grouped.items(), key=lambda item: str(item[1][0]["fixture"]["kickoff_ts"]))
+    selected = ordered[:max_fixtures]
+    flattened = [
+        pick
+        for _, fixture_picks in selected
+        for pick in sorted(
+            fixture_picks,
+            key=lambda pick: (-pick["observed_rate"], pick["market"]))
+    ]
+    return flattened, len(grouped)
+
+
 def _upcoming_catalog(
     payload: tuple[str, int, str | None],
 ) -> list[dict[str, Any]]:
@@ -1054,11 +1083,20 @@ def create_app(
     ) -> dict[str, Any]:
         """Publica los picks del día cuya fiabilidad histórica está probada.
 
-        Un pick sólo aparece si el par (mercado, tramo de confianza) al que
-        pertenece superó el gate de Fase 122. La cifra publicada es la tasa
-        observada de ese tramo, no la probabilidad del modelo: el backtest
-        encontró mercados que declaran 68% y entregan 89%, y otros que
-        declaran 84% y entregan 74%.
+        Un pick de gol sólo aparece si el par (mercado, tramo de confianza)
+        al que pertenece superó el gate de Fase 122; uno de equipo, si su
+        mercado está cubierto por la escalera auditada -ver
+        `src/ladder_pick_selection.py`-. La cifra publicada es la tasa
+        observada, no la probabilidad del modelo.
+
+        `limit` acota **partidos**, no picks sueltos: cada partido incluido
+        aporta todos sus mercados de equipo disponibles (hasta ~18: córners,
+        córners 1ª mitad, tiros, tiros a puerta, tarjetas y tarjetas 1ª
+        mitad, por lado), no sólo el más fuerte. Antes de esto el límite
+        acotaba picks individuales ordenados globalmente por tasa observada,
+        de modo que un solo partido con varias líneas fuertes podía
+        desplazar del todo a los demás -el usuario veía "un solo mercado" en
+        vez de la escalera completa por partido-.
         """
 
         if not effective.external_calls_enabled:
@@ -1102,14 +1140,13 @@ def create_app(
 
         picks, scanned, skipped = await _high_probability_picks(
             app, upcoming_engine, effective, view, fixtures)
-        picks.sort(key=lambda pick: (
-            -pick["observed_rate"], -pick["model_probability"],
-            pick["fixture"]["kickoff_ts"], pick["market"]))
+        selected_picks, fixtures_with_picks = _select_by_fixture(picks, bounded)
         return {
             "status": "ok",
             "classification": "experimental_shadow_not_promoted",
-            "picks": picks[:bounded],
-            "count": min(len(picks), bounded),
+            "picks": selected_picks,
+            "count": len(selected_picks),
+            "fixtures_with_picks": fixtures_with_picks,
             "total_candidates": len(picks),
             "fixtures_scanned": scanned,
             "fixtures_catalog_size": len(fixtures),

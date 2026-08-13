@@ -6,6 +6,18 @@
 confirmación prospectiva real, congelando los picks del menú antes del
 kickoff y liquidándolos después contra el resultado verificado.
 
+## Corrección — Mayor probabilidad agrupa por partido, no por pick global
+
+Ver `DEC-180`. El diseño de DEC-179 generaba bien hasta 18 picks por partido,
+pero `GET /v1/high-probability` seguía ordenando todos los picks de todos
+los partidos por tasa observada y cortando en `limit`: con muchos partidos
+escaneados, uno o dos con líneas fuertes desplazaban del todo los mercados de
+los demás. Ahora `limit` acota **partidos** (orden cronológico), y cada
+partido incluido aporta todos sus mercados. La Mini App se reestructuró para
+mostrar una tarjeta por partido con sus mercados agrupados por periodo, en
+vez de una tarjeta por pick suelto. Gates: 813 Python/8 omitidos, typecheck y
+7 Playwright de `high-probability.spec.ts` sin regresiones.
+
 ## Mayor probabilidad alimentada por la escalera auditada
 
 Ver `DEC-179` y `docs/objetivo_auditoria_modelos_v1.md` (Etapa 4). Los

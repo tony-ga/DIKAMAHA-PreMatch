@@ -70,39 +70,48 @@ test("shows the observed hit rate and flags a model edge", async ({ page }) => {
 
   await page.goto("/mayor-probabilidad");
   await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
+  await expect(page.getByText("Real Betis", { exact: true })).toBeVisible();
   await expect(page.getByText("Córners de Real Betis · Más de 4.5")).toBeVisible();
   // La cifra grande es la tasa observada (89%), no la del modelo (68%).
   await expect(page.getByText("89%", { exact: true })).toBeVisible();
-  await expect(page.getByText("149 picks")).toBeVisible();
-  await expect(page.getByText("Ventaja del modelo")).toBeVisible();
+  await expect(page.getByText(/Ventaja del modelo/)).toBeVisible();
+  await expect(page.getByText(/declara 68%/)).toBeVisible();
   await expect(page.getByText("SHADOW").first()).toBeVisible();
 });
 
-test("says plainly when the edge comes from the base rate", async ({ page }) => {
+test("groups every market of a match under its own fixture card", async ({ page }) => {
   await page.route("**/api/high-probability**", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       status: "ok",
-      picks: [pick({
-        market: "home_shots_second_half_over_5_5",
-        metric: "shots",
-        period: "second_half",
-        line: 5.5,
-        observed_rate: 0.811,
-        edge_source: "base_rate_driven",
-        skill_vs_naive: 0.0,
-      })],
-      count: 1,
+      picks: [
+        pick({ market: "home_corners", metric: "corners", line: 4.5, observed_rate: 0.71 }),
+        pick({
+          market: "away_shots_first_half", metric: "shots", team_side: "away",
+          period: "first_half", line: 5.5, observed_rate: 0.66,
+          edge_source: "base_rate_driven",
+        }),
+        pick({
+          market: "home_yellow_cards", metric: "yellow_cards", line: 1.5,
+          observed_rate: 0.63,
+        }),
+      ],
+      count: 3,
+      fixtures_with_picks: 1,
       fixtures_scanned: 4,
       provenance: { eligible_cells: 9 },
     }),
   }));
 
   await page.goto("/mayor-probabilidad");
-  await expect(page.getByText("Tiros de Real Betis · 2T · Más de 5.5")).toBeVisible();
-  await expect(page.getByText("Ventaja de la tasa base")).toBeVisible();
-  await expect(page.getByText(/el modelo no añade ventaja demostrada/)).toBeVisible();
+  // Las tres líneas de un mismo partido aparecen juntas -no sólo la más fuerte-.
+  await expect(page.getByText("Córners de Real Betis · Más de 4.5")).toBeVisible();
+  await expect(page.getByText("Tarjetas de Real Betis · Más de 1.5")).toBeVisible();
+  await expect(page.getByText("Primer tiempo")).toBeVisible();
+  await expect(page.getByText("Tiros de Sevilla · Más de 5.5")).toBeVisible();
+  await expect(page.getByText("Partido completo")).toBeVisible();
+  await expect(page.getByText(/Ventaja de la tasa base/)).toBeVisible();
 });
 
 test("prefers an honest empty state over a weak pick", async ({ page }) => {
@@ -158,7 +167,7 @@ test("marks a pick as the only line available when none fits the ideal band", as
   }));
 
   await page.goto("/mayor-probabilidad");
-  await expect(page.getByText(/Única línea disponible para este mercado/)).toBeVisible();
+  await expect(page.getByText(/única disponible/)).toBeVisible();
 });
 
 test("is reachable from the primary navigation", async ({ page }) => {

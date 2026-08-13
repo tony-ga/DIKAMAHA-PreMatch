@@ -3492,6 +3492,63 @@ typecheck, build Next, 7 Playwright de `high-probability.spec.ts` (1 nueva
 para el aviso de `fallback_outside_band`) y el resto de la suite Playwright
 sin regresiones.
 
+DEC-180
+Fecha: 2026-08-13
+Problema: tras desplegar DEC-179, el usuario reportó que "Mayor probabilidad"
+seguía sin mostrar lo pedido: "únicamente muestra uno de los diversos
+mercados" en vez de la línea más probable de córners, tiros, tiros a puerta
+y tarjetas por partido. Causa real, verificada localmente reproduciendo un
+partido real: `HighProbabilityView.picks()` sí devuelve hasta 18 picks por
+partido con buena diversidad de métricas (confirmado con `esp.1` real: 4
+métricas presentes, tasas observadas entre 0.23 y 0.71), pero
+`GET /v1/high-probability` seguía ordenando **todos los picks de todos los
+partidos** por tasa observada de forma global y cortando en `limit` (10-12
+por defecto). Con hasta 30 partidos escaneados aportando hasta 18 picks cada
+uno, ese corte plano dejaba que uno o dos partidos con varias líneas fuertes
+desplazaran del todo los mercados de los demás -el usuario veía "un solo
+mercado" en vez de la escalera completa por partido-. DEC-179 diseñó bien la
+generación por partido pero no corrigió cómo el endpoint y el frontend la
+presentaban entre partidos.
+Opciones: (a) subir mucho el `limit` por defecto sin cambiar el criterio de
+corte, aceptando que igual pueda sesgarse hacia pocos partidos si el
+catálogo del día es grande; (b) acotar por **partido**, no por pick: cada
+partido incluido aporta todos sus picks, y `limit` decide cuántos partidos
+entran; (c) además de (b), reestructurar la Mini App para agrupar por
+partido en vez de una tarjeta por pick suelto.
+Decisión: (b) + (c). `_select_by_fixture` (nuevo, `src/dikamaha_service.py`)
+agrupa los picks por `fixture.match_id`, ordena los partidos
+cronológicamente por kickoff y selecciona los primeros `limit`; dentro de
+cada partido conserva todos sus picks, ordenados por tasa observada. La
+respuesta añade `fixtures_with_picks` (partidos con al menos un pick
+distinto de `fixtures_scanned`, que cuenta también los que no aportaron
+ninguno). `miniapp/app/mayor-probabilidad/page.tsx` se reestructura: una
+tarjeta por partido (`FixtureCard`), con sus mercados agrupados por periodo
+dentro -mismo patrón visual que `audited-ladder.tsx`- y una fila compacta
+por línea (`PickRow`) en vez de una tarjeta grande por pick con párrafos
+explicativos repetidos hasta 18 veces por partido; el aviso de línea de
+reserva (`fallback_outside_band`) pasa de un párrafo aparte a un sufijo
+inline "· única disponible" en la propia fila.
+Motivo: acotar por partido es la única forma de que "cada mercado" del
+pedido original sobreviva cuando hay muchos partidos en el catálogo -es
+justo el fallo que (a) no habría resuelto de fondo, sólo pospuesto-. La
+reestructura visual (c) es consecuencia directa: agrupar por partido en el
+backend sin agruparlo también en la interfaz habría dejado una lista plana
+de hasta ~200 picks indistinguibles por partido.
+Estado: congelada
+Impacto en contratos/fases: cambia la forma de `GET /v1/high-probability`
+-`picks` ya no es un top-N global sino "todos los picks de los primeros N
+partidos por kickoff"-, y añade `fixtures_with_picks`. No toca la
+generación por partido de DEC-179 (`src/ladder_pick_selection.py`,
+`HighProbabilityView`), ni el pipeline de congelación/liquidación de Fase
+123 -`run_freeze_cycle` sigue leyendo `response["picks"]` como lista plana,
+cada pick con su propio `fixture`, sin cambios-.
+Evidencia requerida: 3 pruebas nuevas/reescritas en `tests/test_phase_122_
+high_probability.py` (agrupación cronológica sin perder mercados de un
+mismo partido, `limit` acota partidos no picks sueltos); suite Python
+completa 813 aprobadas/8 omitidas; typecheck, y Playwright de
+`high-probability.spec.ts` (7, con una reescrita para verificar que varios
+mercados del mismo partido aparecen juntos) sin regresiones.
+
 ```text
 DEC-NNN
 Fecha:

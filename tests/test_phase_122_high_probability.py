@@ -454,8 +454,17 @@ def test_endpoint_reports_unavailable_when_both_sources_are_down(
     assert catalog_called["count"] == 0
 
 
-def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
-    """El menú ordena por tasa observada entre partidos distintos."""
+def test_endpoint_groups_by_fixture_instead_of_flattening_globally(
+    monkeypatch: Any,
+) -> None:
+    """Cada partido aporta todos sus mercados, ordenados cronológicamente.
+
+    Regresión real: antes el límite ordenaba todos los picks de todos los
+    partidos por tasa observada y cortaba los primeros N, así que un
+    partido con un pick muy fuerte podía desplazar los demás mercados de
+    otros partidos -el usuario veía "un solo mercado" en vez de la escalera
+    completa por partido-.
+    """
 
     import src.dikamaha_service as service
 
@@ -470,9 +479,14 @@ def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
          "home_team_logo": None, "away_team_logo": None},
     ]
     predictions = {
-        1: _prediction(ladder_groups=[_ladder_group(
-            "away_shots", "shots", "away", "full_match", 10.5, 0.68,
-            observed=0.70)]),
+        1: _prediction(ladder_groups=[
+            _ladder_group("away_shots", "shots", "away", "full_match", 10.5, 0.68,
+                          observed=0.70),
+            _ladder_group("away_corners", "corners", "away", "full_match", 4.5, 0.62,
+                          observed=0.61),
+            _ladder_group("home_yellow_cards", "yellow_cards", "home", "full_match", 1.5,
+                          0.65, observed=0.66),
+        ]),
         2: _prediction(ladder_groups=[_ladder_group(
             "home_corners", "corners", "home", "full_match", 4.5, 0.70,
             observed=0.90)]),
@@ -495,10 +509,21 @@ def test_endpoint_ranks_across_matches(monkeypatch: Any) -> None:
     assert payload["status"] == "ok"
     assert payload["classification"] == "experimental_shadow_not_promoted"
     assert payload["fixtures_scanned"] == 2
-    markets = [pick["market"] for pick in payload["picks"]]
-    assert markets == ["home_corners", "away_shots"]
-    assert payload["picks"][0]["fixture"]["match_id"] == 2
-    assert payload["picks"][0]["observed_rate"] > payload["picks"][1]["observed_rate"]
+    assert payload["fixtures_with_picks"] == 2
+    # Los tres mercados del partido 1 sobreviven -no sólo el más fuerte-,
+    # aunque el partido 2 tenga una tasa observada más alta en su único pick.
+    match_1_markets = {
+        pick["market"] for pick in payload["picks"] if pick["fixture"]["match_id"] == 1}
+    assert match_1_markets == {"away_shots", "away_corners", "home_yellow_cards"}
+    # Los partidos se ordenan cronológicamente por kickoff, no por tasa
+    # observada -partido 1 (18:00) antes que partido 2 (20:00)-.
+    assert [pick["fixture"]["match_id"] for pick in payload["picks"][:3]] == [1, 1, 1]
+    assert payload["picks"][-1]["fixture"]["match_id"] == 2
+    # Dentro de un mismo partido, sí ordena por tasa observada (0.70 > 0.66 > 0.61).
+    match_1_picks = [pick for pick in payload["picks"] if pick["fixture"]["match_id"] == 1]
+    assert [pick["market"] for pick in match_1_picks] == [
+        "away_shots", "home_yellow_cards", "away_corners"]
+    assert match_1_picks[0]["observed_rate"] > match_1_picks[-1]["observed_rate"]
 
 
 def test_endpoint_skips_fixtures_without_prediction(monkeypatch: Any) -> None:
@@ -568,6 +593,45 @@ def test_endpoint_limit_is_bounded(monkeypatch: Any) -> None:
     assert payload["count"] == 2
     assert len(payload["picks"]) == 2
     assert payload["total_candidates"] == 3
+
+
+def test_endpoint_limit_bounds_fixtures_not_individual_picks(monkeypatch: Any) -> None:
+    """Un partido con muchos mercados no se recorta por `limit`.
+
+    Con `limit=1` y un único partido con cinco picks, deben aparecer los
+    cinco -el límite decide cuántos partidos entran, no cuántas líneas de
+    un mismo partido sobreviven-.
+    """
+
+    import src.dikamaha_service as service
+
+    fixtures = [
+        {"match_id": 1, "league_slug": "esp.1", "home_team_id": 1,
+         "away_team_id": 2, "kickoff_ts": "2026-08-11T18:00:00+00:00",
+         "home_team_name": "A", "away_team_name": "B",
+         "home_team_logo": None, "away_team_logo": None},
+    ]
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+
+    async def prediction(app: Any, engine: Any, config: Any,
+                         fixture: dict[str, Any]) -> dict[str, Any]:
+        """Un solo partido con cinco mercados de equipo distintos."""
+
+        return _prediction(ladder_groups=[
+            _ladder_group(f"home_corners_{index}", "corners", "home", "full_match",
+                          4.5 + index, 0.70)
+            for index in range(5)
+        ])
+
+    monkeypatch.setattr(service, "_high_probability_prediction", prediction)
+
+    payload = TestClient(
+        create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
+    ).get("/v1/high-probability?limit=1").json()
+
+    assert payload["fixtures_with_picks"] == 1
+    assert payload["count"] == 5
+    assert len(payload["picks"]) == 5
 
 
 def test_eligibility_artifact_is_versioned_in_repository() -> None:
