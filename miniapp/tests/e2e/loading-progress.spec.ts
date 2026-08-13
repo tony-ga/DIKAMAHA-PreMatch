@@ -14,15 +14,20 @@ async function stub(page: Page) {
     contentType: "application/javascript",
     body: `window.Telegram ||= { WebApp: { initData:'', colorScheme:'dark', ready(){}, expand(){}, close(){}, onEvent(){}, offEvent(){}, BackButton:{show(){},hide(){},onClick(){},offClick(){}} } };`,
   }));
-  await page.route("**/api/session/me", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ user: { id: 42, firstName: "Marco" }, csrfToken: "t" }),
-  }));
   await page.route("**/api/**", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ status: "ok", count: 0, fixtures: [], favorites: [], picks: [] }),
+  }));
+  // Después del comodín a propósito: Playwright resuelve las rutas en orden
+  // inverso al de registro, así que la última registrada es la que gana. Antes
+  // estaba primero y el comodín se comía `/api/session/me`, de modo que la
+  // sesión llegaba sin `csrfToken` sin que nada lo delatara -todas las demás
+  // llamadas estaban stubeadas y ninguna lo comprobaba-.
+  await page.route("**/api/session/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ user: { id: 42, firstName: "Marco" }, csrfToken: "t" }),
   }));
 }
 

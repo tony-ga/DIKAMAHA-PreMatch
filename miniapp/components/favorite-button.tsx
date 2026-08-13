@@ -31,7 +31,11 @@ export function FavoriteButton({ entityType, entityId, label, metadata = {} }: {
       className="icon-button"
       onClick={() => mutation.mutate()}
       aria-label={saved ? "Eliminar de favoritos" : "Guardar en favoritos"}
-      disabled={mutation.isPending}
+      // Sin `csrfToken` la mutación se rechazaría con 403. Es una ventana
+      // brevísima -mientras el arranque optimista confirma la sesión-, pero
+      // deshabilitar el botón es preferible a que un toque falle sin motivo
+      // aparente para el usuario.
+      disabled={mutation.isPending || !csrfToken}
     >
       {saved ? "★" : "☆"}
     </button>

@@ -25,11 +25,52 @@ Mini App URL: https://telegram-miniapp-production-cbab.up.railway.app
 El acceso Mini App está activo en modo privado. El worker está desplegado con
 alertas desactivadas hasta completar el smoke interactivo y de deduplicación.
 
+## Alta y baja de usuarios
+
+El acceso lo decide la fila del usuario en `miniapp_users`, no la
+configuración del servicio. **Dar de alta a alguien ya no requiere
+redesplegar**: era el bloqueo real para admitir usuarios nuevos.
+
+Cualquiera que abra la Mini App queda registrado en estado `pending` y ve un
+mensaje pidiéndole que solicite la aprobación. Para activarlo:
+
+```sql
+UPDATE miniapp_users
+SET status = 'active', approved_at = now(), approved_by = <tu_telegram_user_id>
+WHERE telegram_user_id = <id_del_usuario>;
+```
+
+Para revocar el acceso, `status = 'blocked'`. Los tres estados válidos son
+`pending`, `active` y `blocked`.
+
+Cola de solicitudes pendientes:
+
+```sql
+SELECT telegram_user_id, username, first_name, first_seen_at
+FROM miniapp_users WHERE status = 'pending' ORDER BY first_seen_at;
+```
+
+Consideraciones:
+
+- El cambio surte efecto en el **siguiente inicio de sesión** del usuario, no
+  al instante: el rol y el plan viajan dentro de la cookie firmada para no
+  consultar PostgreSQL en cada petición. Bloquear a alguien con sesión abierta
+  le corta el acceso cuando su cookie caduque o se reemita. Para un corte
+  inmediato hay que rotar `MINIAPP_SESSION_SECRET`, lo que invalida **todas**
+  las sesiones.
+- `TELEGRAM_ALLOWED_USER_IDS` sigue existiendo, pero **sólo como semilla de
+  administradores**: quien esté en esa lista entra siempre y se marca como
+  `admin` en la tabla. Es la salvaguarda para que un error de datos no deje el
+  sistema sin nadie capaz de aprobar a nadie. No añadir usuarios normales ahí.
+- Con `TELEGRAM_ACCESS_MODE=public` toda alta nueva nace `active` y no hay
+  nada que aprobar.
+
 ## Variables de la Mini App
 
 ```text
 TELEGRAM_BOT_TOKEN=<secreto compartido con el bot>
 TELEGRAM_ACCESS_MODE=private
+# Sólo administradores: el acceso normal se concede en la tabla miniapp_users.
 TELEGRAM_ALLOWED_USER_IDS=<ids separados por coma>
 DIKAMAHA_BOT_API_URL=https://<api-dikamaha>.up.railway.app
 DIKAMAHA_API_KEY=<secreto de la API>

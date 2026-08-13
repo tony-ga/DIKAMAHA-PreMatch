@@ -38,4 +38,46 @@ describe("signed Mini App sessions", () => {
       path: "/",
     });
   });
+
+  it("lasts thirty days so reopening never repeats the Telegram sign-in", async () => {
+    const { issueSession, sessionCookieOptions } = await import("@/lib/auth/session");
+    const thirtyDays = 30 * 24 * 60 * 60;
+    const issued = issueSession({ userId: 42, firstName: "Marco" });
+    const lifetime = issued.session.expiresAt - Math.floor(Date.now() / 1000);
+
+    // Con 12 horas, abrir la Mini App dos veces en un día ya obligaba a rehacer
+    // el alta completa antes de poder pedir el primer dato.
+    expect(lifetime).toBeGreaterThan(thirtyDays - 5);
+    expect(sessionCookieOptions().maxAge).toBe(thirtyDays);
+  });
+
+  it("only re-issues the cookie once the session is a day old", async () => {
+    const { issueSession, parseSession, refreshedSessionToken } =
+      await import("@/lib/auth/session");
+    const issued = issueSession({ userId: 42, firstName: "Marco" });
+
+    // Recién emitida no hay nada que renovar: escribir `Set-Cookie` en cada
+    // respuesta sería puro coste.
+    expect(refreshedSessionToken(issued.session)).toBeNull();
+
+    const aged = { ...issued.session, expiresAt: issued.session.expiresAt - 2 * 24 * 60 * 60 };
+    const renewed = refreshedSessionToken(aged);
+    expect(renewed).not.toBeNull();
+    const parsed = parseSession(renewed!);
+    expect(parsed).toMatchObject({ userId: 42, firstName: "Marco" });
+    // El token CSRF sobrevive a la renovación: el cliente ya lo tiene en
+    // memoria y cambiarlo rompería sus mutaciones en vuelo.
+    expect(parsed?.csrf).toBe(issued.session.csrf);
+    expect(parsed!.expiresAt).toBeGreaterThan(aged.expiresAt);
+  });
+
+  it("refuses to renew a session that is already expired", async () => {
+    const { issueSession, refreshedSessionToken } = await import("@/lib/auth/session");
+    const issued = issueSession({ userId: 42, firstName: "Marco" });
+    const dead = { ...issued.session, expiresAt: Math.floor(Date.now() / 1000) - 1 };
+
+    // Una sesión vencida se rehace, no se renueva. Sin esta guarda la función
+    // sabría resucitar sesiones muertas con sólo llamarla.
+    expect(refreshedSessionToken(dead)).toBeNull();
+  });
 });

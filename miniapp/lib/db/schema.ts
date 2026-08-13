@@ -12,6 +12,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+/** Estados de una cuenta. `pending` es el estado inicial de todo alta nueva. */
+export type AccountStatus = "pending" | "active" | "blocked";
+export type AccountRole = "user" | "admin";
+
 export const miniappUsers = pgTable("miniapp_users", {
   telegramUserId: bigint("telegram_user_id", { mode: "number" }).primaryKey(),
   username: text("username"),
@@ -20,7 +24,18 @@ export const miniappUsers = pgTable("miniapp_users", {
   languageCode: text("language_code"),
   firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  // El acceso vivía en la variable de entorno `TELEGRAM_ALLOWED_USER_IDS`, así
+  // que dar de alta a alguien exigía redesplegar el servicio. Aquí pasa a ser
+  // un UPDATE.
+  status: text("status").$type<AccountStatus>().default("pending").notNull(),
+  role: text("role").$type<AccountRole>().default("user").notNull(),
+  // Gancho de titularidad para un futuro nivel de pago. Hoy sólo se transporta.
+  plan: text("plan").default("free").notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvedBy: bigint("approved_by", { mode: "number" }),
 });
+
+export type MiniappUser = typeof miniappUsers.$inferSelect;
 
 export const miniappFavorites = pgTable("miniapp_favorites", {
   userId: bigint("user_id", { mode: "number" })

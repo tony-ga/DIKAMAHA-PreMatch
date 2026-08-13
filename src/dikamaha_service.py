@@ -65,6 +65,11 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from high_probability_view import HighProbabilityView
 
 try:
+    from src.catalog_cache_store import build_store as build_catalog_cache_store
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from catalog_cache_store import build_store as build_catalog_cache_store
+
+try:
     from src.settlement_store import (
         DEFAULT_WINDOW,
         MAXIMUM_WINDOW,
@@ -248,49 +253,194 @@ class MetricsStore:
 
 
 class AsyncPredictionCache:
-    """Caché TTL con single-flight por clave de predicción."""
+    """Caché con single-flight y refresco en segundo plano por clave.
 
-    def __init__(self, ttl_seconds: float = 300.0, max_entries: int = 256) -> None:
-        """Inicializa una caché acotada sin persistencia."""
+    Dos umbrales, no uno. Dentro de `ttl_seconds` la entrada se sirve tal
+    cual. Entre `ttl_seconds` y `stale_ttl_seconds` se sirve igualmente -al
+    instante- y el recálculo se lanza por detrás: quien pregunta recibe un
+    dato con unos segundos de edad en vez de esperar el barrido completo.
+    Sólo pasado `stale_ttl_seconds` se descarta la entrada y el llamador sí
+    espera al cálculo real.
 
+    Existe porque el barrido de catálogo cuesta ~30 s contra 63 ligas x 3
+    días mientras la caché sólo vivía 25 s: con el tráfico de un grupo
+    privado casi ninguna apertura de la Mini App caía dentro de esa ventana,
+    así que en la práctica cada usuario pagaba el barrido entero. Servir el
+    dato vencido y refrescarlo detrás saca ese barrido del camino crítico sin
+    envejecer el dato más de lo que el propio cliente ya tolera.
+
+    `stamp_age` añade `data_age_seconds` a la respuesta para que la interfaz
+    pueda decir la edad real del dato. Es opcional a propósito: la caché de
+    predicciones guarda payloads de contrato con hash de integridad, y
+    añadirles un campo variable los invalidaría.
+
+    Con un `store` conectado la memoria pasa a ser sólo el primer nivel: en un
+    fallo se consulta PostgreSQL antes de recalcular. Sin él la caché muere en
+    cada despliegue y el primer usuario posterior paga el barrido entero.
+    """
+
+    def __init__(
+        self,
+        ttl_seconds: float = 300.0,
+        max_entries: int = 256,
+        stale_ttl_seconds: float | None = None,
+        stamp_age: bool = False,
+        store: Any | None = None,
+        namespace: str = "",
+    ) -> None:
+        """Inicializa una caché acotada, opcionalmente persistida."""
+
+        self._namespace = namespace
         self._ttl = ttl_seconds
+        self._stale_ttl = max(
+            ttl_seconds if stale_ttl_seconds is None else stale_ttl_seconds,
+            ttl_seconds,
+        )
         self._max_entries = max_entries
+        self._stamp_age = stamp_age
+        self._store = store
         self._values: dict[str, tuple[float, dict[str, Any]]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._refreshing: set[str] = set()
+        self._refresh_tasks: set[asyncio.Task[None]] = set()
 
     async def get_or_compute(self, key: str, factory: Any) -> dict[str, Any]:
-        """Devuelve una copia vigente o calcula una sola vez por clave."""
+        """Devuelve una copia servible o calcula una sola vez por clave."""
 
-        cached = self._get(key)
+        cached, age = self._get(key)
         if cached is not None:
-            return cached
+            if age > self._ttl:
+                self._schedule_refresh(key, factory)
+            return self._stamp(cached, age)
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:
-            cached = self._get(key)
+            cached, age = self._get(key)
             if cached is None:
-                cached = dict(await factory())
-                self._put(key, cached)
+                cached, age = await self._restore_or_compute(key, factory)
         self._locks.pop(key, None)
-        return dict(cached)
+        # Una entrada recuperada de PostgreSQL puede venir ya vencida -tras un
+        # reinicio, con minutos de antigüedad-: se sirve igual y se refresca
+        # detrás, en vez de hacer esperar a quien acaba de abrir la Mini App.
+        if age > self._ttl:
+            self._schedule_refresh(key, factory)
+        return self._stamp(cached, age)
 
-    def _get(self, key: str) -> dict[str, Any] | None:
-        """Lee una entrada vigente y elimina las expiradas."""
+    async def _restore_or_compute(
+        self, key: str, factory: Any,
+    ) -> tuple[dict[str, Any], float]:
+        """Recupera el catálogo persistido o, si no hay, lo calcula de verdad."""
+
+        restored = await self._load_from_store(key)
+        if restored is not None:
+            value, age = restored
+            self._put(key, value, age)
+            return value, age
+        value = dict(await factory())
+        self._put(key, value)
+        self._save_to_store(key, value)
+        return value, 0.0
+
+    async def _load_from_store(
+        self, key: str,
+    ) -> tuple[dict[str, Any], float] | None:
+        """Lee el nivel persistente fuera del event loop.
+
+        El acceso a PostgreSQL es SQLAlchemy síncrono, así que hacerlo en línea
+        bloquearía el bucle y frenaría al resto de peticiones en vuelo.
+        """
+
+        if self._store is None:
+            return None
+        restored = await asyncio.to_thread(self._store.load, self._stored_key(key))
+        if restored is None:
+            return None
+        value, age = restored
+        # Más vieja que la ventana servible: no aporta nada sobre recalcular.
+        return None if age >= self._stale_ttl else (dict(value), age)
+
+    def _save_to_store(self, key: str, value: dict[str, Any]) -> None:
+        """Persiste el catálogo sin que nadie espere a que termine."""
+
+        if self._store is None:
+            return
+        task = asyncio.create_task(asyncio.to_thread(
+            self._store.save, self._stored_key(key), dict(value), self._stale_ttl))
+        self._refresh_tasks.add(task)
+        task.add_done_callback(self._refresh_tasks.discard)
+
+    def _stored_key(self, key: str) -> str:
+        """Separa en la tabla compartida a cachés con claves indistinguibles.
+
+        Los catálogos de próximos y en vivo se identifican por las mismas
+        ligas y fecha, así que sin este prefijo el segundo en escribir
+        sobrescribiría al primero y la Mini App recibiría fixtures en vivo
+        donde esperaba próximos.
+        """
+
+        return f"{self._namespace}:{key}" if self._namespace else key
+
+    def _schedule_refresh(self, key: str, factory: Any) -> None:
+        """Recalcula por detrás sin bloquear a quien ya recibió el dato."""
+
+        if key in self._refreshing:
+            return
+        self._refreshing.add(key)
+        task = asyncio.create_task(self._refresh(key, factory))
+        # asyncio sólo mantiene una referencia débil a las tareas en vuelo, de
+        # modo que sin este conjunto el recolector puede cancelar el refresco a
+        # medias y la entrada nunca se renovaría.
+        self._refresh_tasks.add(task)
+        task.add_done_callback(self._refresh_tasks.discard)
+
+    async def _refresh(self, key: str, factory: Any) -> None:
+        """Renueva una entrada vencida absorbiendo cualquier fallo.
+
+        Un refresco fallido no puede propagarse: nadie está esperando esta
+        tarea y la entrada vencida se sigue sirviendo hasta `stale_ttl`, así
+        que el siguiente lector simplemente vuelve a intentarlo.
+        """
+
+        try:
+            value = dict(await factory())
+            self._put(key, value)
+            self._save_to_store(key, value)
+        except Exception as exc:  # noqa: BLE001 - ver docstring
+            LOGGER.warning("Refresco en segundo plano fallido: %s", exc)
+        finally:
+            self._refreshing.discard(key)
+
+    def _stamp(self, value: dict[str, Any], age: float) -> dict[str, Any]:
+        """Copia la entrada y, si procede, publica su edad real."""
+
+        payload = dict(value)
+        if self._stamp_age:
+            payload["data_age_seconds"] = round(age, 1)
+        return payload
+
+    def _get(self, key: str) -> tuple[dict[str, Any] | None, float]:
+        """Lee una entrada servible con su edad y elimina las agotadas."""
 
         row = self._values.get(key)
         if row is None:
-            return None
-        if row[0] <= time.monotonic():
+            return None, 0.0
+        age = time.monotonic() - row[0]
+        if age >= self._stale_ttl:
             self._values.pop(key, None)
-            return None
-        return dict(row[1])
+            return None, 0.0
+        return dict(row[1]), age
 
-    def _put(self, key: str, value: dict[str, Any]) -> None:
-        """Inserta una copia y conserva un número máximo de entradas."""
+    def _put(self, key: str, value: dict[str, Any], age: float = 0.0) -> None:
+        """Inserta una copia y conserva un número máximo de entradas.
 
-        if len(self._values) >= self._max_entries:
+        `age` permite reinsertar en memoria algo recuperado de PostgreSQL sin
+        rejuvenecerlo: una entrada calculada hace tres minutos debe seguir
+        contando como tal, o el refresco en segundo plano nunca se dispararía.
+        """
+
+        if key not in self._values and len(self._values) >= self._max_entries:
             oldest = min(self._values, key=lambda item: self._values[item][0])
             self._values.pop(oldest, None)
-        self._values[key] = (time.monotonic() + self._ttl, dict(value))
+        self._values[key] = (time.monotonic() - age, dict(value))
 
 
 def _request_id(request: Request) -> str:
@@ -353,6 +503,11 @@ class ServiceConfig:
     live_monte_carlo_simulations: int = 20_000
     live_engine_refresh_seconds: int = 15
     live_engine_fallback_enabled: bool = True
+    # Refresca en segundo plano las claves canónicas de catálogo para que nadie
+    # llegue nunca a una caché fría. Por defecto `False` y activado sólo desde
+    # `service_config_from_env`: una aplicación construida a mano -tests,
+    # scripts- no debe empezar a barrer ESPN por el mero hecho de arrancar.
+    catalog_warmer_enabled: bool = False
 
     def __post_init__(self) -> None:
         """Rechaza configuraciones incompatibles con el alcance local."""
@@ -419,6 +574,8 @@ def service_config_from_env() -> ServiceConfig:
             "LIVE_ENGINE_REFRESH_SECONDS", "15")),
         live_engine_fallback_enabled=_env_bool(
             "LIVE_ENGINE_FALLBACK_ENABLED", True),
+        catalog_warmer_enabled=_env_bool(
+            "DIKAMAHA_CATALOG_WARMER_ENABLED", True),
     )
 
 
@@ -810,6 +967,37 @@ def _upcoming_catalog(
     return sorted(unique.values(), key=lambda row: row["kickoff_ts"])[:limit]
 
 
+# Tope duro que ya aplicaban `/v1/upcoming` y `/v1/live` a su parámetro
+# `limit`. Cachear siempre la misma profundidad y recortar por petición evita
+# que dos clientes que sólo difieren en cuántos partidos quieren -la Mini App
+# pide 4 en el panel y 20 en la vista live- disparen dos barridos completos e
+# independientes del mismo catálogo.
+CATALOG_MAX_LIMIT = 20
+# El barrido cuesta lo mismo pida 4 partidos o 30: recorre igualmente todas las
+# ligas y fechas, y `limit` sólo recorta la lista ya ordenada al final. Cachear
+# a la profundidad del consumidor más hambriento (`/v1/high-probability`) deja
+# que los tres endpoints compartan una única entrada en vez de barrer ESPN una
+# vez por cada profundidad distinta.
+CATALOG_SWEEP_DEPTH = max(CATALOG_MAX_LIMIT, HIGH_PROBABILITY_FIXTURES)
+# Cadencia del warmer. Con partidos en curso iguala al `refetchInterval` del
+# cliente (20s); sin ninguno baja a 5 min, porque refrescar el catálogo cada
+# 20s de madrugada, sin fixtures ni usuarios, sería gasto puro.
+CATALOG_WARM_ACTIVE_SECONDS = 20.0
+CATALOG_WARM_IDLE_SECONDS = 300.0
+
+
+def _slice_catalog(payload: dict[str, Any], limit: int) -> dict[str, Any]:
+    """Recorta un catálogo cacheado sin recalcularlo.
+
+    Sólo `fixtures` y `count` dependen de `limit`; `league_count`,
+    `date_count`, `dates` y `partial_failure_count` describen el barrido
+    completo y se conservan intactos.
+    """
+
+    fixtures = list(payload.get("fixtures", []))[:limit]
+    return {**payload, "fixtures": fixtures, "count": len(fixtures)}
+
+
 def _daily_track_record_date(value: str) -> date:
     """Valida la fecha `YYYYMMDD` del resumen diario de aciertos."""
 
@@ -914,6 +1102,27 @@ def _settlement_store() -> Any | None:
         return None
 
 
+def _catalog_cache_store() -> Any | None:
+    """Conecta el nivel persistente de la caché si hay base de datos.
+
+    Su ausencia no degrada ninguna respuesta: la caché en memoria es
+    autosuficiente y sólo se pierde la capacidad de sobrevivir a un
+    despliegue, así que un fallo aquí nunca debe impedir el arranque.
+    """
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+    try:
+        return build_catalog_cache_store(database_url)
+    except Exception as exc:  # noqa: BLE001 - la API no debe caer por la caché
+        LOGGER.warning(json.dumps({
+            "event": "catalog_cache_store_unavailable",
+            "error_type": type(exc).__name__,
+        }, sort_keys=True))
+        return None
+
+
 def create_app(
     config: ServiceConfig | None = None,
     fixture_resolver: Any | None = None,
@@ -953,12 +1162,20 @@ def create_app(
     shadow_catalog = load_shadow_catalog()
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
-        """Libera sólo el executor creado y poseído por esta aplicación."""
+    async def lifespan(scope: FastAPI):
+        """Arranca el warmer de catálogos y libera lo que esta app posee."""
 
+        warmers = [
+            asyncio.create_task(loop())
+            for loop in getattr(scope.state, "catalog_warmers", ())
+        ]
         try:
             yield
         finally:
+            for task in warmers:
+                task.cancel()
+            if warmers:
+                await asyncio.gather(*warmers, return_exceptions=True)
             if live_runtime is None and hasattr(live_engine, "close"):
                 live_engine.close()
 
@@ -987,13 +1204,31 @@ def create_app(
     # varios clientes (Mini App, bot, worker) recalculando el mismo barrido de
     # 63 ligas en ESPN al mismo tiempo tras un despliegue, y esa contención
     # hizo que predicciones sin relación agotaran su timeout de 30s.
-    app.state.upcoming_catalog_cache = AsyncPredictionCache(ttl_seconds=45.0)
+    #
+    # El segundo umbral (`stale_ttl_seconds`) es lo que saca el barrido del
+    # camino crítico: pasado el TTL la respuesta se sigue sirviendo al
+    # instante mientras se recalcula por detrás. Sin él, con el tráfico de un
+    # grupo privado casi ninguna apertura de la Mini App caía dentro de la
+    # ventana de 25-45s y cada usuario pagaba los ~30s completos. La lista de
+    # próximos partidos apenas cambia, así que tolera una ventana mucho más
+    # larga (15 min) que el catálogo live (3 min).
+    #
+    # El nivel persistente es lo que hace que un despliegue deje de dejar la
+    # caché en frío: sin él, el contenedor arranca sin nada y el primer usuario
+    # posterior a cada publicación vuelve a pagar el barrido completo.
+    catalog_store = _catalog_cache_store()
+    app.state.catalog_cache_store = catalog_store
+    app.state.upcoming_catalog_cache = AsyncPredictionCache(
+        ttl_seconds=60.0, stale_ttl_seconds=900.0, stamp_age=True,
+        store=catalog_store, namespace="upcoming")
     # 25s, no 15s: la Mini App refresca cada 20s (`refetchInterval` en
     # `live/page.tsx`). Con TTL=15s casi cada refresco periódico expiraba la
     # caché primero y pagaba de nuevo el barrido completo (~30s medidos en
     # frío contra las 63 ligas x 3 días) en vez de servir la respuesta ya
     # calculada. Ver DEC-181.
-    app.state.live_catalog_cache = AsyncPredictionCache(ttl_seconds=25.0)
+    app.state.live_catalog_cache = AsyncPredictionCache(
+        ttl_seconds=25.0, stale_ttl_seconds=180.0, stamp_age=True,
+        store=catalog_store, namespace="live")
     app.state.high_probability_view = HighProbabilityView()
     app.state.request_gate = RequestGate(
         effective.max_concurrent_requests,
@@ -1047,6 +1282,36 @@ def create_app(
         valid = _configuration_ready(effective)
         return {"status": "ready" if valid else "not_ready", "ready": valid, "contract_version": effective.contract_version, "hawkes_enabled": effective.hawkes_enabled, "hawkes_shadow_mode": effective.hawkes_shadow_mode, "shadow_catalog_ready": True, "live_models_ready": True, "reason": None if valid else "invalid_service_configuration"}
 
+    async def _cached_upcoming_catalog(
+        selected: str, selected_date: str | None,
+    ) -> dict[str, Any]:
+        """Sirve el catálogo de próximos compartido por todos sus consumidores.
+
+        La clave depende sólo de ligas y fecha, nunca de `limit`: el barrido
+        recorre las mismas ligas y fechas pida cuatro partidos o treinta, así
+        que `/v1/upcoming` y `/v1/high-probability` comparten una sola entrada
+        y cada uno recorta lo que necesita.
+        """
+
+        async def calculate() -> dict[str, Any]:
+            """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
+
+            fixtures = await _infer_with_timeout(
+                _upcoming_catalog, (selected, CATALOG_SWEEP_DEPTH, selected_date),
+                effective.inference_timeout_seconds * 5
+            )
+            return {
+                "fixtures": fixtures, "count": len(fixtures), "status": "ok",
+                "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
+                "date_count": len(
+                    _upcoming_dates(datetime.now(timezone.utc), selected_date)),
+            }
+
+        key = json.dumps(
+            {"leagues": selected, "date": selected_date}, sort_keys=True)
+        return await app.state.upcoming_catalog_cache.get_or_compute(
+            key, calculate)
+
     @app.get("/v1/upcoming", tags=["inference"])
     async def upcoming_catalog(
         limit: int = 8, leagues: str | None = None,
@@ -1057,26 +1322,10 @@ def create_app(
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
         selected = leagues or ",".join(slug for slug, _ in LEAGUES)
-        bounded = min(max(int(limit), 1), 20)
-        key = json.dumps(
-            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
-
-        async def calculate() -> dict[str, Any]:
-            """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
-
-            fixtures = await _infer_with_timeout(
-                _upcoming_catalog, (selected, bounded, date),
-                effective.inference_timeout_seconds * 5
-            )
-            return {
-                "fixtures": fixtures, "count": len(fixtures), "status": "ok",
-                "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
-                "date_count": len(_upcoming_dates(datetime.now(timezone.utc), date)),
-            }
-
+        bounded = min(max(int(limit), 1), CATALOG_MAX_LIMIT)
         try:
-            return await app.state.upcoming_catalog_cache.get_or_compute(
-                key, calculate)
+            return _slice_catalog(
+                await _cached_upcoming_catalog(selected, date), bounded)
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo upcoming: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
@@ -1121,23 +1370,12 @@ def create_app(
             }
         selected = leagues or ",".join(slug for slug, _ in LEAGUES)
         bounded = min(max(int(limit), 1), 50)
-        catalog_key = json.dumps({
-            "endpoint": "high_probability", "leagues": selected,
-            "limit": HIGH_PROBABILITY_FIXTURES, "date": date,
-        }, sort_keys=True)
-
-        async def _fetch_catalog() -> dict[str, Any]:
-            """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
-
-            fixtures = await _infer_with_timeout(
-                _upcoming_catalog, (selected, HIGH_PROBABILITY_FIXTURES, date),
-                effective.inference_timeout_seconds * 5,
-            )
-            return {"fixtures": fixtures}
-
         try:
-            cached = await app.state.upcoming_catalog_cache.get_or_compute(
-                catalog_key, _fetch_catalog)
+            # Misma entrada de caché que `/v1/upcoming`: antes este endpoint
+            # tenía su propia clave y barría ESPN por separado, aunque el
+            # barrido es idéntico y sólo cambiaba cuántos fixtures conservaba
+            # al final. `CATALOG_SWEEP_DEPTH` ya cubre `HIGH_PROBABILITY_FIXTURES`.
+            cached = await _cached_upcoming_catalog(selected, date)
         except (ValueError, TimeoutError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo mayor probabilidad: %s", exc)
             raise _error("upcoming_catalog_unavailable") from exc
@@ -1168,13 +1406,20 @@ def create_app(
         if not selected:
             selected = ",".join(
                 str(row["slug"]) for row in app.state.data_explorer.leagues())
-        return selected, min(max(int(limit), 1), 20)
+        return selected, min(max(int(limit), 1), CATALOG_MAX_LIMIT)
 
-    def _live_catalog_key(selected: str, bounded: int, date: str | None) -> str:
-        """Clave compartida por la caché del catálogo y el progreso del barrido."""
+    def _live_catalog_key(selected: str, date: str | None) -> str:
+        """Clave compartida por la caché del catálogo y el progreso del barrido.
 
-        return json.dumps(
-            {"leagues": selected, "limit": bounded, "date": date}, sort_keys=True)
+        Deliberadamente sin `limit`: el barrido recorre las mismas ligas y
+        fechas pida cuatro fixtures o veinte. Con `limit` dentro, el panel
+        (`limit=4`) y la vista live (`limit=20`) eran dos claves distintas y
+        abrir la Mini App y tocar "Ver partidos en vivo" pagaba dos barridos
+        completos del mismo catálogo. Como efecto secundario deseable,
+        `/v1/live/progress` pasa a reportar el avance del barrido compartido.
+        """
+
+        return json.dumps({"leagues": selected, "date": date}, sort_keys=True)
 
     @app.get("/v1/live", tags=["inference"])
     async def live_catalog(
@@ -1186,20 +1431,22 @@ def create_app(
         if not effective.external_calls_enabled:
             raise _error("external_calls_disabled")
         selected, bounded = _live_catalog_selection(limit, leagues)
-        key = _live_catalog_key(selected, bounded, date)
+        key = _live_catalog_key(selected, date)
 
         async def calculate() -> dict[str, Any]:
             """Ejecuta el descubrimiento live real sólo cuando la caché expira."""
 
             return await _infer_with_timeout(
                 lambda values: app.state.live_runtime.list_active(*values),
-                (selected, bounded, date, key),
+                (selected, CATALOG_MAX_LIMIT, date, key),
                 effective.inference_timeout_seconds * 6,
             )
 
         try:
-            return await app.state.live_catalog_cache.get_or_compute(
-                key, calculate)
+            return _slice_catalog(
+                await app.state.live_catalog_cache.get_or_compute(key, calculate),
+                bounded,
+            )
         except (EspnConnectorError, PrematchUnavailableError, ValueError, OSError) as exc:
             LOGGER.warning("Rechazo catálogo live: %s", exc)
             raise _error("live_catalog_unavailable") from exc
@@ -1218,8 +1465,8 @@ def create_app(
         mientras corre, y `"done"` con la cifra final una vez termina.
         """
 
-        selected, bounded = _live_catalog_selection(limit, leagues)
-        key = _live_catalog_key(selected, bounded, date)
+        selected, _ = _live_catalog_selection(limit, leagues)
+        key = _live_catalog_key(selected, date)
         return app.state.live_runtime.scan_progress.snapshot(key)
 
     @app.get("/v1/models", tags=["inference"])
@@ -1537,6 +1784,46 @@ def create_app(
             app.state.metrics.mark_live_probability_engine(
                 str(payload.get("official_source") or ""))
         return payload
+
+    async def _warm_live_catalog() -> None:
+        """Mantiene caliente el catálogo live con cadencia adaptativa.
+
+        Cada vuelta llama al mismo endpoint que la Mini App, de modo que
+        comparte clave, caché y ventana de refresco sin duplicar lógica.
+
+        La cadencia depende de si hay partidos: refrescar cada 20 s a las
+        cuatro de la mañana, sin nadie conectado y sin un solo fixture activo,
+        sería quemar llamadas a ESPN y CPU de Railway para nada. Con partidos
+        en curso el ritmo iguala al `refetchInterval` del cliente.
+        """
+
+        while True:
+            active = 0
+            try:
+                payload = await live_catalog(limit=CATALOG_MAX_LIMIT)
+                active = int(payload.get("count") or 0)
+            except Exception as exc:  # noqa: BLE001 - un fallo no puede cortar el bucle
+                LOGGER.warning("Warmer live sin resultado: %s", exc)
+            await asyncio.sleep(
+                CATALOG_WARM_ACTIVE_SECONDS if active else CATALOG_WARM_IDLE_SECONDS)
+
+    async def _warm_upcoming_catalog() -> None:
+        """Mantiene caliente el catálogo de próximos partidos."""
+
+        while True:
+            try:
+                await upcoming_catalog(limit=CATALOG_MAX_LIMIT)
+            except Exception as exc:  # noqa: BLE001 - un fallo no puede cortar el bucle
+                LOGGER.warning("Warmer upcoming sin resultado: %s", exc)
+            await asyncio.sleep(CATALOG_WARM_IDLE_SECONDS)
+
+    # Sin llamadas externas no hay barrido que adelantar, y el warmer sólo
+    # conseguiría llenar los logs de rechazos.
+    app.state.catalog_warmers = (
+        (_warm_live_catalog, _warm_upcoming_catalog)
+        if effective.catalog_warmer_enabled and effective.external_calls_enabled
+        else ()
+    )
 
     return app
 

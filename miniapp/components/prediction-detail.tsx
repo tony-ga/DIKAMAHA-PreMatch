@@ -53,7 +53,11 @@ export function PredictionDetail(props: Props) {
         kickoff_ts: props.kickoff,
       }),
     }, csrfToken),
-    enabled: Boolean(props.league && props.home && props.away && props.kickoff),
+    // `csrfToken` entra en la condición porque esta lectura viaja por POST y
+    // el proxy la rechaza sin token. Durante el arranque optimista la interfaz
+    // ya está pintada pero `/api/session/me` aún no ha respondido; lanzarla
+    // antes sólo cachearía un 403 que el usuario vería como fallo real.
+    enabled: Boolean(csrfToken && props.league && props.home && props.away && props.kickoff),
   });
   if (query.isError) {
     const { title, detail } = unavailableReason(query.error);

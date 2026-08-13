@@ -235,7 +235,10 @@ export function LiveDetail({ fixtureId, league }: Props) {
       method: "POST",
       body: JSON.stringify({ league_slug: league, match_id: Number(fixtureId) }),
     }, csrfToken),
-    enabled: Boolean(league && fixtureId),
+    // `csrfToken` entra en la condición porque esta lectura viaja por POST y
+    // el proxy la rechaza sin token: durante el arranque optimista la interfaz
+    // ya está pintada pero la sesión aún no se ha confirmado.
+    enabled: Boolean(csrfToken && league && fixtureId),
     refetchInterval: (activeQuery) => {
       const code = activeQuery.state.error instanceof Error ? activeQuery.state.error.message : "";
       return TERMINAL_LIVE_ERRORS.has(code) ? false : LIVE_REFRESH_MS;

@@ -15,7 +15,9 @@
     "worker": "tsx worker/alerts.ts"
   },
   "dependencies": {
+    "@tanstack/query-sync-storage-persister": "5.101.4",
     "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-query-persist-client": "5.101.4",
     "drizzle-orm": "0.45.2",
     "next": "16.3.0",
     "postgres": "3.4.9",

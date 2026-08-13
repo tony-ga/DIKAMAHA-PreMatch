@@ -743,10 +743,17 @@ def test_wall_clock_budget_returns_partial_results_instead_of_blocking(
 
     monkeypatch.setattr(service, "_high_probability_prediction", prediction)
 
+    # Construir la app queda fuera del cronómetro. Cargar el snapshot y los
+    # artefactos cuesta ~1.5s por sí solo, así que medirlo aquí gastaba casi un
+    # tercio del presupuesto en algo que este test no está evaluando: el
+    # presupuesto acota el barrido de fixtures, no el arranque del servicio.
+    # Con la suite completa compitiendo por CPU eso bastaba para hacerlo fallar
+    # sin que el mecanismo bajo prueba tuviera nada que ver.
+    client = TestClient(
+        create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True)))
+
     started = time.monotonic()
-    payload = TestClient(
-        create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
-    ).get("/v1/high-probability?limit=50").json()
+    payload = client.get("/v1/high-probability?limit=50").json()
     elapsed = time.monotonic() - started
 
     assert payload["status"] == "ok"

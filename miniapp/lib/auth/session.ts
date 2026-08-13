@@ -4,7 +4,25 @@ import { cookies } from "next/headers";
 import { env } from "@/lib/env";
 
 export const SESSION_COOKIE = "dikamaha_miniapp_session";
-const SESSION_TTL_SECONDS = 12 * 60 * 60;
+/**
+ * Duración de la sesión: 30 días, no 12 horas.
+ *
+ * Con 12 horas, abrir la Mini App dos veces en un día ya obligaba a rehacer el
+ * alta por Telegram -validar `initData`, escribir en PostgreSQL y dos
+ * round-trips más antes de pedir el primer dato-. Nada en el modelo de amenaza
+ * lo justificaba: la cookie es `HttpOnly`, va firmada con HMAC y su
+ * autorización se revalida en cada emisión. `refreshSession` la renueva de
+ * forma rodante, así que quien usa la aplicación no vuelve a autenticarse.
+ */
+const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+/**
+ * A partir de qué antigüedad conviene reemitir la cookie.
+ *
+ * Renovar en cada petición obligaría a escribir la cabecera `Set-Cookie` en
+ * todas las respuestas; hacerlo sólo cuando ha pasado un día mantiene la
+ * ventana efectiva en ~29 días sin ese coste.
+ */
+const SESSION_REFRESH_AFTER_SECONDS = 24 * 60 * 60;
 
 export type Session = {
   userId: number;
@@ -12,6 +30,18 @@ export type Session = {
   firstName: string;
   csrf: string;
   expiresAt: number;
+  /**
+   * Rol y plan viajan dentro de la cookie firmada, no se consultan por
+   * petición. `authorizeRequest` corre en cada llamada al proxy: leer la fila
+   * ahí convertiría cada petición de catálogo en un viaje extra a PostgreSQL.
+   * La cookie va firmada con HMAC, así que el cliente no puede alterarlos, y
+   * cualquier cambio de estado se aplica en la siguiente emisión.
+   *
+   * Opcionales porque las cookies emitidas antes de las cuentas en base de
+   * datos no los traen y deben seguir siendo válidas hasta caducar.
+   */
+  role?: "user" | "admin";
+  plan?: string;
 };
 
 function encode(value: string): string {
@@ -84,6 +114,33 @@ export function sessionCookieOptions() {
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   };
+}
+
+/**
+ * Reemite la cookie si ya lleva un día viva, conservando la misma sesión.
+ *
+ * Renovación rodante: mientras el usuario abra la Mini App de vez en cuando,
+ * su sesión nunca caduca y no vuelve a pasar por el alta de Telegram. Conserva
+ * el `csrf` original para no invalidar el token que el cliente ya tiene en
+ * memoria.
+ */
+export function refreshedSessionToken(session: Session): string | null {
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = session.expiresAt - now;
+  // Una sesión ya vencida no se renueva, se rehace. Hoy esto es inalcanzable
+  // -sólo se llama tras `currentSession()`, que ya rechaza lo caducado-, pero
+  // sin la guarda esta función sabría resucitar sesiones muertas, y ese es
+  // exactamente el tipo de primitiva que acaba llamándose desde otro sitio.
+  if (remaining <= 0) return null;
+  if (remaining > SESSION_TTL_SECONDS - SESSION_REFRESH_AFTER_SECONDS) {
+    return null;
+  }
+  const renewed: Session = {
+    ...session,
+    expiresAt: now + SESSION_TTL_SECONDS,
+  };
+  const payload = encode(JSON.stringify(renewed));
+  return `${payload}.${signature(payload)}`;
 }
 
 export function validCsrf(session: Session, supplied: string | null): boolean {
