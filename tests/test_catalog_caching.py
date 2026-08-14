@@ -40,11 +40,13 @@ def test_upcoming_catalog_deduplicates_identical_requests(
 
     calls = {"count": 0}
 
-    def _fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Cuenta cuántas veces se ejecuta el barrido real."""
 
         calls["count"] += 1
-        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}]
+        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", _fetch)
     client = TestClient(create_app(
@@ -65,11 +67,13 @@ def test_upcoming_catalog_does_not_collide_across_filters(
 
     calls: list[tuple[str, int, str | None]] = []
 
-    def _fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Registra los parámetros de cada barrido real."""
 
         calls.append(payload)
-        return [{"match_id": len(calls), "kickoff_ts": "2026-08-13T20:00:00+00:00"}]
+        return [{"match_id": len(calls), "kickoff_ts": "2026-08-13T20:00:00+00:00"}], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", _fetch)
     client = TestClient(create_app(
@@ -87,13 +91,15 @@ def test_upcoming_catalog_failure_is_not_cached(monkeypatch: Any) -> None:
 
     calls = {"count": 0}
 
-    def _flaky(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _flaky(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Falla la primera vez, funciona la segunda."""
 
         calls["count"] += 1
         if calls["count"] == 1:
             raise ValueError("espn_transient")
-        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}]
+        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", _flaky)
     client = TestClient(create_app(
@@ -160,11 +166,13 @@ def test_upcoming_catalog_shares_one_sweep_across_limits(
         for index in range(6)
     ]
 
-    def _fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Devuelve el catálogo completo y cuenta los barridos reales."""
 
         calls["count"] += 1
-        return fixtures[:payload[1]]
+        return fixtures[:payload[1]], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", _fetch)
     client = TestClient(create_app(
@@ -276,11 +284,13 @@ def test_high_probability_reuses_the_upcoming_catalog_sweep(
 
     calls = {"count": 0}
 
-    def _fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Cuenta cuántas veces se ejecuta el barrido real."""
 
         calls["count"] += 1
-        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}]
+        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}], []
 
     class _AvailableView:
         """Vista con ambas fuentes disponibles: obliga a consultar el catálogo.
@@ -328,11 +338,13 @@ def test_warmer_fills_the_catalog_before_anyone_asks(monkeypatch: Any) -> None:
 
     calls = {"count": 0}
 
-    def _fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def _fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Cuenta cuántas veces se ejecuta el barrido real."""
 
         calls["count"] += 1
-        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}]
+        return [{"match_id": 1, "kickoff_ts": "2026-08-13T20:00:00+00:00"}], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", _fetch)
     # Sin esto el bucle dormiría 5 minutos tras su primera vuelta y el test

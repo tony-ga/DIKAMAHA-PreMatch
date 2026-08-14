@@ -4434,6 +4434,76 @@ pasa a *Index Scan using idx_high_probability_pick_freezes_kickoff_ts* -el
 seq scan y el sort explicito desaparecen del plan-.
 
 
+DEC-193
+Fecha: 2026-08-13
+Problema: DEC-192 dejo dos hallazgos documentados sin corregir por ser
+decisiones de producto, no bugs de codigo: (a) `CATALOG_MAX_LIMIT=20` es un
+tope global -no por liga- compartido por 8+ consumidores (`/v1/upcoming`,
+`/v1/live`, miniapp, ambos bots, el barrido de "Mayor probabilidad"), asi
+que un solo torneo con muchos kickoffs simultaneos podia agotar el cupo
+completo y dejar sin ningun partido a las otras 62 ligas, sin ninguna senal
+en el contrato; (b) el worker de alertas de la miniapp solo vigila fixtures
+YA EN VIVO (`/v1/live`, tope 20 por liga) mientras el formulario de alta
+acepta cualquier `fixture_id` escrito a mano sin validarlo contra ese
+universo. Consultado el usuario, eligio para ambos la opcion recomendada:
+reparto minimo por liga + aviso de truncado; y validacion contra el
+catalogo al crear la suscripcion.
+Decision (a): `allocate_fixtures_fairly()`, nueva en
+`src/espn_fixture_resolver.py` -modulo neutral ya importado por
+`dikamaha_service.py` y `live_prediction_runtime.py`-, compartida por
+`_upcoming_catalog` (`/v1/upcoming`) y `LivePredictionRuntime.list_active`
+(`/v1/live`). El reparto es una ronda: como mucho un fixture por liga -el de
+kickoff mas proximo de esa liga- antes de tomar un segundo de cualquier
+liga, repitiendo hasta agotar el cupo o las colas. El orden final que se
+devuelve sigue siendo cronologico; el reparto solo decide *que* fixtures
+entran, no como se presentan. El contrato de ambos endpoints gana
+`truncated`/`leagues_with_hidden_fixtures`, propagado tanto por el barrido
+completo (`CATALOG_SWEEP_DEPTH`) como por el recorte final al `limit` que
+pide cada cliente -`_slice_catalog` recalcula el truncamiento porque un
+`limit` de cliente mas chico puede volver a esconder ligas que si entraron
+al barrido-. La miniapp anade `TruncatedCatalogNotice`, un aviso discreto en
+`/upcoming` y `/live` cuando `truncated` es verdadero.
+Decision (b): `app/subscriptions/page.tsx` consulta `/api/upcoming` y
+`/api/live` -filtrados por la liga que el usuario ya declara obligatoria en
+el formulario- antes de crear la suscripcion, y rechaza con un mensaje claro
+si el `fixture_id` no aparece en ninguno de los dos. Se consultan ambos
+catalogos, no solo "en vivo": crear la alerta antes del kickoff es el caso
+de uso normal, no la excepcion, y el worker solo empieza a vigilar el
+fixture cuando entra a `/v1/live`. Si la consulta de validacion falla -API
+caida-, se deja pasar la creacion en vez de bloquearla: es preferible una
+alerta que nunca dispare a que el usuario no pueda crear ninguna por un
+catalogo caido. Las suscripciones por liga -sin `fixture_id`- omiten la
+validacion, porque no hay un fixture concreto que comprobar.
+Motivo: (a) el reparto por ronda resuelve el mecanismo raiz -un torneo con
+muchos partidos simultaneos monopolizando el cupo- sin descartar el
+principio de "lo mas proximo primero" para las ligas que si tienen pocos
+partidos ese dia; declarar el truncamiento en vez de ocultarlo es el mismo
+principio de honestidad que ya rige el resto del proyecto (DEC-182 para
+lineas imposibles, DEC-189 para logs silenciosos). (b) validar en el alta
+ataca el error mas comun -un ID mal copiado o de un partido ya terminado- en
+el momento en que el usuario todavia puede corregirlo, en vez de que la
+alerta se guarde y nunca dispare sin ninguna explicacion.
+Estado: congelada
+Impacto en contratos/fases: `/v1/upcoming` y `/v1/live` ganan dos claves
+aditivas (`truncated`, `leagues_with_hidden_fixtures`); ningun consumidor
+existente rompe por ellas -son nuevas, no reemplazan nada-. El formulario de
+alertas gana una llamada de red adicional antes de enviar cuando el usuario
+especifica `fixture_id`, con degradacion segura si esa llamada falla.
+Evidencia requerida: prueba que un torneo con muchos kickoffs simultaneos no
+monopolice el cupo y que las demas ligas activas SI aparezcan; prueba de que
+el orden final siga siendo cronologico; prueba de que el formulario rechace
+un fixture inexistente y acepte uno real desde cualquiera de los dos
+catalogos; prueba de que una suscripcion por liga no dispare la validacion.
+Evidencia obtenida: 6 pruebas nuevas en `tests/test_espn_fixture_resolver.py`
+para `allocate_fixtures_fairly`; 3 Playwright nuevas en
+`catalog-truncation.spec.ts`; 4 Playwright nuevas en
+`subscriptions-fixture-validation.spec.ts`. Suite Python completa 890
+aprobadas / 8 omitidas / 0 fallos reales -una falla intermitente de
+concurrencia SQLite en `test_catalog_cache_store.py`, no relacionada,
+confirmada 3/3 en aislamiento-; typecheck, 65 Vitest y 62 Playwright sin
+regresiones.
+
+
 ```text
 DEC-NNN
 Fecha:

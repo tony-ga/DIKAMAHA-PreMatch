@@ -2,6 +2,31 @@
 
 **Actualizado:** 2026-08-13
 
+## Reparto justo por liga y validación de fixture_id en alertas (DEC-193)
+
+Ver `DEC-193`. Cierra los dos hallazgos que `DEC-192` dejó documentados sin
+corregir, con la opción recomendada elegida por el usuario para ambos.
+
+**Reparto por liga.** `allocate_fixtures_fairly()` (nueva en
+`src/espn_fixture_resolver.py`) reemplaza el `sorted(...)[:limit]` puro de
+`/v1/upcoming` y `/v1/live` por un reparto en ronda: como mucho un fixture
+por liga antes de tomar un segundo de cualquiera. Un torneo con muchos
+kickoffs simultáneos ya no puede agotar el cupo por sí solo. Ambos
+endpoints declaran `truncated`/`leagues_with_hidden_fixtures` cuando el
+cupo no alcanzó, y la miniapp lo muestra con un aviso discreto en
+`/upcoming` y `/live`.
+
+**Validación de alertas.** El formulario de alta en `/subscriptions`
+consulta `/api/upcoming` y `/api/live` -filtrados por la liga que ya es
+obligatoria- antes de guardar, y rechaza con mensaje claro un `fixture_id`
+que no aparece en ninguno. Degrada seguro: si la validación falla, deja
+pasar el alta en vez de bloquearla.
+
+**Gates.** 6 pruebas nuevas para `allocate_fixtures_fairly`, 7 Playwright
+nuevas (3 de truncamiento, 4 de validación de alertas). Suite Python 890
+aprobadas / 8 omitidas / 0 fallos reales; typecheck, 65 Vitest y 62
+Playwright sin regresiones.
+
 ## Auditoría extensiva de producción — acceso real a Postgres, "errores bomba"
 
 Ver `DEC-190`, `DEC-191`, `DEC-192`. Esta sesión obtuvo por primera vez acceso

@@ -174,5 +174,61 @@ def connector_for_league(league_slug: str) -> EspnFixtureResolver:
     return EspnFixtureResolver(EspnProspectiveConnector(EspnConnectorConfig(league=league_slug)))
 
 
+def allocate_fixtures_fairly(
+    rows: list[dict[str, Any]], limit: int,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Recorta un barrido de fixtures repartiendo el cupo entre ligas.
+
+    Compartido por `/v1/upcoming` y `/v1/live`
+    (`src/dikamaha_service.py::_upcoming_catalog`,
+    `src/live_prediction_runtime.py::LivePredictionRuntime.list_active`).
+
+    Antes, `sorted(rows, key=kickoff)[:limit]` tomaba estrictamente los
+    fixtures de kickoff más próximo sin mirar de qué liga son. Un torneo de
+    clasificación con muchos partidos simultáneos (`uefa.europa.conf_qual`
+    con 20+ kickoffs a la misma hora es el caso real medido en producción)
+    agotaba el cupo completo por sí solo, y ningún partido de las otras
+    ligas activas ese día aparecía en la respuesta -sin ninguna señal de que
+    hubiera más partidos de los mostrados-.
+
+    El reparto es una ronda: se toma como mucho un fixture por liga -el de
+    kickoff más próximo de esa liga- antes de tomar un segundo de cualquier
+    liga, y así sucesivamente. El orden final que se devuelve sigue siendo
+    cronológico -esto sólo cambia *cuáles* fixtures entran al cupo, no cómo
+    se presentan-. Ligas cuyo cupo se agotó antes de mostrar todos sus
+    fixtures del barrido quedan en `hidden_leagues`, para que el contrato
+    pueda declarar el truncamiento en vez de dejarlo invisible.
+    """
+
+    ordered = sorted(rows, key=lambda row: str(row.get("kickoff_ts", "")))
+    queues: dict[str, list[dict[str, Any]]] = {}
+    for row in ordered:
+        queues.setdefault(str(row.get("league_slug")), []).append(row)
+    league_order = sorted(
+        queues, key=lambda slug: str(queues[slug][0].get("kickoff_ts", "")))
+    cursors = {slug: 0 for slug in league_order}
+    selected: list[dict[str, Any]] = []
+    remaining = sum(len(queue) for queue in queues.values())
+    while len(selected) < limit and remaining > 0:
+        took_any = False
+        for slug in league_order:
+            if len(selected) >= limit:
+                break
+            cursor = cursors[slug]
+            queue = queues[slug]
+            if cursor >= len(queue):
+                continue
+            selected.append(queue[cursor])
+            cursors[slug] = cursor + 1
+            remaining -= 1
+            took_any = True
+        if not took_any:
+            break
+    selected.sort(key=lambda row: str(row.get("kickoff_ts", "")))
+    hidden_leagues = sorted(
+        slug for slug in league_order if cursors[slug] < len(queues[slug]))
+    return selected, hidden_leagues
+
+
 # Version: 1.0.0
 # Created: 2026-07-27

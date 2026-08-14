@@ -97,7 +97,7 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
 
 try:
     from src.universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
-    from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
+    from src.espn_fixture_resolver import FixtureLookup, FixtureResolutionError, allocate_fixtures_fairly, connector_for_league, scoreboard_fixtures
     from src.espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
     from src.espn_user_explorer import LEAGUES, EspnFootballDataExplorer, explorer_dates
     from src.espn_fixture_context import default_context_service
@@ -107,7 +107,7 @@ try:
     from src.provider_match_context import ProviderMatchContextService
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from universal_prematch import PrematchUnavailableError, UniversalPrematchEngine, UpcomingMatchInput
-    from espn_fixture_resolver import FixtureLookup, FixtureResolutionError, connector_for_league, scoreboard_fixtures
+    from espn_fixture_resolver import FixtureLookup, FixtureResolutionError, allocate_fixtures_fairly, connector_for_league, scoreboard_fixtures
     from espn_prospective_connector import EspnConnectorConfig, EspnConnectorError, EspnProspectiveConnector
     from espn_user_explorer import LEAGUES, EspnFootballDataExplorer, explorer_dates
     from espn_fixture_context import default_context_service
@@ -956,14 +956,16 @@ def _select_by_fixture(
 
 def _upcoming_catalog(
     payload: tuple[str, int, str | None],
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Obtiene fixtures programados próximos desde scoreboards ESPN.
 
     Args:
         payload: Slugs, máximo de partidos y fecha opcional.
 
     Returns:
-        Fixtures ordenados por kickoff UTC y limitados.
+        Fixtures ordenados por kickoff UTC tras el reparto justo por liga
+        (`allocate_fixtures_fairly`), y la lista de ligas con más fixtures
+        de los que el cupo alcanzó a mostrar.
     """
 
     leagues, limit, selected_date = payload
@@ -975,7 +977,7 @@ def _upcoming_catalog(
             lambda slug: _league_upcoming(slug, dates, now), slugs[:64]))
     rows = [row for batch in batches for row in batch]
     unique = {int(row["match_id"]): row for row in rows}
-    return sorted(unique.values(), key=lambda row: row["kickoff_ts"])[:limit]
+    return allocate_fixtures_fairly(list(unique.values()), limit)
 
 
 # Tope duro que ya aplicaban `/v1/upcoming` y `/v1/live` a su parámetro
@@ -1001,12 +1003,25 @@ def _slice_catalog(payload: dict[str, Any], limit: int) -> dict[str, Any]:
     """Recorta un catálogo cacheado sin recalcularlo.
 
     Sólo `fixtures` y `count` dependen de `limit`; `league_count`,
-    `date_count`, `dates` y `partial_failure_count` describen el barrido
-    completo y se conservan intactos.
+    `date_count` y `partial_failure_count` describen el barrido completo y
+    se conservan intactos. `truncated`/`leagues_with_hidden_fixtures` sí se
+    recalculan: el barrido ya repartió el cupo con justicia
+    (`allocate_fixtures_fairly`), pero un `limit` de cliente más chico que
+    `CATALOG_SWEEP_DEPTH` puede volver a dejar fuera ligas que sí entraron
+    al barrido -sin este recálculo, el aviso de truncamiento describiría el
+    barrido completo, no lo que el cliente realmente recibió-.
     """
 
     fixtures = list(payload.get("fixtures", []))[:limit]
-    return {**payload, "fixtures": fixtures, "count": len(fixtures)}
+    shown_leagues = {str(row.get("league_slug")) for row in fixtures}
+    all_leagues = {
+        str(row.get("league_slug")) for row in payload.get("fixtures", [])}
+    newly_hidden = all_leagues - shown_leagues
+    hidden = sorted(set(payload.get("leagues_with_hidden_fixtures", [])) | newly_hidden)
+    return {
+        **payload, "fixtures": fixtures, "count": len(fixtures),
+        "truncated": bool(hidden), "leagues_with_hidden_fixtures": hidden,
+    }
 
 
 def _daily_track_record_date(value: str) -> date:
@@ -1381,7 +1396,7 @@ def create_app(
         async def calculate() -> dict[str, Any]:
             """Ejecuta el barrido ESPN real sólo cuando la caché expira."""
 
-            fixtures = await _infer_with_timeout(
+            fixtures, hidden_leagues = await _infer_with_timeout(
                 _upcoming_catalog, (selected, CATALOG_SWEEP_DEPTH, selected_date),
                 effective.inference_timeout_seconds * 5
             )
@@ -1390,6 +1405,8 @@ def create_app(
                 "league_count": len([slug for slug in selected.split(",") if slug.strip()]),
                 "date_count": len(
                     _upcoming_dates(datetime.now(timezone.utc), selected_date)),
+                "truncated": bool(hidden_leagues),
+                "leagues_with_hidden_fixtures": hidden_leagues,
             }
 
         key = json.dumps(

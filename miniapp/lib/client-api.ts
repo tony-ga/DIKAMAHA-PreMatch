@@ -44,6 +44,8 @@ export type Catalog = {
   partial_failure_count?: number;
   league_count?: number;
   date_count?: number;
+  truncated?: boolean;
+  leagues_with_hidden_fixtures?: string[];
 };
 
 export type League = { slug: string; name: string };

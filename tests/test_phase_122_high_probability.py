@@ -423,7 +423,7 @@ def test_endpoint_reports_unavailable_only_when_both_sources_are_down(
     app = create_app(ServiceConfig(mode="operational_readonly", external_calls_enabled=True))
     app.state.high_probability_view = HighProbabilityView(
         Path("/no/existe/eligibility.json"))
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: [])
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: ([], []))
 
     payload = TestClient(app).get("/v1/high-probability").json()
     assert payload["status"] == "ok"
@@ -447,9 +447,9 @@ def test_endpoint_reports_unavailable_when_both_sources_are_down(
         Path("/no/existe/ladder_reliability.json"))
     catalog_called = {"count": 0}
 
-    def fail_if_called(payload: Any) -> list[Any]:
+    def fail_if_called(payload: Any) -> tuple[list[Any], list[Any]]:
         catalog_called["count"] += 1
-        return []
+        return [], []
 
     monkeypatch.setattr(service, "_upcoming_catalog", fail_if_called)
 
@@ -498,7 +498,7 @@ def test_endpoint_groups_by_fixture_instead_of_flattening_globally(
             observed=0.84)]),
     }
 
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
 
     async def prediction(app: Any, engine: Any, config: Any,
                          fixture: dict[str, Any]) -> dict[str, Any]:
@@ -548,7 +548,7 @@ def test_endpoint_skips_fixtures_without_prediction(monkeypatch: Any) -> None:
          "home_team_name": "C", "away_team_name": "D",
          "home_team_logo": None, "away_team_logo": None},
     ]
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
 
     async def prediction(app: Any, engine: Any, config: Any,
                          fixture: dict[str, Any]) -> dict[str, Any]:
@@ -582,7 +582,7 @@ def test_endpoint_limit_is_bounded(monkeypatch: Any) -> None:
          "home_team_logo": None, "away_team_logo": None}
         for index in range(3)
     ]
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
 
     async def prediction(app: Any, engine: Any, config: Any,
                          fixture: dict[str, Any]) -> dict[str, Any]:
@@ -617,7 +617,7 @@ def test_endpoint_limit_bounds_fixtures_not_individual_picks(monkeypatch: Any) -
          "home_team_name": "A", "away_team_name": "B",
          "home_team_logo": None, "away_team_logo": None},
     ]
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
 
     async def prediction(app: Any, engine: Any, config: Any,
                          fixture: dict[str, Any]) -> dict[str, Any]:
@@ -689,7 +689,7 @@ def test_predictions_run_with_bounded_concurrency_not_unbounded(
     import src.dikamaha_service as service
 
     fixtures = _slow_fixtures(12)
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
 
     in_flight = {"current": 0, "max_seen": 0}
 
@@ -730,7 +730,7 @@ def test_wall_clock_budget_returns_partial_results_instead_of_blocking(
     import src.dikamaha_service as service
 
     fixtures = _slow_fixtures(40)
-    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: fixtures)
+    monkeypatch.setattr(service, "_upcoming_catalog", lambda payload: (fixtures, []))
     monkeypatch.setattr(
         service, "HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS", 0.2)
 
@@ -771,11 +771,13 @@ def test_high_probability_catalog_fetch_is_cached(monkeypatch: Any) -> None:
     calls = {"count": 0}
     fixtures = _slow_fixtures(2)
 
-    def fetch(payload: tuple[str, int, str | None]) -> list[dict[str, Any]]:
+    def fetch(
+        payload: tuple[str, int, str | None],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Cuenta cuántas veces se ejecuta el barrido real."""
 
         calls["count"] += 1
-        return fixtures
+        return fixtures, []
 
     monkeypatch.setattr(service, "_upcoming_catalog", fetch)
 

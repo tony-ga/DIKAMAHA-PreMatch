@@ -84,6 +84,26 @@ export function CatalogWarning({ onRetry }: { onRetry(): void }) {
   );
 }
 
+/**
+ * Declara que el catálogo tiene más partidos de los que caben en el cupo.
+ *
+ * Antes el recorte era invisible: `/v1/upcoming` y `/v1/live` ordenaban por
+ * kickoff y tomaban los primeros N sin decir si había más. Un torneo de
+ * clasificación con muchos kickoffs simultáneos podía agotar el cupo por sí
+ * solo y las demás ligas activas desaparecían sin ningún aviso (DEC-192).
+ * El backend ahora reparte el cupo con justicia entre ligas y declara
+ * cuáles se quedaron con partidos sin mostrar; este aviso sólo lo hace
+ * visible, sin cambiar qué se muestra.
+ */
+export function TruncatedCatalogNotice({ leagues }: { leagues: string[] }) {
+  if (!leagues.length) return null;
+  return (
+    <div className="notice">
+      Hay más partidos de los que caben aquí en {leagues.length === 1 ? "esta liga" : `estas ${leagues.length} ligas`}: {leagues.join(", ")}. Filtra por liga para verlos todos.
+    </div>
+  );
+}
+
 export function ShadowBadge({ official = false }: { official?: boolean }) {
   return <span className={official ? "mode-badge official" : "mode-badge"}>{official ? "OFICIAL" : "SHADOW"}</span>;
 }

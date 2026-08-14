@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel } from "@/components/ui";
+import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel, TruncatedCatalogNotice } from "@/components/ui";
 import { api, type Catalog, type ExplorerDate, type League, queryString } from "@/lib/client-api";
 
 export default function UpcomingPage() {
@@ -43,6 +43,7 @@ export default function UpcomingPage() {
         <Metric label="Ligas consultadas" value={query.data?.league_count ?? (league ? 1 : "—")} />
         <Metric label="Días cubiertos" value={query.data?.date_count ?? (date ? 1 : "—")} />
       </div>
+      <TruncatedCatalogNotice leagues={query.data?.leagues_with_hidden_fixtures ?? []} />
       {query.isError ? (
         <StatePanel title="Calendario no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>No se generan fixtures ni predicciones inventadas.</StatePanel>
       ) : query.data?.fixtures.length ? (

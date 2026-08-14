@@ -5,7 +5,7 @@ import { type FormEvent, useState } from "react";
 
 import { useAuth } from "@/components/providers";
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
-import { api } from "@/lib/client-api";
+import { api, type Catalog, queryString } from "@/lib/client-api";
 import { alertRuleTypes, marketKeys } from "@/lib/validation";
 
 type Subscription = {
@@ -51,15 +51,62 @@ export default function SubscriptionsPage() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ["subscriptions"] }),
   });
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const [checkingFixture, setCheckingFixture] = useState(false);
+
+  // DEC-192: el worker de alertas (`miniapp/worker/alerts.ts`) sólo evalúa
+  // fixtures que aparecen en su barrido de `/v1/live` por liga -y, para
+  // reglas todavía no en vivo, en el barrido próximo de `/v1/upcoming`-;
+  // antes el formulario aceptaba cualquier `fixtureId` sin comprobarlo
+  // contra ninguno de los dos, así que un ID mal copiado o de un partido ya
+  // terminado se guardaba igual y nunca se evaluaba, sin ningún error
+  // visible en ese momento. Se consulta ambos catálogos -no sólo "en
+  // vivo"- porque crear la alerta antes del kickoff es el caso de uso
+  // normal, no la excepción.
+  async function fixtureExists(fixtureId: string, leagueSlug: string): Promise<boolean> {
+    const filters = queryString({ leagues: leagueSlug, limit: 20 });
+    const [upcoming, live] = await Promise.allSettled([
+      api<Catalog>(`/api/upcoming${filters}`),
+      api<Catalog>(`/api/live${filters}`),
+    ]);
+    const catalogs = [upcoming, live]
+      .filter((result): result is PromiseFulfilledResult<Catalog> => result.status === "fulfilled")
+      .map((result) => result.value);
+    return catalogs.some((catalog) => catalog.fixtures.some(
+      (fixture) => String(fixture.match_id) === fixtureId,
+    ));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const ruleType = String(data.get("ruleType"));
     const thresholdRule = ["probability_delta", "market_threshold"].includes(ruleType);
+    const fixtureId = String(data.get("fixtureId") || "") || undefined;
+    const leagueSlug = String(data.get("leagueSlug") || "") || undefined;
+    if (fixtureId && leagueSlug) {
+      setError(null);
+      setCheckingFixture(true);
+      let exists = false;
+      try {
+        exists = await fixtureExists(fixtureId, leagueSlug);
+      } catch {
+        // Sin poder confirmar, se deja pasar: es preferible una alerta que
+        // nunca dispare a bloquear el alta por un catálogo caído.
+        exists = true;
+      } finally {
+        setCheckingFixture(false);
+      }
+      if (!exists) {
+        setError(
+          `No encontramos el partido ${fixtureId} en ${leagueSlug} entre los próximos ni los que están en vivo. Revisa el ID o crea la alerta por liga.`,
+        );
+        return;
+      }
+    }
     create.mutate({
       ruleType,
-      fixtureId: String(data.get("fixtureId") || "") || undefined,
-      leagueSlug: String(data.get("leagueSlug") || "") || undefined,
+      fixtureId,
+      leagueSlug,
       marketKey: thresholdRule ? String(data.get("marketKey")) : undefined,
       comparator: ruleType === "probability_delta" ? "delta" : thresholdRule ? String(data.get("comparator")) : undefined,
       threshold: thresholdRule ? Number(data.get("threshold")) / 100 : undefined,
@@ -89,7 +136,7 @@ export default function SubscriptionsPage() {
           <div className="field"><label htmlFor="threshold">Umbral porcentual</label><input id="threshold" name="threshold" type="number" min="0" max="100" step="1" defaultValue="5" /></div>
           <div className="field"><label htmlFor="cooldownSeconds">Cooldown en minutos</label><input id="cooldownSeconds" name="cooldownSeconds" type="number" min="5" max="1440" defaultValue="5" /></div>
           {error ? <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p> : null}
-          <button className="primary-button" type="submit" disabled={create.isPending}>{create.isPending ? "Guardando…" : "Crear alerta"}</button>
+          <button className="primary-button" type="submit" disabled={create.isPending || checkingFixture}>{checkingFixture ? "Verificando partido…" : create.isPending ? "Guardando…" : "Crear alerta"}</button>
         </form>
       </article>
 

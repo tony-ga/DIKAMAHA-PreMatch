@@ -24,7 +24,7 @@ from src.live_probability_engine_v1 import (
     MonteCarloDiagnosticRunner,
 )
 from src.markov_live_v1 import MarkovLiveInput
-from src.espn_fixture_resolver import scoreboard_fixtures
+from src.espn_fixture_resolver import allocate_fixtures_fairly, scoreboard_fixtures
 from src.espn_live_follower import (
     EspnLiveMatchFollower,
     InMemoryLiveRawStore,
@@ -466,11 +466,12 @@ class LivePredictionRuntime:
         rows = [row for batch, _ in batches for row in batch]
         errors = sum(error for _, error in batches)
         unique = {int(row["match_id"]): row for row in rows}
-        fixtures = sorted(
-            unique.values(), key=lambda row: (
-                str(row.get("kickoff_ts", "")), int(row["match_id"]),
-            ),
-        )[:bounded]
+        # Reparto justo por liga, no sólo "kickoff más próximo primero": un
+        # solo torneo con muchos partidos simultáneos podía agotar `bounded`
+        # (tope 20) por sí solo y dejar sin ningún partido a las demás ligas
+        # en vivo, sin ninguna señal en el contrato. Ver DEC-192.
+        fixtures, hidden_leagues = allocate_fixtures_fairly(
+            list(unique.values()), bounded)
         return {
             "fixtures": fixtures,
             "count": len(fixtures),
@@ -480,6 +481,8 @@ class LivePredictionRuntime:
             "league_count": len(slugs),
             "partial_failure_count": errors,
             "status": "live_shadow_catalog",
+            "truncated": bool(hidden_leagues),
+            "leagues_with_hidden_fixtures": hidden_leagues,
         }
 
     def _league_active(
