@@ -111,5 +111,29 @@ export const predictionSettlements = pgTable("prediction_settlements", {
   contractVersion: text("contract_version"),
 });
 
+/**
+ * Tarjeta pre-match congelada para compartir por link.
+ *
+ * `payload` es la tarjeta ya resuelta (`ShareCard`, `lib/share-card.ts`), no
+ * el fixture: el link comparte lo que el modelo dijo antes del kickoff y
+ * reabrirlo no puede devolver otra cosa. Una fila por partido, para que dos
+ * personas que comparten el mismo encuentro difundan la misma imagen.
+ */
+export const sharedPredictionCards = pgTable("shared_prediction_cards", {
+  fixtureKey: text("fixture_key").primaryKey(),
+  token: text("token").notNull(),
+  leagueSlug: text("league_slug").notNull(),
+  matchId: bigint("match_id", { mode: "number" }).notNull(),
+  homeTeamName: text("home_team_name").notNull(),
+  awayTeamName: text("away_team_name").notNull(),
+  kickoffTs: timestamp("kickoff_ts", { withTimezone: true }).notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+  createdBy: bigint("created_by", { mode: "number" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("shared_prediction_cards_token_uidx").on(table.token),
+]);
+
 export type AlertSubscription = typeof alertSubscriptions.$inferSelect;
 export type PredictionSettlement = typeof predictionSettlements.$inferSelect;
+export type SharedPredictionCard = typeof sharedPredictionCards.$inferSelect;

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
 import { useAuth } from "@/components/providers";
+import { isPublicRoute } from "@/lib/public-routes";
 
 const navigation = [
   { href: "/", icon: "⌂", label: "Inicio" },
@@ -31,6 +32,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     return () => back.offClick(onBack);
   }, [pathname, router]);
+
+  // Una tarjeta compartida la abre alguien que no tiene cuenta: darle la barra
+  // superior y la navegación de la aplicación le ofreceria seis destinos que
+  // no puede abrir. El hook de arriba ya corrió, así que el orden de hooks no
+  // cambia entre renders.
+  if (isPublicRoute(pathname)) return <>{children}</>;
 
   return (
     <div className="app-frame">

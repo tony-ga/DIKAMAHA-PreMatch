@@ -14,6 +14,7 @@ import { api, percentage, queryString, record, unavailableReason, type Catalog }
 import { EntityImage } from "@/components/entity-image";
 import { PredictionAnalytics } from "@/components/prediction-analytics";
 import { ProviderPredictor } from "@/components/provider-predictor";
+import { SharePrediction } from "@/components/share-prediction";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
 
@@ -100,6 +101,11 @@ export function PredictionDetail(props: Props) {
             <div className="probability"><span>BTTS</span><strong>{percentage(payload.probability_btts)}</strong></div>
             <div className="probability"><span>Modelo</span><strong style={{ fontSize: ".72rem" }}>{String(payload.model ?? "—")}</strong></div>
           </div>
+          <SharePrediction
+            matchId={props.fixtureId} leagueSlug={props.league}
+            homeTeamId={props.home} awayTeamId={props.away}
+            kickoffTs={props.kickoff} homeName={homeName} awayName={awayName}
+          />
         </article>
         <ProviderPredictor eventId={props.fixtureId} league={props.league} scope="pre_match" homeName={homeName} awayName={awayName} />
         <article className="data-panel analytics-panel">

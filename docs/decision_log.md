@@ -4504,6 +4504,213 @@ confirmada 3/3 en aislamiento-; typecheck, 65 Vitest y 62 Playwright sin
 regresiones.
 
 
+DEC-194
+Fecha: 2026-08-14
+Problema: el usuario reporto que la ventana "Aciertos" no mostro todos los
+aciertos de un dia con muchos partidos, y pidio explicitamente que las
+predicciones de los partidos DEL DIA EN CURSO -ganador, mas de 2.5, ambos
+marcan, y los mercados de tarjetas/corners/tiros divididos en primera
+mitad, segunda mitad y tiempo completo- queden congeladas y se comparen al
+terminar el partido. La revision encontro tres defectos independientes, no
+uno; cualquiera de ellos por si solo ya recortaba la ventana.
+(a) `_snapshot_lines` (`src/telegram_channel_publisher.py`) buscaba
+`bounded_market_grid_view` en `snapshot["prediction"]` o en la raiz del
+snapshot. Lo que `freeze_market_snapshot` guarda de verdad es la respuesta
+completa de `/v1/predict/upcoming` (`asdict(UpcomingPrediction)`), donde la
+rejilla cuelga de `experimental_team_markets` -la misma ruta que ya leen
+`_market_texts` y `_has_bounded_grid` en el mismo archivo-. Ninguna ruta de
+produccion produce las dos formas que la funcion sabia leer, asi que
+devolvia `[]` siempre y `shadow_verdicts` quedaba vacio en TODOS los
+partidos: corners, tiros y tarjetas nunca llegaron a "Aciertos" desde que
+existe Fase 118. Las cuatro pruebas de `_shadow_verdicts` pasaban porque
+todas alimentan a mano una de las dos formas irreales -exactamente la
+leccion de Fase 118 que `test_audited_market_ladder_view.py` ya advierte-.
+Un fallo asi es invisible en logs: una rejilla no encontrada se ve igual
+que una ausente.
+(b) `_daily` congela la agenda de MANANA una sola vez, a las 09:00 de la
+vispera, y cierra el conjunto del dia para siempre con
+`daily:{fecha}:complete`. Todo partido que aparezca despues -ESPN lo
+publica tarde, la liga fallo en ese unico barrido
+(`channel_league_skipped`), o `/v1/predict/upcoming` devolvio un 422
+puntual que `_freeze_all` salta por diseno y nunca reintenta- quedaba fuera
+de `channel_predictions` de forma permanente. Sin prediccion congelada
+`_results` no lo recorre, nunca se liquida y nunca aparece en la ventana.
+Con 63 ligas en el catalogo (Fase 120) ese camino no es excepcional.
+(c) `DailyTrackRecord` (`miniapp/components/track-record.tsx`) calculaba
+"hoy" con `new Date().toISOString()`, la fecha UTC del navegador, mientras
+`/v1/track-record/daily` agrupa por la fecha LOCAL de Mexico del kickoff
+(`store.on_date(target, MEXICO_TZ)`). A partir de las 18:00 de Mexico la
+ventana pedia el dia siguiente: justo la franja en que se liquidan los
+partidos de la tarde-noche, de modo que los aciertos del dia desaparecian
+en el momento en que empezaban a existir.
+Opciones: (a) migrar los snapshots ya congelados a la forma que la funcion
+leia, o ensenar a la funcion la forma real; (b) reabrir
+`daily:{fecha}:complete`, mover el congelado a un cron por partido, o anadir
+una pasada de recuperacion del mismo dia; (c) pasar la fecha desde el
+servidor en cada render, o calcularla en el cliente con la zona del canal.
+Decision (a): `_snapshot_grid` localiza la rejilla en las tres formas
+-`experimental_team_markets` anidado, `"prediction"` y raiz- y
+`_snapshot_lines` la usa. Se conservan las formas heredadas y sus pruebas:
+un snapshot ya congelado con el contrato viejo debe seguir liquidandose
+igual, y la tabla es append-only.
+Decision (b): `_same_day_catch_up` corre en cada ciclo sobre la fecha local
+en curso y congela unicamente los fixtures que faltan. La causalidad no se
+relaja en ningun punto: un fixture cuyo kickoff ya paso se cuenta en
+`same_day_late` y se descarta -nunca se congela una prediccion despues del
+inicio-, asi que lo unico que cambia es cuando se descubre el partido, no
+que se sabia al congelarlo. Cada prediccion nueva trae los tres mercados
+oficiales y su snapshot de rejilla, que `_seal_settlement` liquidara al
+terminar. El barrido se limita a dos pasadas por hora
+(`SAME_DAY_CATCH_UP_MINUTES`, franja idempotente en el ledger): recorrer 63
+ligas cuesta un scoreboard por liga y hacerlo en cada
+`TELEGRAM_CHANNEL_POLL_SECONDS` multiplicaria por doce la carga contra ESPN
+sin adelantar ningun congelado de forma relevante. El tope de `lite` se
+mide contra el total ya congelado del dia (`_same_day_budget`), no sobre el
+faltante, para que la recuperacion no convierta `lite` en `full`.
+Decision (c): `channelDateParam` (`miniapp/lib/track-record.ts`) formatea la
+fecha con `timeZone: "America/Mexico_City"`, la misma zona con la que el
+backend define el dia.
+Motivo: (a) ensenar a la funcion la forma real no toca ninguna fila ya
+sellada y respeta el caracter append-only de la tabla; migrar habria
+reescrito historia por un defecto de lectura. (b) una pasada de
+recuperacion mantiene intacto el contrato de idempotencia del resumen
+diario -`daily:{fecha}:complete` sigue significando lo mismo- y ataca el
+mecanismo raiz, que es que el conjunto del dia se decidia con informacion
+de la vispera; es el mismo principio de DEC-189/191, que un fallo parcial
+no debe convertirse en una perdida silenciosa y permanente. (c) calcular la
+fecha en el cliente con la zona correcta evita una llamada extra y deja una
+sola definicion de "el dia" compartida con `settlement_store.on_date`.
+Estado: congelada
+Impacto en contratos/fases: ningun contrato HTTP cambia. `run_cycle` gana
+dos claves informativas en su dict de conteos (`same_day_frozen`,
+`same_day_late`) y suma la recuperacion a `frozen`/`cards`/`markets`. El
+ledger gana filas `same_day_catch_up` de tipo interno, sin mensaje a
+Telegram. `_tomorrow_fixtures` se renombra a `_fixtures_for` -metodo
+privado, sin consumidores externos-. A partir del despliegue,
+`prediction_settlements.shadow_verdicts` deja de estar vacio: la ventana
+"Aciertos" empieza a mostrar corners, tiros y tarjetas por periodo en los
+partidos nuevos. Los ya sellados con `{}` se conservan como estan.
+Evidencia requerida: prueba de que `_shadow_verdicts` liquide la forma de
+snapshot que produccion guarda de verdad y cubra las tres divisiones de
+periodo; prueba de que un fixture publicado tarde se congele el mismo dia y
+llegue a `prediction_settlements`; prueba de que pasado el kickoff no se
+congele nada; prueba del tope de cadencia del barrido; prueba de que la
+ventana diaria pida el dia de Mexico despues de que UTC ya avanzo.
+Evidencia obtenida: 6 pruebas nuevas en
+`tests/test_phase_101_telegram_channel_publisher.py` -incluida una de que un
+barrido roto no bloquee `_results`- y 2 en
+`miniapp/tests/track-record.test.ts`. Suite Python completa 897 aprobadas /
+8 omitidas / 0 fallos; `tsc --noEmit` y 18 Vitest de `track-record` sin
+regresiones.
+
+
+DEC-195
+Fecha: 2026-08-14
+Problema: no habia forma de compartir una prediccion pre-match con alguien de
+fuera. El usuario pidio explicitamente que lo que circule sea un link a una
+imagen con marca de agua DIKAMAHA, no texto plano: un mensaje reenviado se
+edita, pierde el origen y deja de ser atribuible al sistema que lo produjo,
+que es justo lo contrario de lo que sostiene un producto cuya premision es la
+prediccion sellada y verificable.
+Opciones: (a) visibilidad -link publico con token no adivinable, link que
+exige sesion aprobada de la Mini App, o link publico con caducidad-;
+(b) contenido -solo el escenario principal, los tres mercados oficiales, o
+oficiales mas mercados por periodo-; (c) post-partido -la tarjeta se congela
+para siempre, o incorpora despues el marcador y el veredicto-.
+Decision (a): link publico, `/s/<token>`, con token de 32 bytes de
+`crypto.getRandomValues` en base64url. Elegida por el usuario. Es la unica
+opcion en la que compartir a gente de fuera funciona de verdad; el contenido
+premium queda accesible a quien reciba el link, y esa es la contrapartida
+aceptada de forma explicita. El token no se deriva del `fixture_key`: uno
+derivado seria calculable por cualquiera que conozca el partido y "no listado"
+no significaria nada.
+Decision (b): oficiales mas mercados por periodo, elegida por el usuario. La
+tarjeta publica 1X2, Mas de 2.5, Ambos marcan y -por primera mitad, segunda
+mitad y partido completo- corners, tiros y tarjetas, solo del lado `total`:
+los 27 grupos posibles (3 lados x 3 metricas x 3 periodos) no caben legibles
+en una imagen, y el total es el unico lado que se entiende sin saber cual
+equipo es local.
+
+Decision (b2): esas nueve filas son **media esperada y rango central del 60%**,
+no una linea over/under. La primera version publicaba la linea central de
+`bounded_market_grid_view` y el usuario señalo, con razon, que era redundante:
+si "Mas de 4.5 corners" aparece en la primera mitad y en el partido completo,
+la segunda cifra solo puede ser mayor y no informa de nada. Al reconstruir la
+muestra respetando la regla real -la primera se habia escrito a mano y no la
+obedecia- resulto que en produccion era peor: la rejilla topa sus lineas en 9.5
+(`VISIBLE_LINE_MAX`) y los tiros superan esa linea en cualquier periodo, asi
+que la tarjeta habria publicado "Tiros - Mas de 8.5" en las tres mitades con
+77%, 87% y 100%.
+
+El intento de arreglo -elegir la linea mas alejada del 50% en vez de la
+central- expuso el problema de fondo: una linea over/under unica no puede ser
+informativa y decidida a la vez. Cerca del centro de la distribucion es ~50%
+por definicion; lejos del centro es ~certeza. Sobre la escalera sin tope, "la
+mas decidida" degenera en una fila que siempre roza el 97%, elegida
+precisamente por ser casi segura. La media con su rango central no tiene ese
+dilema y distingue los periodos por construccion (4.7 / 5.6 / 10.3 corners).
+Se lee de `distributional_market_view`, cuya PMF no esta acotada a 9.5, y el
+intervalo son los cuantiles 20% y 80%, la misma definicion de
+`_central_interval` para que la cifra de la tarjeta y la de
+`global_market_view` en la aplicacion no sean dos versiones distintas de
+"rango central".
+Decision (c): la tarjeta no cambia nunca, elegida por el usuario. Por eso se
+persiste el `ShareCard` ya resuelto en `shared_prediction_cards.payload` y no
+el `fixture_key`: reabrir el link no puede devolver cifras distintas. Efecto
+util adicional -servir la imagen no llama al backend, que importa cuando un
+link circula y cada vista previa de WhatsApp dispara una peticion-.
+Decision (d): una tarjeta por partido. `fixture_key` es la clave primaria y el
+alta usa `ON CONFLICT DO NOTHING` releyendo despues, de modo que dos personas
+que comparten el mismo encuentro difunden la misma imagen. Dos tarjetas del
+mismo partido con cifras distintas -congeladas con horas de diferencia-
+circulando a la vez serian indefendibles para este producto.
+Decision (e): la altura del PNG es fija por construccion, no por suerte. El
+titulo se escribe siempre a dos lineas (una por equipo), la etiqueta de cada
+columna 1X2 tiene alto reservado para dos lineas, y los nombres se acortan con
+`clip`. Satori no recorta lo que se desborda: pinta encima, sin error. Con la
+primera version -titulo en una linea, sin cotas- un partido de nombres largos
+("Wolverhampton Wanderers" contra "Brighton & Hove Albion") empujaba el pie
+legal sobre la ultima fila de mercados. Se detecto renderizando el archivo,
+no leyendo el codigo, y por eso queda `scripts/render-share-card.ts`: un
+layout de Satori solo se revisa mirandolo.
+Motivo: (a) y (b) son decisiones de negocio -que tanto del producto premium se
+regala a cambio de difusion- y se consultaron en vez de asumirse. (c) es
+coherente con DEC-158/161: lo que se publica es lo que se congelo antes del
+kickoff, y una tarjeta mutable seria una afirmacion distinta cada vez que se
+abre. (e) la altura fija es la unica defensa real contra un motor que no
+avisa cuando el contenido no cabe.
+Estado: congelada
+Impacto en contratos/fases: ningun contrato del backend cambia; la tarjeta se
+construye desde la respuesta que `/v1/predict/upcoming` ya devuelve y no se
+recalcula ninguna probabilidad. La Mini App gana tres rutas -`POST /api/share`
+(con sesion y CSRF), `GET /s/<token>` y `GET /s/<token>/image` (ambas
+publicas)- y la tabla `shared_prediction_cards` (migracion
+`0003_shared_prediction_cards.sql`, idempotente como el resto). `TelegramAuth`
+y `AppShell` dejan de aplicarse bajo `/s/`, decidido en un unico sitio
+(`lib/public-routes.ts`) para que no puedan discrepar: si uno se saltara el
+portero y el otro no, un visitante externo veria la navegacion de una
+aplicacion en la que no ha entrado. Es la primera superficie sin autenticacion
+de la Mini App; hasta ahora todo pasaba por `authorizeRequest`.
+Evidencia requerida: pruebas de que la tarjeta no recalcule probabilidades y
+las acote; de que solo publique el lado `total` y la linea central; de que el
+token sea rechazado si no tiene la forma exacta -una ruta publica no debe
+convertir cualquier cadena de la URL en una consulta-; de que `/s/` sea la
+unica ruta publica y `/settings` no lo sea por empezar por "s"; y revision
+visual del PNG en el caso corto y en el de nombres largos.
+Evidencia obtenida: 16 pruebas nuevas en `miniapp/tests/share-card.test.ts`
+(83 Vitest en total, sin regresiones), `tsc --noEmit` limpio y `next build`
+resolviendo `/s/[token]` y `/s/[token]/image` como dinamicas. PNG renderizado
+y revisado con `scripts/render-share-card.ts` en cuatro pasadas: se corrigieron
+el desbordamiento del pie, la redundancia de las filas de mercado y una
+superposicion de la leyenda causada por `flex-shrink` -Satori comprime los
+hijos y superpone el texto en vez de recortarlo-. El script deriva ahora su
+muestra de intensidades esperadas en vez de numeros escritos a mano: la
+version manual ilustraba una regla que el producto no tenia y oculto el
+defecto real durante una revision. Pendiente: no hay Playwright de la pagina
+publica porque exigiria sembrar una fila en la base de datos desde el arnes
+e2e, que hoy no hace nada parecido.
+
+
 ```text
 DEC-NNN
 Fecha:

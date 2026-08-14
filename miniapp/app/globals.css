@@ -471,3 +471,21 @@ button { color: inherit; }
 .dual-stat-bars i b { display:block; height:100%; border-radius:inherit; }
 .dual-stat-bars i b.home { background:var(--mint); }
 .dual-stat-bars i b.away { background:var(--signal); }
+
+/* Compartir una predicción: botón dentro de la tarjeta y página pública. */
+.share-block { display:flex; flex-direction:column; gap:8px; margin-top:14px; }
+.share-block .secondary-button { align-self:flex-start; }
+.share-feedback { color:var(--muted); word-break:break-all; }
+.share-feedback-error { color:var(--danger); }
+
+/* `/s/<token>` se sirve sin el marco de la aplicación: nadie que llegue por un
+   link reenviado tiene sesión, así que la página se autocontiene. */
+.share-page { display:flex; flex-direction:column; align-items:center; gap:14px;
+  min-height:100dvh; padding:22px 16px calc(28px + var(--tg-safe-area-inset-bottom));
+  background:var(--void); color:var(--text); text-align:center; }
+.share-brand { display:flex; align-items:center; font-weight:700; letter-spacing:.22em; font-size:.82rem; }
+.share-card-image { width:100%; max-width:460px; height:auto; border-radius:18px;
+  border:1px solid var(--line); box-shadow:0 18px 48px rgba(0,0,0,.42); }
+.share-hint, .share-disclosure { color:var(--muted); max-width:460px; }
+.share-hint { font-size:.82rem; }
+.share-disclosure { font-size:.72rem; line-height:1.5; }

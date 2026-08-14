@@ -3,7 +3,7 @@
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   type ReactNode,
@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { api } from "@/lib/client-api";
+import { isPublicRoute } from "@/lib/public-routes";
 
 type User = {
   id: number;
@@ -198,7 +199,13 @@ export function Providers({ children }: { children: ReactNode }) {
 
 function TelegramAuth({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
+  // Una tarjeta compartida existe para que la abra alguien sin cuenta. El
+  // portero se salta ahí -no se intenta autenticar y no se bloquea el
+  // contenido-, pero el contexto se sigue proveyendo para que cualquier
+  // componente que llame a `useAuth` siga encontrándolo.
+  const isPublic = isPublicRoute(pathname);
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<Omit<AuthState, "retry">>({
     user: null,
@@ -229,6 +236,7 @@ function TelegramAuth({ children }: { children: ReactNode }) {
   }, [attempt]);
 
   useEffect(() => {
+    if (isPublic) return;
     let active = true;
     const webApp = window.Telegram?.WebApp;
     const applyTheme = () => {
@@ -299,11 +307,14 @@ function TelegramAuth({ children }: { children: ReactNode }) {
       active = false;
       webApp?.offEvent("themeChanged", applyTheme);
     };
-  }, [attempt, router, queryClient]);
+  }, [attempt, router, queryClient, isPublic]);
 
   return (
     <AuthContext.Provider value={{ ...state, retry }}>
-      {state.loading ? <LaunchScreen /> : state.error ? <AuthError message={state.error} retry={retry} /> : children}
+      {isPublic ? children
+        : state.loading ? <LaunchScreen />
+        : state.error ? <AuthError message={state.error} retry={retry} />
+        : children}
     </AuthContext.Provider>
   );
 }

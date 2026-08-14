@@ -1,6 +1,74 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-13
+**Actualizado:** 2026-08-14
+
+## Tarjeta pre-match compartible por link (DEC-195)
+
+Ver `DEC-195`. Una predicción se puede compartir fuera de la Mini App como
+imagen con marca de agua, no como texto.
+
+**Cómo funciona.** En el detalle de un partido, "Compartir tarjeta" llama a
+`POST /api/share` (con sesión y CSRF), que congela la predicción en
+`shared_prediction_cards` y devuelve un token. El link `/s/<token>` es
+**público**: lo abre cualquiera, sin cuenta ni Telegram. Su vista previa en
+WhatsApp y Telegram es ya el PNG de la tarjeta, servido por
+`/s/<token>/image`.
+
+**Qué lleva.** 1X2, Más de 2.5 y Ambos marcan como probabilidades; y —por
+primera mitad, segunda mitad y partido completo— córners, tiros y tarjetas del
+lado `total` como **media esperada con su rango central del 60%**, no como
+línea over/under. Marca de agua "DIKAMAHA" en diagonal sobre todo el lienzo,
+más el pie legal de siempre.
+
+**Por qué no son líneas over/under.** Una línea única no puede ser informativa
+y decidida a la vez: cerca del centro de la distribución es ~50% por
+definición, y lejos del centro es ~certeza. Además la rejilla topa sus líneas
+en 9.5 y los tiros la superan en cualquier periodo, así que la tarjeta habría
+repetido "Tiros · Más de 8.5" en las tres mitades con 77%, 87% y 100% — que no
+dice nada del partido, sólo que dura más que una mitad. La media se lee de
+`distributional_market_view` (PMF sin tope) y el intervalo son los cuantiles
+20% y 80%, la misma definición que `_central_interval`.
+
+**Dos cosas a tener presentes.** Es la primera superficie de la Mini App sin
+autenticación: `TelegramAuth` y `AppShell` se saltan bajo `/s/`, decidido en
+`lib/public-routes.ts`. Y la tarjeta es inmutable —una por partido, congelada
+en el primer compartir— por decisión explícita: el link difunde lo que el
+modelo dijo antes del kickoff y no cambia después.
+
+`scripts/render-share-card.ts` escribe un PNG de muestra sin servidor ni base
+de datos. Es la única forma de revisar el diseño: Satori no recorta lo que se
+desborda, pinta encima y no da error.
+
+## La ventana "Aciertos" mostraba sólo una parte del día (DEC-194)
+
+Ver `DEC-194`. Tres defectos independientes, cualquiera de ellos suficiente
+por sí solo para recortar la ventana.
+
+**Los mercados de equipo nunca se liquidaron.** `_snapshot_lines`
+(`src/telegram_channel_publisher.py`) buscaba `bounded_market_grid_view` en
+dos formas de snapshot que ninguna ruta de producción produce; la real la
+guarda bajo `experimental_team_markets`. Resultado:
+`prediction_settlements.shadow_verdicts` estaba vacío en **todos** los
+partidos desde que existe Fase 118 — córners, tiros y tarjetas, en las tres
+divisiones de periodo, jamás llegaron a "Aciertos". Sin rastro en logs: una
+rejilla no encontrada se ve igual que una ausente. Las cuatro pruebas del
+módulo pasaban porque alimentaban a mano una de las formas irreales.
+`_snapshot_grid` lee ahora las tres, sin migrar ninguna fila sellada.
+
+**Los partidos descubiertos tarde no se congelaban nunca.** `_daily` decide
+el conjunto del día a las 09:00 de la víspera y lo cierra para siempre. Un
+fixture que ESPN publica después, una liga que falló en ese único barrido o
+un 422 puntual de `/v1/predict/upcoming` dejaban al partido fuera de
+`channel_predictions` de forma permanente, y sin predicción congelada
+`_results` no lo recorre. `_same_day_catch_up` congela cada media hora lo
+que falte del día en curso, siempre antes del kickoff (lo ya empezado se
+cuenta en `same_day_late` y se descarta).
+
+**La ventana diaria pedía el día equivocado media tarde.**
+`DailyTrackRecord` calculaba "hoy" en UTC mientras
+`/v1/track-record/daily` agrupa por fecha local de México, así que a partir
+de las 18:00 consultaba mañana — justo cuando se liquidan los partidos de
+la tarde-noche. `channelDateParam` usa ya `America/Mexico_City`.
 
 ## Reparto justo por liga y validación de fixture_id en alertas (DEC-193)
 

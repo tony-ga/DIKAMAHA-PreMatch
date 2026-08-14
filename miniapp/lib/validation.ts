@@ -7,6 +7,23 @@ export const favoriteSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
+/**
+ * Identidad del partido que se quiere compartir.
+ *
+ * Son los mismos campos que `/v1/predict/upcoming` exige, porque la tarjeta se
+ * congela desde esa respuesta y no desde nada que mande el cliente: el cuerpo
+ * sólo dice *qué* partido, nunca *qué* probabilidades.
+ */
+export const shareCardSchema = z.object({
+  matchId: z.number().int().positive(),
+  leagueSlug: z.string().trim().regex(/^[A-Za-z0-9._]+$/),
+  homeTeamId: z.number().int().positive(),
+  awayTeamId: z.number().int().positive(),
+  kickoffTs: z.string().trim().min(10).max(40),
+  homeName: z.string().trim().max(80).default(""),
+  awayName: z.string().trim().max(80).default(""),
+});
+
 export const alertRuleTypes = [
   "kickoff",
   "score_change",
