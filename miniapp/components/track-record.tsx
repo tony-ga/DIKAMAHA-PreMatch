@@ -6,8 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
 import {
-  SHADOW_PREVIEW_SIZE, highProbabilityPickLabel, highProbabilityPicks,
-  shadowMarketLabel, shadowMatchEntries, shadowSummary,
+  SHADOW_PREVIEW_SIZE, channelDateParam, highProbabilityPickLabel,
+  highProbabilityPicks, shadowMarketLabel, shadowMatchEntries, shadowSummary,
 } from "@/lib/track-record";
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
@@ -101,10 +101,6 @@ function MarketSummary({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10).replaceAll("-", "");
-}
-
 function MatchRow({ value }: { value: unknown }) {
   const [expanded, setExpanded] = useState(false);
   const row = record(value);
@@ -154,7 +150,7 @@ function MatchRow({ value }: { value: unknown }) {
 }
 
 export function DailyTrackRecord() {
-  const dateParam = today();
+  const dateParam = channelDateParam();
   const query = useQuery({
     queryKey: ["track-record-daily", dateParam],
     queryFn: () =>

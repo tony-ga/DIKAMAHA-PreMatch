@@ -5,7 +5,7 @@
 #   sqlalchemy>=2
 #   tenacity>=8.2
 
-Version: 1.10.0
+Version: 1.11.0
 Created: 2026-07-29
 """
 
@@ -57,6 +57,14 @@ STALE_FIXTURE_LOOKUP_GRACE = timedelta(hours=12)
 # No sustituye a SETTLEMENT_DELAY, que sigue protegiendo cada liquidación
 # individual en `_results`; ver DEC-168.
 DAILY_DIGEST_DELAY = timedelta(minutes=30)
+# Cadencia del barrido de recuperación del mismo día. Recorrer las 63 ligas del
+# catálogo cuesta una llamada de scoreboard por liga, así que hacerlo en cada
+# `TELEGRAM_CHANNEL_POLL_SECONDS` (300 por defecto) multiplicaría por doce la
+# carga contra ESPN sin ganar nada: un partido que aparece tarde en la agenda no
+# lo hace con precisión de minutos. Media hora deja margen de sobra frente al
+# único plazo que importa, congelar antes del kickoff, y la franja se lleva en
+# el ledger para que un redeploy no reinicie el conteo.
+SAME_DAY_CATCH_UP_MINUTES = 30
 CHANNEL_MODES = frozenset({"full", "lite"})
 LITE_FIXTURE_LIMIT = 3
 DISTRIBUTIONAL_CONTRACT_VERSION = "phase102_v4_direct_totals"
@@ -406,7 +414,7 @@ class TelegramChannelPublisher:
         counts = {
             "frozen": 0, "summaries": 0, "cards": 0,
             "markets": 0, "results": 0, "track_record": 0,
-            "track_record_daily": 0,
+            "track_record_daily": 0, "same_day_frozen": 0, "same_day_late": 0,
         }
         local = current.astimezone(MEXICO_TZ)
         if local.timetz().replace(tzinfo=None) >= SUMMARY_TIME:
@@ -415,6 +423,22 @@ class TelegramChannelPublisher:
             counts.update(
                 frozen=frozen, summaries=summaries,
                 cards=cards, markets=markets)
+        try:
+            same_day = self._same_day_catch_up(local.date(), current)
+        except Exception:  # noqa: BLE001 - congelar tarde no debe frenar liquidar
+            # `_results` corre despues: si un barrido roto propagara su
+            # excepcion, ningun partido ya jugado se liquidaria en ese ciclo, y
+            # la recuperacion -pensada para que la ventana no pierda partidos-
+            # acabaria vaciandola. Mismo aislamiento que DEC-189/191.
+            LOGGER.warning(
+                "channel_same_day_catch_up_failed target=%s",
+                local.date().isoformat(), exc_info=True)
+        else:
+            counts["frozen"] += same_day["frozen"]
+            counts["cards"] += same_day["cards"]
+            counts["markets"] += same_day["markets"]
+            counts["same_day_frozen"] = same_day["frozen"]
+            counts["same_day_late"] = same_day["late"]
         counts["results"] = self._results(current)
         counts["track_record"] = self._weekly_track_record(current)
         counts["track_record_daily"] = self._daily_track_record(current)
@@ -521,6 +545,86 @@ class TelegramChannelPublisher:
             now)
         return published
 
+    def _same_day_catch_up(
+        self, target: date, now: datetime,
+    ) -> dict[str, int]:
+        """Congela los partidos de HOY que la pasada de las 09:00 no vio.
+
+        `_daily` corre una sola vez por día -su `daily:{fecha}:complete` cierra
+        el conjunto para siempre- y lo hace la víspera, contra la agenda que
+        ESPN publicaba en ese momento. Todo partido que apareciera después
+        quedaba fuera de `channel_predictions` de forma permanente y, como
+        `_results` sólo recorre predicciones congeladas, jamás se liquidaba ni
+        aparecía en "Aciertos". Tres caminos frecuentes llevaban ahí: un
+        fixture que ESPN publica tarde, una liga cuya `list_upcoming` falló esa
+        única vez (`channel_league_skipped`), y un 422 puntual de
+        `/v1/predict/upcoming` que `_freeze_all` salta por diseño pero nunca
+        reintenta. Con 63 ligas en el catálogo eso no es excepcional: es la
+        razón de que un día cargado mostrara sólo una parte de sus partidos.
+
+        Esta pasada corre en **cada** ciclo y sólo añade lo que falta. La
+        causalidad no se relaja en ningún punto: un fixture cuyo kickoff ya
+        pasó se cuenta en `late` y se descarta -nunca se congela una
+        predicción después del inicio-, así que la única diferencia con la
+        pasada de la víspera es cuándo se descubre el partido, no qué se sabía
+        al congelarlo. Cada predicción trae los tres mercados oficiales y el
+        snapshot de rejilla (córners, tiros y tarjetas por mitad y partido
+        completo) que `_seal_settlement` liquidará al terminar el partido.
+        """
+
+        target_text = target.isoformat()
+        slot_key = _same_day_slot_key(target_text, now)
+        if self._repository.publication_exists(slot_key):
+            return {"frozen": 0, "cards": 0, "markets": 0, "late": 0}
+        known = {row.fixture_key for row in self._repository.predictions()}
+        pending, late = [], 0
+        for fixture in self._fixtures_for(target):
+            if _fixture_key(fixture) in known:
+                continue
+            try:
+                kickoff = _parse_ts(fixture["kickoff_ts"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if kickoff <= now:
+                late += 1
+                continue
+            pending.append(fixture)
+        pending = self._same_day_budget(pending, target_text)
+        predictions = self._freeze_all(
+            self._with_logos(pending), target_text, now) if pending else []
+        cards, markets = self._publish_predictions(predictions, now)
+        # Se marca al final, no al entrar: un barrido que muere a media
+        # ejecución debe reintentarse en el ciclo siguiente en vez de dar la
+        # franja por cubierta.
+        self._repository.record_publication(
+            slot_key, "same_day_catch_up", "internal",
+            f"{slot_key}:{len(predictions)}", now, target_date=target_text)
+        if pending or late:
+            LOGGER.info(
+                "channel_same_day_catch_up target=%s candidates=%d frozen=%d "
+                "late=%d", target_text, len(pending), len(predictions), late)
+        return {
+            "frozen": len(predictions), "cards": cards,
+            "markets": markets, "late": late,
+        }
+
+    def _same_day_budget(
+        self, fixtures: list[dict[str, Any]], target_text: str,
+    ) -> list[dict[str, Any]]:
+        """Respeta el tope de `lite` contando lo ya congelado de ese día.
+
+        `_select_fixtures` corta a `LITE_FIXTURE_LIMIT` sobre una lista
+        completa; aquí la lista es sólo el faltante, así que aplicarlo tal cual
+        sumaría tres partidos nuevos en cada ciclo y convertiría `lite` en
+        `full` a lo largo del día. El tope se mide contra el total del día.
+        """
+
+        if self._mode == "full":
+            return fixtures
+        already = sum(1 for row in self._repository.predictions()
+                      if row.target_date == target_text)
+        return fixtures[:max(0, LITE_FIXTURE_LIMIT - already)]
+
     def _daily(
         self, target: date, now: datetime,
     ) -> tuple[int, int, int, int]:
@@ -534,7 +638,7 @@ class TelegramChannelPublisher:
             cards, markets = self._publish_predictions(
                 self._select_frozen(predictions), now)
             return 0, 0, cards, markets
-        fixtures = self._select_fixtures(self._tomorrow_fixtures(target))
+        fixtures = self._select_fixtures(self._fixtures_for(target))
         fixtures = self._with_logos(fixtures)
         predictions = self._freeze_all(fixtures, target_text, now)
         if not predictions:
@@ -586,8 +690,13 @@ class TelegramChannelPublisher:
                     row.fixture_key, exc_info=True)
         return cards, markets
 
-    def _tomorrow_fixtures(self, target: date) -> list[dict[str, Any]]:
-        """Agrega por liga para evitar el límite global de veinte fixtures."""
+    def _fixtures_for(self, target: date) -> list[dict[str, Any]]:
+        """Agrega por liga para evitar el límite global de veinte fixtures.
+
+        La usan tanto la pasada de la víspera (`_daily`) como la de recuperación
+        del mismo día (`_same_day_catch_up`): una sola definición de "los
+        partidos de esta fecha", con el mismo aislamiento por liga.
+        """
 
         compact = target.strftime("%Y%m%d")
         leagues = self._gateway.explorer_leagues().get("leagues", [])
@@ -930,6 +1039,14 @@ def _frozen(row: FrozenChannelPrediction) -> FrozenPrediction:
         row.fixture_key, row.target_date, row.league_slug, row.match_id,
         row.competition_id, _utc(row.kickoff_ts), dict(row.fixture_json),
         dict(row.prediction_json), row.prediction_hash, _utc(row.frozen_at))
+
+
+def _same_day_slot_key(target_text: str, now: datetime) -> str:
+    """Clave idempotente de la franja de recuperación en curso."""
+
+    local = now.astimezone(MEXICO_TZ)
+    slot = (local.hour * 60 + local.minute) // SAME_DAY_CATCH_UP_MINUTES
+    return f"same_day_catch_up:{target_text}:{slot}"
 
 
 def _fixture_key(fixture: dict[str, Any]) -> str:
@@ -1386,13 +1503,50 @@ def _shadow_verdicts(
     return output
 
 
+def _snapshot_grid(snapshot: dict[str, Any]) -> list[Any]:
+    """Localiza `bounded_market_grid_view` en cualquiera de sus tres formas.
+
+    Lo que `freeze_market_snapshot` guarda de verdad es la respuesta completa
+    de `/v1/predict/upcoming` (`asdict(UpcomingPrediction)`), donde la rejilla
+    cuelga de `experimental_team_markets` -exactamente la misma ruta que leen
+    `_market_texts` y `_has_bounded_grid` unas líneas más arriba-. Antes esta
+    función sólo miraba `snapshot["prediction"]` y la raíz del snapshot, dos
+    formas que ninguna ruta de producción produce, así que `_snapshot_lines`
+    devolvía `[]` **siempre** y `shadow_verdicts` quedaba vacío en todos los
+    partidos: córners, tiros y tarjetas -en las tres divisiones de periodo-
+    nunca llegaron a la ventana de "Aciertos", sin un solo log que lo
+    delatara, porque una rejilla ausente y una rejilla no encontrada se ven
+    igual desde aquí. Es la misma lección de Fase 118 que ya advierte
+    `test_audited_market_ladder_view.py`: el módulo estaba probado en
+    aislamiento contra una forma que la composición real nunca le pasa.
+
+    Se conservan las dos formas heredadas -y sus pruebas- porque un snapshot
+    ya congelado con el contrato viejo debe seguir liquidándose igual.
+    """
+
+    for source in (
+        snapshot.get("prediction"),
+        snapshot.get("experimental_team_markets"),
+        snapshot,
+    ):
+        if not isinstance(source, dict):
+            continue
+        nested = source.get("experimental_team_markets")
+        grid = (
+            nested.get("bounded_market_grid_view")
+            if isinstance(nested, dict) else None)
+        if not isinstance(grid, list):
+            grid = source.get("bounded_market_grid_view")
+        if isinstance(grid, list):
+            return grid
+    return []
+
+
 def _snapshot_lines(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     """Aplana la rejilla congelada en líneas comparables."""
 
-    prediction = snapshot.get("prediction")
-    source = prediction if isinstance(prediction, dict) else snapshot
-    grid = source.get("bounded_market_grid_view")
-    if not isinstance(grid, list):
+    grid = _snapshot_grid(snapshot)
+    if not grid:
         return []
     output = []
     for group in grid:

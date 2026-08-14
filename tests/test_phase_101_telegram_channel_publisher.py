@@ -382,6 +382,138 @@ def test_one_broken_fixture_does_not_block_settlement_of_the_rest(caplog) -> Non
     assert "channel_settlement_row_failed" not in caplog.text
 
 
+def _late_publishing_gateway() -> tuple[_Gateway, list[dict[str, Any]]]:
+    """Gateway cuya agenda del 30 de julio se llena sólo cuando se le añade.
+
+    Reproduce el caso real: la víspera, `list_upcoming` no conoce todavía el
+    partido -ESPN lo publica tarde, o la liga falló en ese barrido- y sólo
+    aparece ya entrado el día.
+    """
+
+    gateway = _Gateway()
+    agenda: list[dict[str, Any]] = []
+
+    def late_list(
+        limit: int = 8, leagues: str | None = None, date: str | None = None,
+    ) -> dict[str, Any]:
+        return {"fixtures": list(agenda) if date == "20260730" else []}
+
+    gateway.list_upcoming = late_list  # type: ignore[method-assign]
+    return gateway, agenda
+
+
+def test_same_day_catch_up_freezes_and_settles_a_late_published_fixture() -> None:
+    """Un partido que la pasada de las 09:00 no vio ya no se pierde el día.
+
+    `_daily` cierra el conjunto del día con `daily:{fecha}:complete` y corre
+    contra la agenda de la víspera, así que todo fixture publicado después
+    quedaba fuera de `channel_predictions` para siempre; sin predicción
+    congelada, `_results` no lo recorre y nunca aparece en "Aciertos". Con 63
+    ligas eso explicaba que un día cargado mostrara sólo una parte.
+    """
+
+    gateway, agenda = _late_publishing_gateway()
+    repository, settlements = _repository(), _settlement_repository()
+    publisher = TelegramChannelPublisher(
+        gateway, repository, _Transport(), settlements=settlements)
+
+    eve = datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc)
+    assert publisher.run_cycle(eve)["frozen"] == 0
+
+    agenda.append(_fixture())
+    morning = datetime(2026, 7, 30, 14, 0, tzinfo=timezone.utc)
+    counts = publisher.run_cycle(morning)
+
+    assert counts["same_day_frozen"] == 1
+    frozen = repository.predictions()
+    assert [row.fixture_key for row in frozen] == ["mex.1:10"]
+    assert frozen[0].target_date == "2026-07-30"
+
+    settle = datetime(2026, 7, 30, 19, 30, tzinfo=timezone.utc)
+    assert publisher.run_cycle(settle)["results"] == 1
+    stored = settlements.on_date(datetime(2026, 7, 30).date(), MEXICO_TZ)
+    assert [row.fixture_key for row in stored] == ["mex.1:10"]
+    assert stored[0].official_verdicts["one_x_two"]["hit"] is True
+
+
+def test_same_day_catch_up_never_freezes_after_kickoff() -> None:
+    """La causalidad no se relaja: pasado el kickoff se descarta, no se congela."""
+
+    gateway, agenda = _late_publishing_gateway()
+    agenda.append(_fixture())
+    repository = _repository()
+    publisher = TelegramChannelPublisher(gateway, repository, _Transport())
+
+    # Kickoff 16:00 UTC; este ciclo corre una hora después.
+    counts = publisher.run_cycle(
+        datetime(2026, 7, 30, 17, 0, tzinfo=timezone.utc))
+
+    assert counts["same_day_late"] == 1
+    assert counts["same_day_frozen"] == 0
+    assert repository.predictions() == []
+
+
+def test_same_day_catch_up_sweeps_at_most_once_per_half_hour() -> None:
+    """El barrido por liga no se repite en cada ciclo de cinco minutos.
+
+    Recorrer el catálogo cuesta una llamada de scoreboard por liga; hacerlo en
+    cada `TELEGRAM_CHANNEL_POLL_SECONDS` multiplicaría esa carga sin adelantar
+    ningún congelado de forma relevante.
+    """
+
+    gateway, agenda = _late_publishing_gateway()
+    agenda.append(_fixture())
+    calls = 0
+    inner = gateway.list_upcoming
+
+    def counted(
+        limit: int = 8, leagues: str | None = None, date: str | None = None,
+    ) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return inner(limit, leagues, date)
+
+    gateway.list_upcoming = counted  # type: ignore[method-assign]
+    publisher = TelegramChannelPublisher(gateway, _repository(), _Transport())
+
+    # 08:00 y 08:05 de México: misma franja, un solo barrido.
+    publisher.run_cycle(datetime(2026, 7, 30, 14, 0, tzinfo=timezone.utc))
+    first = calls
+    publisher.run_cycle(datetime(2026, 7, 30, 14, 5, tzinfo=timezone.utc))
+    assert calls == first
+
+    # 08:30: franja nueva, vuelve a barrer.
+    publisher.run_cycle(datetime(2026, 7, 30, 14, 30, tzinfo=timezone.utc))
+    assert calls > first
+
+
+def test_a_broken_catch_up_sweep_does_not_block_settlement(caplog) -> None:
+    """Congelar tarde nunca debe impedir liquidar lo ya jugado.
+
+    `_results` corre despues del barrido: si su excepcion se propagara,
+    ningun partido se liquidaria en ese ciclo y la recuperacion -pensada
+    para que la ventana no pierda partidos- acabaria vaciandola.
+    """
+
+    gateway, transport = _Gateway(), _Transport()
+    publisher = TelegramChannelPublisher(gateway, _repository(), transport)
+    publisher.run_cycle(datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc))
+
+    def broken() -> dict[str, Any]:
+        raise RuntimeError("espn_catalog_down")
+
+    gateway.explorer_leagues = broken  # type: ignore[method-assign]
+    # 08:00 de Mexico: antes de SUMMARY_TIME, asi que el unico consumidor del
+    # catalogo en este ciclo es el barrido de recuperacion.
+    with caplog.at_level(logging.WARNING):
+        result = publisher.run_cycle(
+            datetime(2026, 7, 31, 14, 0, tzinfo=timezone.utc))
+
+    assert result["results"] == 1
+    assert result["same_day_frozen"] == 0
+    assert "channel_same_day_catch_up_failed" in caplog.text
+
+
 def test_all_messages_stay_below_telegram_limit() -> None:
     """Verifica el límite conservador en resumen, tarjeta y resultado."""
 
@@ -903,6 +1035,79 @@ def test_shadow_verdicts_read_half_periods_without_translation() -> None:
 
     assert verdicts
     assert next(iter(verdicts.values()))["hit"] is True
+
+
+def _stored_snapshot() -> dict[str, Any]:
+    """Snapshot con la forma que `freeze_market_snapshot` guarda de verdad.
+
+    Es la respuesta completa de `/v1/predict/upcoming` (`asdict` de
+    `UpcomingPrediction`), con la rejilla bajo `experimental_team_markets`, no
+    en la raíz: exactamente lo que `_freeze` pasa a `freeze_market_snapshot` y
+    lo que `_seal_settlement` vuelve a leer.
+    """
+
+    return {
+        "league_slug": "mex.1", "match_id": 10,
+        "probability_home": 0.6, "probability_over_2_5": 0.55,
+        "experimental_team_markets": {
+            "status": "experimental_shadow_not_promoted",
+            "bounded_market_grid_view": _grid_rows(),
+        },
+    }
+
+
+def test_shadow_verdicts_read_the_snapshot_shape_production_stores() -> None:
+    """La rejilla se liquida desde `experimental_team_markets`.
+
+    Las demás pruebas de `_shadow_verdicts` alimentan formas -rejilla en la
+    raíz, o bajo `"prediction"`- que ninguna ruta real produce, así que
+    pasaban mientras producción devolvía `{}` en todos los partidos: córners,
+    tiros y tarjetas nunca llegaron a "Aciertos" y nada lo delataba, porque
+    una rejilla no encontrada se ve igual que una ausente. Esta prueba usa la
+    forma que `freeze_market_snapshot` guarda.
+    """
+
+    statistics = {"periods": {
+        "home": {
+            "first_half": {"corners": 6, "shots": 9, "yellow_cards": 3},
+            "second_half": {"corners": 6, "shots": 9, "yellow_cards": 3},
+            "total": {"corners": 6, "shots": 9, "yellow_cards": 3},
+        },
+        "away": {"total": {"corners": 6, "shots": 9, "yellow_cards": 3}},
+    }}
+
+    verdicts = _shadow_verdicts(_stored_snapshot(), statistics)
+
+    assert verdicts
+    assert all("hit" in entry for entry in verdicts.values())
+
+
+def test_shadow_verdicts_cover_the_three_periods_of_a_stored_snapshot() -> None:
+    """Cada periodo congelado -mitades y partido completo- produce veredicto."""
+
+    grid = [
+        {"key": f"home_corners_{period}", "team_side": "home",
+         "metric": "corners", "period": period,
+         "lines": [{"line": 4.5, "over_probability": 0.7}]}
+        for period in ("first_half", "second_half", "full_match")
+    ]
+    snapshot = {"experimental_team_markets": {
+        "bounded_market_grid_view": grid}}
+    statistics = {"periods": {"home": {
+        "first_half": {"corners": 6}, "second_half": {"corners": 2},
+        "total": {"corners": 8},
+    }}}
+
+    verdicts = _shadow_verdicts(snapshot, statistics)
+
+    assert set(verdicts) == {
+        "home_corners_first_half_over_4_5",
+        "home_corners_second_half_over_4_5",
+        "home_corners_full_match_over_4_5",
+    }
+    assert verdicts["home_corners_first_half_over_4_5"]["hit"] is True
+    assert verdicts["home_corners_second_half_over_4_5"]["hit"] is False
+    assert verdicts["home_corners_full_match_over_4_5"]["hit"] is True
 
 
 def test_shadow_verdicts_omit_a_line_with_no_matching_observation() -> None:

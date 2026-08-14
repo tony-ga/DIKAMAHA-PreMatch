@@ -15,6 +15,27 @@ const HIGH_PROBABILITY_GOAL_MARKET_LABELS: Record<string, string> = {
 
 export const SHADOW_PREVIEW_SIZE = 4;
 
+/** Zona con la que el backend define "el día", igual que `settlement_store.on_date`. */
+const CHANNEL_TIMEZONE = "America/Mexico_City";
+
+/**
+ * Fecha `YYYYMMDD` del día en curso en Ciudad de México.
+ *
+ * `/v1/track-record/daily` agrupa por la fecha **local del kickoff**
+ * (`store.on_date(target, MEXICO_TZ)`), así que pedir la fecha UTC del
+ * navegador desalineaba la ventana con el servidor durante las seis horas de
+ * offset: a partir de las 18:00 de México el día ya había avanzado en UTC y
+ * "Resultados de hoy" consultaba mañana -justo la franja en que se liquidan
+ * los partidos de la tarde-noche, de modo que los aciertos del día
+ * desaparecían de la ventana en el momento en que empezaban a existir.
+ * `en-CA` se elige por su formato ISO (`YYYY-MM-DD`), no por idioma.
+ */
+export function channelDateParam(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHANNEL_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(now).replaceAll("-", "");
+}
+
 /**
  * Traduce una clave de mercado shadow liquidado a una etiqueta legible.
  *

@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  SHADOW_PREVIEW_SIZE, highProbabilityPickLabel, highProbabilityPicks,
-  shadowMarketLabel, shadowMatchEntries, shadowSummary,
+  SHADOW_PREVIEW_SIZE, channelDateParam, highProbabilityPickLabel,
+  highProbabilityPicks, shadowMarketLabel, shadowMatchEntries, shadowSummary,
 } from "@/lib/track-record";
+
+describe("daily window date", () => {
+  it("keeps the Mexico City day after UTC has already rolled over", () => {
+    // 01:00 UTC del 15 = 19:00 del 14 en Ciudad de México. La ventana debe
+    // seguir pidiendo el 14: es el día cuyos partidos se están liquidando.
+    expect(channelDateParam(new Date("2026-08-15T01:00:00Z"))).toBe("20260814");
+  });
+
+  it("uses the same day when UTC and Mexico City agree", () => {
+    expect(channelDateParam(new Date("2026-08-14T18:00:00Z"))).toBe("20260814");
+  });
+});
 
 describe("shadow market key parsing", () => {
   it("decomposes side, metric and period for a first-half line", () => {
