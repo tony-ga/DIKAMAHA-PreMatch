@@ -22,6 +22,10 @@ COPY --from=builder --chown=node:node /app/next.config.ts /app/tsconfig.json ./
 COPY --from=builder --chown=node:node /app/worker ./worker
 COPY --from=builder --chown=node:node /app/scripts ./scripts
 COPY --from=builder --chown=node:node /app/drizzle ./drizzle
+# El worker corre bajo `tsx` puro, fuera del bundle de Next.js: cualquier
+# módulo de `lib/` que importe (reconciliación de cobro) necesita su código
+# fuente presente en la imagen, no sólo el resultado empaquetado en `.next/`.
+COPY --from=builder --chown=node:node /app/lib ./lib
 USER node
 EXPOSE 3000
 CMD ["npm", "run", "start"]
