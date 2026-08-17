@@ -1,6 +1,10 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { env } from "@/lib/env";
+// Ruta relativa: este módulo también se carga desde `worker/billing-reconcile.ts`,
+// que corre bajo `tsx` sin el alias `@/*`. `env` sólo se usa como valor por
+// defecto de `secret` y el reconciliador siempre lo pasa explícito, así que
+// nunca se invoca desde el worker -pero la importación en sí debe resolver.
+import { env } from "../env";
 
 /**
  * Payload firmado que viaja dentro de la factura de Telegram.

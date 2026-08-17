@@ -1,7 +1,12 @@
 import type { Sql } from "postgres";
 
-import { applyStarPayment, applyStarRefund, sweepExpiredPlans } from "@/lib/billing/apply";
-import { verifyBillingPayload } from "@/lib/billing/payload";
+// Rutas relativas, no el alias `@/*`: este archivo corre bajo `tsx` puro
+// (`npm run worker` = `tsx worker/alerts.ts`), no bajo el bundler de Next.js
+// ni bajo Vitest, y ninguno de los dos resuelve `tsconfig.json#paths` fuera de
+// esos entornos. Un alias aquí falla en producción con `ERR_MODULE_NOT_FOUND`
+// aunque `tsc --noEmit` y los tests lo den por bueno.
+import { applyStarPayment, applyStarRefund, sweepExpiredPlans } from "../lib/billing/apply";
+import { verifyBillingPayload } from "../lib/billing/payload";
 
 /**
  * Reconciliación de cobros Stars contra la verdad de Telegram.
