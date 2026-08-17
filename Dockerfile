@@ -43,6 +43,11 @@ COPY artifacts/prematch_snapshots/phase160_recent_topup_v1_20260811/event_window
 COPY artifacts/phase_84a_team_count_markets/audit.json artifacts/phase_84a_team_count_markets/config.json artifacts/phase_84a_team_count_markets/hashes.json artifacts/phase_84a_team_count_markets/models.joblib /app/artifacts/phase_84a_team_count_markets/
 COPY artifacts/phase_88_team_market_markov/config.json artifacts/phase_88_team_market_markov/hashes.json artifacts/phase_88_team_market_markov/team_market_markov.joblib /app/artifacts/phase_88_team_market_markov/
 COPY artifacts/phase_106_probability_repair/calibrator.json artifacts/phase_106_probability_repair/hashes.json /app/artifacts/phase_106_probability_repair/
+# La recalibracion de 1X2 (DEC-199) degrada a "sin calibrar" si el artefacto no
+# esta: sirve el comportamiento anterior sin fallar, que es correcto para un
+# servicio desplegado pero invisible desde fuera. Sin este COPY produccion
+# perderia la mejora medida en silencio, igual que paso con eligibility.json.
+COPY artifacts/phase_124_temperature_calibration/match_result_1x2.json artifacts/phase_124_temperature_calibration/hashes.json /app/artifacts/phase_124_temperature_calibration/
 COPY artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json /app/artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 COPY artifacts/phase_122_confidence_reliability/eligibility.json artifacts/phase_122_confidence_reliability/hashes.json /app/artifacts/phase_122_confidence_reliability/
 # El guard de cobertura falla abierto: si este mapa no llega a la imagen, los

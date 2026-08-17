@@ -39,15 +39,28 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class KalmanV2Config:
-    """Configuración efectiva de `kalman_v2`."""
+    """Configuración efectiva de `kalman_v2`.
+
+    Los cuatro campos `process_noise_*` son **tasas por día**, no constantes por
+    observación. La distinción no es cosmética: entre dos partidos de un mismo
+    equipo pueden pasar 3 días o 60, y una covarianza de ruido de proceso
+    constante por observación equivale a suponer que todos los intervalos duran
+    lo mismo (Murphy, *Probabilistic Machine Learning*, p.1042). El calendario
+    real no cumple ese supuesto en ningún momento.
+
+    Con las cuatro tasas en cero el paso de predicción es la identidad y el
+    filtro se comporta exactamente como antes de `DEC-197`. Es la vía de
+    desactivación exacta, no una aproximación.
+    """
 
     model_version: str = "kalman_v2"
     state_version: str = "kalman_v2_state_v1"
     epsilon: float = 1e-6
-    process_noise_attack: float = 0.05
-    process_noise_defense: float = 0.05
-    process_noise_home_advantage: float = 0.01
+    process_noise_attack: float = 0.0
+    process_noise_defense: float = 0.0
+    process_noise_home_advantage: float = 0.0
     process_noise_league_intercept: float = 0.0
+    max_elapsed_days: float = 120.0
     initial_variance_attack: float = 1.5
     initial_variance_defense: float = 1.5
     initial_variance_home_advantage: float = 0.75
@@ -593,15 +606,68 @@ class KalmanV2Filter:
             lambda_home, lambda_away,
         )])
 
+    def _process_noise(self, n: int, elapsed_days: float) -> np.ndarray:
+        """Construye `Q` para un intervalo de duración dada.
+
+        La difusión acumulada entre dos observaciones crece con el tiempo
+        transcurrido, así que `Q` escala con `elapsed_days` en vez de ser una
+        constante por partido. `max_elapsed_days` acota el parón de verano: sin
+        tope, una pretemporada de cuatro meses borraría por completo lo aprendido
+        de un equipo, que es tan falso como no olvidar nada.
+        """
+
+        elapsed = min(max(float(elapsed_days), 0.0), self.config.max_elapsed_days)
+        diagonal = (
+            [self.config.process_noise_attack] * n
+            + [self.config.process_noise_defense] * n
+            + [self.config.process_noise_home_advantage]
+        )
+        return np.diag([rate * elapsed for rate in diagonal])
+
+    def _predict_step(
+        self, state: KalmanV2State, elapsed_days: float,
+    ) -> KalmanV2State:
+        """Paso de predicción temporal: `Σ_t|t-1 = Σ_t-1|t-1 + Q(Δt)`.
+
+        R1 de `model_composition v1` exige que este paso preceda a cada
+        actualización de observación. Sin él la covarianza sólo puede decrecer,
+        la ganancia decae con el número de partidos y el filtro converge a la
+        estimación de un parámetro estático en vez de rastrear la forma actual
+        de un equipo (`DEC-197`).
+
+        La media no se desplaza: el modelo de transición es `F = I` -la fuerza
+        de un equipo persiste entre partidos salvo por lo que las observaciones
+        la muevan-, así que el paso sólo inyecta incertidumbre.
+        """
+
+        n = len(state.team_ids)
+        noise = self._process_noise(n, elapsed_days)
+        if not np.any(noise):
+            return state
+        cov = np.asarray(state.covariance, dtype=float) + noise
+        cov = 0.5 * (cov + cov.T)
+        mean = self._vector_from_state(state)
+        mean, cov = self._project_sum_zero(mean, cov, n)
+        return self._state_from_vector(state, mean, cov, state.cutoff_ts)
+
     def _update_batch(
         self,
         state: KalmanV2State,
         updates: list[tuple[int, int, int, int, float, float]],
+        elapsed_days: float = 0.0,
     ) -> KalmanV2State:
-        """Aplica simultáneamente las observaciones de un mismo kickoff."""
+        """Aplica simultáneamente las observaciones de un mismo kickoff.
+
+        `elapsed_days` es el tiempo transcurrido desde la última actualización.
+        El paso de predicción se ejecuta aquí dentro, antes de tocar la
+        observación, para que el orden que exige R1 no dependa de que cada
+        llamador lo recuerde.
+        """
 
         if not updates:
             return state
+
+        state = self._predict_step(state, elapsed_days)
 
         n = len(state.team_ids)
         vector = self._vector_from_state(state)

@@ -4710,6 +4710,562 @@ defecto real durante una revision. Pendiente: no hay Playwright de la pagina
 publica porque exigiria sembrar una fila en la base de datos desde el arnes
 e2e, que hoy no hace nada parecido.
 
+
+DEC-196
+Fecha: 2026-08-16
+Problema: `model_integrity v1` gobierna si una fórmula aislada es correcta, pero
+nada gobierna dónde va cada pieza en la cadena. Las revisiones deciden caso por
+caso si una calibración va antes o después, si un peso de mezcla puede
+aprenderse en el mismo bloque que ajustó los modelos, o si una normalización se
+hace dividiendo o con un offset. Una auditoría externa contra el corpus
+`rag-matematicas` (2026-08-16) encontró que esas preguntas tienen respuestas de
+libro de texto, y que el proyecto acierta en unas y no en otras sin un criterio
+declarado que permita distinguirlo.
+Opciones: (a) dejar la composición como criterio implícito de cada revisión;
+(b) ampliar `model_integrity v1` con reglas de orden; (c) crear una
+especificación separada de composición, verificada contra el corpus, y usarla
+como criterio de revisión.
+Decisión: (c). `docs/specs/model_composition_v1.md` congela ocho reglas -R1 a
+R8- con libro y página, y una tabla de seis capas donde cada frontera
+corresponde a una regla. Una revisión que aplique una regla la cita; una que la
+viole lo justifica aquí.
+Motivo: (b) mezclaría dos preguntas distintas -si una fórmula es correcta y si
+dos piezas correctas pueden encadenarse- en un mismo contrato, y la segunda es
+la que produjo los dos hallazgos de esta auditoría. (a) ya se probó por
+omisión: el peso 0.8/0.2 de Fase 42 lleva congelado desde entonces sin que
+ninguna revisión lo clasificara como constante fijada a mano en vez de mezcla
+aprendida, que es lo que R2 obliga a declarar.
+Estado: propuesta
+Impacto en contratos/fases: ningún contrato existente cambia y ninguna
+predicción se altera. `model_integrity v1` conserva su alcance -fórmula,
+causalidad, validez numérica, artefactos-. La especificación nueva es criterio
+de revisión, no de runtime: no hay código que la consulte. Dos consecuencias
+declarativas se siguen de aplicarla al estado actual, y ambas se registran por
+separado: el paso de predicción de Kalman (`DEC-197`) y la conservación de masa
+entre Markov y Hawkes (`DEC-198`).
+Evidencia requerida: que cada regla cite fuente verificable; que las reglas
+aplicadas al código actual produzcan hallazgos reproducibles en vez de
+observaciones genéricas; y pruebas que fijen los hallazgos para que no cambien
+en silencio.
+Evidencia obtenida: ocho reglas con libro y página, verificadas atómicamente
+contra el corpus. `tests/test_model_composition_v1.py` fija los dos hallazgos
+como propiedades ejecutables -no como comentarios-, de modo que corregir
+cualquiera de los dos hace fallar la prueba y obliga a volver aquí.
+
+DEC-197
+Fecha: 2026-08-16
+Problema: `kalman_v2.py` no ejecuta el paso de predicción temporal.
+`KalmanV2Filter._update_batch` implementa correctamente la actualización
+-ganancia por pseudo-inversa, forma de Joseph, proyección suma-cero-, pero no
+existe en el módulo ningún paso que sume la covarianza de ruido de proceso `Q`
+al estado entre observaciones. `KalmanV2Config` declara
+`process_noise_attack`, `process_noise_defense` y
+`process_noise_home_advantage`, y esos tres campos sólo se usan en
+`_validate_config` para comprobar que son finitos y no negativos. `kalman_v1.py`
+sí sumaba ruido de proceso a la diagonal; la versión activa lo perdió.
+Consecuencia, verificada y no opinable: con `F=I` implícito y `Q=0` la ecuación
+de predicción se reduce a `Σ_t|t-1 = Σ_t-1|t-1`, la covarianza sólo puede
+decrecer, la ganancia decae con el número de partidos observados y el filtro
+converge a la estimación de un parámetro casi estático. Un equipo con 200
+partidos en el histórico causal pondera las últimas jornadas casi igual que las
+de hace dos temporadas. Esto contradice el rol declarado en `CLAUDE.md` y en los
+documentos de fase -"Kalman: estado temporal pre-kickoff"-. La Fase 113 no lo
+detectó porque auditó `τ`, causalidad de lotes, validez numérica de PMFs y
+hashes, nunca la ecuación de predicción.
+Opciones: (a) añadir el paso de predicción con `Q` real, usando los tres campos
+que la configuración ya declara; (b) añadirlo con `Q` derivado de un proceso de
+Ornstein-Uhlenbeck, que da varianza creciente con `Δt` -el calendario real tiene
+huecos muy desiguales- y reversión explícita a la media de liga; (c) conservar
+el comportamiento actual, ya validado empíricamente por Fase 113, y renombrar la
+pieza y su documentación para dejar de llamarla estado temporal.
+Decisión: se implementa el paso de predicción con `Q` escalado por el tiempo
+transcurrido -variante de (a) corregida por lo que exige (b)-, y **la tasa queda
+en cero por defecto** porque la evidencia no autoriza otra cosa. La corrección
+estructural y la adopción de un valor son dos cosas distintas y aquí se separan:
+la maquinaria queda correcta y disponible; el valor sigue siendo la identidad.
+El corpus descartó (a) en su forma literal: "si el estado latente evoluciona como
+un proceso de difusión en tiempo continuo, la covarianza del ruido de proceso
+acumulada entre dos observaciones depende de la duración del intervalo; usar una
+covarianza constante por observación equivale a suponer que todos los intervalos
+tienen la misma duración" -SUPPORTED, Murphy, *Probabilistic Machine Learning*,
+p.1042-. Un calendario de fútbol tiene intervalos de 3, 7, 15 y 60 días, así que
+un `Q` constante por partido asume algo verificablemente falso para estos datos.
+Se descartó (b) completo -Ornstein-Uhlenbeck- por coste de calibración: añade un
+parámetro de reversión que con 381 partidos de una sola liga no es estimable con
+garantías, y la parte que el corpus respalda directamente es la dependencia de
+`Δt`, no la reversión. Queda documentado como continuación cuando exista corpus
+multiliga.
+Los tres campos `process_noise_*` pasan a ser **tasas por día**; con las tasas en
+cero el paso de predicción es la identidad exacta, de modo que la desactivación
+no exige mantener dos ramas de código. Se añade `max_elapsed_days` (120) para que
+un parón de verano no inyecte tanta varianza que equivalga a no saber nada del
+equipo.
+Motivo: registrar el hallazgo no obliga a corregirlo. Lo que no es admisible es
+seguir describiendo la pieza como estado temporal mientras la ecuación que lo
+haría no se ejecuta. (b) es la opción con mejor fundamento -Ornstein-Uhlenbeck
+tiene solución cerrada, media `m(0)e^{-at}` y varianza estacionaria `σ²/(2a)`,
+verificado en Karatzas & Shreve cap. 5 ec. 6.22- y también la más cara: cambia
+el peso efectivo de la historia reciente y por tanto invalida la calibración del
+blend 0.8/0.2 de Fase 42, que se fijó contra el comportamiento actual.
+Estado: propuesta
+Impacto en contratos/fases: **ninguna probabilidad servida cambia**, porque la
+tasa por defecto es cero y el paso de predicción es entonces la identidad exacta.
+`src/kalman_v2.py` gana `_predict_step` y `_process_noise`;
+`official_goal_chain._replay` pasa el intervalo entre kickoffs consecutivos. El
+paso de predicción se ejecuta **dentro** de `_update_batch`, de modo que el orden
+que exige R1 no depende de que cada llamador lo recuerde. Adoptar una tasa
+distinta de cero sí cambiaría las lambdas y con ellas 1X2, Over 2.5 y BTTS
+oficiales, y obligaría a re-certificar Fase 42 bajo R2; esa adopción **no** queda
+autorizada por esta decisión.
+Como la tasa efectiva es cero, el hallazgo de comportamiento sigue vigente: el
+filtro continúa comportándose como estimador casi estático. La documentación que
+describe la pieza como "estado temporal" sigue siendo inexacta y la opción (c)
+-corregir esa descripción- queda pendiente y sin evidencia en contra.
+Evidencia requerida: backtest walk-forward mostrando que el filtro con `Q` no
+degrada log-loss ni Brier frente al actual, con la unidad IID de `DEC-006`, y con
+la tasa elegida en un bloque distinto de aquel donde se reporta su efecto.
+Evidencia obtenida: `scripts/fit_kalman_process_noise.py` sobre 381 partidos
+(Postgres de desarrollo, una liga, dos temporadas), partición cronológica
+selección/confirmación. **En selección hay un óptimo interior limpio**: log-loss
+desciende monótonamente de `1.062236` (tasa 0) a `1.051676` (tasa 0.02) y vuelve
+a subir en 0.05. **En confirmación se invierte**: `0.850504` frente a `0.842441`
+del baseline, peor en log-loss y en Brier.
+`scripts/bootstrap_kalman_process_noise.py` resuelve si esa inversión es señal:
+10,000 remuestreos pareados con el partido como unidad sobre los 46 partidos que
+ambas tasas puntúan dan delta de log-loss `-0.008063`, **IC95%
+`[-0.032335, +0.015097]`**, y Brier `-0.006914`, IC95% `[-0.024213, +0.009566]`.
+Los dos intervalos cruzan cero: la muestra **no distingue** el candidato del
+baseline en ninguna dirección. El óptimo de selección era ruido.
+Por eso la tasa queda en cero: el gate no autoriza adoptarla, y tampoco hay
+evidencia de que degrade. Sellado en
+`artifacts/dec_197_kalman_process_noise/` con sus hashes. Nueve pruebas en
+`tests/test_model_composition_v1.py` fijan la corrección: que `Δt=7` inyecte
+exactamente `7/3` de lo que inyecta `Δt=3`, que el tope de 120 días funcione, que
+el orden predicción→actualización coincida con la composición explícita, que la
+ganancia deje de decaer con tasas positivas, y que las tasas en cero reproduzcan
+el filtro anterior de forma exacta.
+Continuación permitida: repetir el barrido sobre un corpus multiliga -el bloque
+de confirmación de 46 partidos tiene un error estándar de log-loss cercano a
+`0.076`, un orden de magnitud mayor que el delta medido, así que ninguna
+conclusión sobre la tasa es alcanzable con esta muestra-.
+
+**Reevaluación sobre el corpus completo (2026-08-16). Cerrado en negativo.**
+Ejecutada la continuación anterior con 1,845 partidos de confirmación en 30
+ligas, recomponiendo 1X2 desde las lambdas crudas para que la única diferencia
+entre tasas sea el estado de Kalman -verificado: las lambdas Dixon-Coles son
+idénticas entre corridas hasta el último dígito-.
+En **selección** el log-loss crece de forma monótona con la tasa: `1.020053`
+(tasa 0), `1.024300` (0.005), `1.037328` (0.02). En **confirmación**, la tasa
+`0.005` es indistinguible -IC95% `[-0.004970, +0.003314]`- y la `0.02` es
+**degradación confirmada**: log-loss `-0.010401`, IC95%
+`[-0.018261, -0.002547]`, y Brier `-0.006223`, IC95% `[-0.011573, -0.000987]`.
+Esto ya no es ausencia de evidencia como en la primera medición: la muestra sí
+distingue, y dice que no. La tasa queda en cero de forma definitiva, no
+provisional. El paso de predicción permanece implementado y correcto bajo R1 -es
+la identidad exacta con tasa cero-, de modo que la corrección estructural se
+conserva sin adoptar un valor que perjudica.
+Hallazgo sustantivo, leído junto a `DEC-200`: allí Kalman **ganó** peso en la
+mezcla (de `0.2` a `0.357`), y aquí resulta que empeora al añadirle olvido
+temporal. Kalman aporta a esta cadena como **segundo estimador estructural**, no
+como rastreador de forma reciente. Eso refuerza la opción (c) original -corregir
+la documentación que lo llama "estado temporal"-, que sigue pendiente.
+Sellado en `artifacts/dec_197_kalman_process_noise/full_corpus_reevaluation.json`.
+
+DEC-202
+Fecha: 2026-08-16
+Problema: `DEC-200` adoptó un peso de mezcla **global**. Queda abierto si debería
+depender de la liga: donde la fuerza de los equipos es estable, el prior
+estructural debería pesar más que en una competición volátil. Ajustar un peso por
+liga sin más sobreajusta las que tienen poca muestra.
+Opciones: (a) conservar el peso global; (b) ajustar un peso por liga sin
+contracción; (c) ajustar por liga con contracción jerárquica (R5),
+`w_j = lambda_j·w_global + (1-lambda_j)·w_j` con
+`lambda_j = sigma_j²/(sigma_j²+tau²)`.
+Decisión: se conserva el peso global. Ni (b) ni (c) mejoran sobre él.
+Motivo: la medición es informativa en las dos direcciones. **(b) degrada de
+forma confirmada** -log-loss `-0.006286`, IC95% `[-0.012018, -0.000724]`-, que
+es exactamente el sobreajuste que R5 predice cuando se estima un parámetro por
+grupo sin contraerlo. **(c) recupera la paridad** -log-loss `-0.001182`, IC95%
+`[-0.003915, +0.001451]`, indistinguible- pero no encuentra señal más allá del
+peso global. La contracción jerárquica funcionó: evitó que se enviara a
+producción una variante que la habría empeorado. Que no aporte mejora es un
+hecho sobre estos datos, no un fallo del método.
+Estado: propuesta
+Impacto en contratos/fases: ninguno. `BLEND_WEIGHT_DIXON_COLES` sigue siendo un
+único escalar global.
+Evidencia requerida: comparación contra el peso ya adoptado por `DEC-200` -no
+contra el `0.8` de Fase 42-, porque la pregunta es si la dimensión de liga aporta
+sobre lo vigente.
+Evidencia obtenida: 21 ligas con al menos 30 partidos en selección, `tau²` entre
+ligas `0.056030`, contracción media `0.5136`. Artefacto en
+`artifacts/candidate_evaluation/hierarchical_blend.json`.
+Continuación permitida: la dimensión de agrupamiento que R5 sí podría explotar
+-árbitro, portero- exige campos de ESPN que el corpus de Fase 74 no contiene; su
+medición depende de una ingesta previa, no de más análisis sobre estos datos.
+
+DEC-198
+Fecha: 2026-08-16
+Problema: dos decisiones vigentes no pueden ser ciertas a la vez si se encadenan.
+`DEC-092` congela que Markov redistribuye exactamente las lambdas
+Dixon-Coles/Kalman entre 18 ventanas sin alterar su masa, y Fase 79 lo validó.
+`hawkes_v1.predict_snapshot` calcula `lambda_hawkes = lambda_markov +
+excitación` con `excitación ≥ 0` siempre, que es la definición correcta de un
+proceso autoexcitado. Sumar un término no negativo a algo que sumaba exactamente
+una masa fija rompe esa masa fija: es álgebra, no un defecto de implementación.
+Ninguna de las dos piezas está mal por separado.
+Opciones: (a) no registrar nada, dado que Hawkes está fuera del router y hoy no
+hay contradicción activa; (b) registrar la incompatibilidad como precondición de
+cualquier reconexión futura; (c) resolverla ahora eligiendo una de las dos
+salidas posibles.
+Decisión: (b). Queda registrado que Hawkes no puede reconectarse sobre la salida
+de Markov sin resolver antes la conservación, y que las dos salidas posibles
+-renormalizar tras la excitación conservando proporciones, o sustituir el
+estimador por un proceso autoexcitado compensado- no son equivalentes ni
+intercambiables.
+Motivo: (a) deja una trampa: Hawkes está descrito en varios documentos como
+señal incremental a evaluar "después", y quien lo retome no tiene por qué
+descubrir esta incompatibilidad por su cuenta -no es visible leyendo ninguno de
+los dos módulos, sólo al mirar la composición-. (c) resolvería ahora un problema
+que no está activo, y elegir entre las dos salidas exige evidencia que hoy no
+existe porque Hawkes nunca pasó de experimental.
+Estado: propuesta
+Impacto en contratos/fases: ninguno. `DEC-092` sigue congelada y válida,
+`hawkes_v1.py` no se modifica, y Hawkes permanece fuera del router. La
+consecuencia es una precondición sobre trabajo futuro: cualquier fase que
+proponga reconectar Hawkes sobre Markov debe declarar cuál de las dos salidas
+adopta y qué invariante queda vigente en lugar de la de `DEC-092`.
+Evidencia requerida: demostración de que la incompatibilidad es real y no una
+lectura errónea de alguno de los dos módulos.
+Evidencia obtenida:
+`tests/test_model_composition_v1.py::test_hawkes_breaks_markov_mass_conservation`
+ejecuta `predict_snapshot` con eventos excitantes reales dentro de la memoria
+del kernel y comprueba que la intensidad de salida es estrictamente mayor que la
+de entrada. La prueba documenta que Hawkes es correcto como proceso autoexcitado
+y que por eso mismo no compone con una etapa que conserva masa.
+
+
+DEC-199
+Fecha: 2026-08-16
+Problema: `DEC-162` midió que 1X2 no alcanza fiabilidad en ningún tramo de
+confianza -llega a declarar 1.000, y en el tramo 0.65-0.75 promete 69.4% y
+entrega 51.0%, con 25% de ligas sin degradar-. Los mercados binarios sí tienen
+recalibración posterior (`market_calibration.py`, contracción bayesiana de liga,
+Fase 106/119), pero 1X2 es multiclase y sale directo de la matriz de marcadores
+sin ningún paso posterior. No existe en el proyecto ninguna pieza capaz de
+recalibrar un mercado multiclase.
+Opciones: (a) no recalibrar 1X2 y aceptar la sobreconfianza medida; (b)
+extender la contracción bayesiana de liga a tres clases; (c) escalado de
+temperatura -`q = softmax(log(p)/T)`, un único parámetro estimado por máxima
+verosimilitud en un bloque de validación separado-.
+Decisión: (c), implementado en `src/temperature_calibration.py` y **no
+conectado al router**. El módulo, su ajuste y sus pruebas existen; ninguna
+predicción servida cambia.
+Motivo: (b) trataría 1X2 como tres mercados binarios independientes y produciría
+un vector sin normalizar, que es justamente el problema que `DEC-012` ya tuvo
+que reparar a mano en las probabilidades heredadas. (c) tiene una propiedad que
+lo hace adoptable en un producto ya desplegado: `x^(1/T)` es monótona creciente
+para todo `T > 0`, así que **no altera cuál resultado es el más probable**;
+cambia la confianza declarada y nada más. Es además la única opción con
+fundamento verificado -Murphy, *Probabilistic Machine Learning*, §14.2.2.5,
+p.614-615- y un único grado de libertad, de modo que no puede sobreajustar la
+forma de la distribución.
+Se implementa sin conectar porque conectarlo cambia las probabilidades 1X2 que
+ven usuarios reales en cuatro servicios desplegados, y eso exige evidencia
+prospectiva -no sólo que el módulo sea correcto-. La separación entre "la pieza
+existe y es correcta" y "la pieza está servida" es la misma que el proyecto ya
+aplica a todo lo shadow.
+Estado: propuesta
+Impacto en contratos/fases: ninguno hoy. `official_goal_chain.py`,
+`market_calibration.py` y el router quedan intactos, y no hay artefacto sellado
+en `artifacts/phase_124_temperature_calibration/` -el proveedor falla cerrado si
+se le pide uno-. Conectarlo exigiría: ajustar `T` sobre un bloque de validación
+separado del que ajustó Dixon-Coles y Kalman (R6 de `model_composition v1`),
+sellar el artefacto con su hash como el resto de calibradores, y una fase de
+confirmación prospectiva con la unidad IID de `DEC-006`.
+Evidencia requerida: que `T = 1` sea la identidad; que el argmax se conserve
+para cualquier `T`; que el ajuste recupere `T > 1` ante sobreconfianza
+sistemática y se quede cerca de 1 sobre datos ya calibrados; que nunca empeore
+la log-verosimilitud frente a no recalibrar; y que el proveedor falle cerrado
+ante artefacto alterado o de otra versión.
+Evidencia obtenida: 9 pruebas en `tests/test_temperature_calibration.py`,
+todas aprobadas. Sobre una cohorte sintética con la firma exacta de `DEC-162`
+-resultado sorteado con la probabilidad verdadera, predicción declarada
+concentrada- el ajuste recupera `T > 1` y reduce la log-verosimilitud negativa;
+sobre datos ya calibrados devuelve `T ≈ 1` dentro de 0.25, que es la otra mitad
+de la prueba: una recalibración que siempre mueve el número introduciría ruido
+en vez de corregir sesgo.
+**Ajuste sobre datos reales: rechazado.** `scripts/fit_temperature_calibration.py`
+sobre los mismos 381 partidos y la misma partición cronológica que `DEC-197`.
+En selección `T = 1.6801` -aplana, luego ese bloque estaba sobreconfiado- y la
+log-verosimilitud baja de `1.062236` a `1.038647`. **En confirmación empeora
+claramente**: log-loss `0.842441 → 0.916426` y Brier `0.486911 → 0.537283`.
+El diagnóstico de fiabilidad explica por qué, y es más informativo que el número:
+en confirmación el modelo declara `0.5271` de confianza media en su argmax y
+acierta `0.5870`, es decir está **infra**confiado -brecha `-0.0598`-. Aplicar una
+`T` ajustada para corregir sobreconfianza aplana todavía más algo que ya iba
+corto, y la brecha se abre a `-0.1363`.
+**El sesgo de calibración cambia de signo entre los dos bloques cronológicos.**
+Es evidencia empírica, sobre datos del proyecto, de que un parámetro de
+recalibración describe el sesgo de la población donde se ajustó y no transfiere
+sin verificarlo -afirmación que el corpus no pudo respaldar cuando se le consultó
+en abstracto, y que aquí queda demostrada en concreto-.
+Consecuencia: la pieza sigue implementada, correcta y **sin conectar**, ahora con
+evidencia real detrás de esa separación en vez de sólo cautela. No se sella
+ningún artefacto de temperatura para runtime; el proveedor sigue fallando cerrado
+si se le pide uno. La medición queda en
+`artifacts/dec_199_temperature_calibration/` con su hash.
+Continuación permitida: repetir sobre corpus multiliga, y considerar temperatura
+**por liga** en vez de global -si el sesgo no es estable entre dos bloques de una
+misma liga, un único escalar global es el instrumento equivocado-. Antes de eso,
+verificar si el sesgo es siquiera estable dentro de una liga con más muestra.
+
+
+DEC-200
+Fecha: 2026-08-16
+Problema: `_blend_lambda` fusiona el prior Dixon-Coles y la cola temporal Kalman
+con pesos `0.8`/`0.2` congelados por Fase 42. R2 de `model_composition v1`
+distingue tres cosas que el proyecto tenía mezcladas: un promedio bayesiano de
+modelos, un stacking con pesos aprendidos, y una constante fijada a mano. El
+`0.8` es lo tercero -nunca se ajustó sobre datos- pero se documentaba como si
+fuera una mezcla calibrada. Además `DEC-197` y `DEC-199` no pudieron concluir
+nada porque el bloque de confirmación disponible tenía 46 partidos de una liga.
+Opciones: (a) conservar el peso congelado; (b) reestimarlo sobre el corpus
+pequeño ya usado; (c) reconstruir el corpus causal de Fase 74 a nivel partido y
+reestimar con la partición que ese corpus ya tiene congelada.
+Decisión: (c). `scripts/build_match_level_corpus.py` reconstruye 9,465 partidos
+de 39 ligas desde `micro_windows_15m.jsonl`, conservando el `split` de Fase 74 en
+vez de recalcularlo. El peso pasa de `0.8` a **`0.642848`**, elegido en selección
+y confirmado en un bloque que no participó en esa elección.
+Motivo: (b) habría repetido el error de medir con muestra insuficiente. La
+partición se hereda de Fase 74 precisamente para que este cambio no pueda elegir
+dónde se mide su propio resultado; si el arnés pudiera reasignar splits, R2 sería
+decorativo.
+Estado: propuesta
+Impacto en contratos/fases: **cambian las probabilidades servidas** de 1X2,
+Over 2.5 y BTTS, porque el peso altera las lambdas de las que salen los tres.
+`official_goal_chain.py` expone `BLEND_WEIGHT_DIXON_COLES` y publica en
+`provenance` el peso real en vez del `0.8` literal que declaraba antes. La
+auditoría gana `dc_lambda_*`, `kalman_lambda_*` y `tau_dc`, sin los cuales no se
+puede medir por separado qué aporta cada componente. Fase 42 queda reemplazada en
+su elección de peso, no en su arquitectura.
+Evidencia requerida: mejora con IC bootstrap que no cruce cero, con el partido
+completo como unidad, en un bloque ajeno a la selección; y comprobación de que
+los otros dos mercados servidos no se degradan.
+Evidencia obtenida: 3,615 predicciones walk-forward causales (1,770 selección,
+1,845 confirmación, 30 ligas; 121 exclusiones por arranque en frío de equipo y 9
+competiciones de selecciones/copas sin historia repetida suficiente).
+1X2 log-loss `+0.008789`, **IC95% `[+0.004675, +0.012798]`**; Brier `+0.005674`,
+IC95% `[+0.002846, +0.008372]`. Efecto colateral medido: Over 2.5 log-loss
+`+0.004337`, IC95% `[+0.000056, +0.008488]` -también mejora-; BTTS `+0.002765`,
+IC95% `[-0.000164, +0.005668]` -indistinguible, no se degrada-.
+Dos defectos del propio arnés se corrigieron antes de aceptar estas cifras. El
+primero: la historia se cortaba por **posición en la lista** en vez de por
+tiempo, colando partidos con kickoff simultáneo al objetivo -la misma fuga que
+`DEC-113` cerró en entrenamiento, reapareciendo en evaluación-. Lo detectó el
+guard `history_not_strictly_before_cutoff` de la propia cadena: 1,647 fallos que
+pasaron a 0. El segundo: dos procesos escribieron el mismo JSONL y entrelazaron
+líneas, que no falla al escribir sino al leer; el generador se niega ahora a
+sobrescribir un archivo existente.
+Sellado en `artifacts/candidate_evaluation/report.json` y
+`artifacts/match_level_corpus/`.
+
+DEC-201
+Fecha: 2026-08-16
+Problema: adoptados `DEC-199` y `DEC-200` por separado, quedaba sin medir si
+componen. No son independientes: la temperatura de `DEC-199` se ajustó sobre el
+blend con peso `0.8`, y al cambiar el peso las probabilidades cambian, de modo
+que esa `T` deja de corresponder al modelo que la produce.
+Opciones: (a) adoptar ambos con sus parámetros medidos por separado; (b)
+reajustar `T` sobre la salida del blend ya reponderado y medir la composición
+completa; (c) adoptar sólo uno.
+Decisión: (b). `T` se reajusta sobre el blend reponderado -ambos en selección- y
+la composición se mide en confirmación. `T` pasa de `1.1755` a **`1.198935`**.
+Motivo: (a) habría servido una calibración ajustada para un modelo distinto del
+servido, que es exactamente lo que R6 prohíbe al exigir que la recalibración
+opere sobre la salida del modelo final. La diferencia entre las dos temperaturas
+es pequeña, pero adoptarla sin reajustar habría sido correcto por casualidad, no
+por método.
+Estado: propuesta
+Impacto en contratos/fases: `official_goal_chain` recalibra 1X2 como último paso
+(R6), después de derivar los mercados de la matriz conjunta. Over 2.5 y BTTS
+**no** pasan por el calibrador: son binarios, tienen su propia vía, y aplicarles
+un parámetro ajustado para tres clases sería una corrección que no se midió sobre
+ellos. El artefacto viaja en la imagen (`Dockerfile` y `.dockerignore`); sin él
+la cadena sirve sin calibrar y lo declara en `provenance`, porque no predecir
+sería peor para un servicio desplegado pero una degradación silenciosa es lo que
+hizo que `eligibility.json` se perdiera dos veces.
+Evidencia requerida: que la composición mejore con IC que no cruce cero, y que
+recalibrar no altere qué resultado es el más probable.
+Evidencia obtenida: log-loss `+0.012928`, **IC95% `[+0.008054, +0.017857]`**;
+Brier `+0.007717`, IC95% `[+0.004605, +0.010888]`. La composición supera a
+cualquiera de los dos por separado (`+0.008789` y `+0.004414`). La fiabilidad
+pasa de `+0.0329` de sobreconfianza -declara `0.5164`, acierta `0.4835`- a
+`-0.0101`: declara `0.4929` y acierta `0.5030`.
+La variante **por liga fue rechazada**: 17 ligas con `T` propia dan log-loss
+`+0.003738`, IC95% `[-0.001045, +0.008384]`, que cruza cero y además es peor que
+la global. El sesgo de calibración es estable entre ligas, así que el parámetro
+extra no se paga. Esto corrige la lectura de `DEC-199`, que sobre 46 partidos
+había concluido lo contrario: aquel bloque medía ruido.
+6 pruebas en `tests/test_goal_chain_calibration.py`, incluidas la conservación
+del argmax bajo cualquier `T`, la degradación visible sin artefacto, y que los
+mercados binarios no se muevan.
+
+
+DEC-202
+Fecha: 2026-08-16
+Problema: `market_calibration.py` contrae la tasa causal de una liga hacia un
+prior con un `shrinkage` **constante por mercado**, congelado a mano en Fase
+106/119: la misma contracción para una liga con 40 observaciones que para una con
+4,000. B.2 de `arquitectura_matematica_v1` proponía derivarlo de los datos con
+`w_j = σ_j²/(σ_j²+τ²)` -Murphy *PML* p.146, verificado-, que contrae más cuanto
+menor es la muestra del grupo sin que nadie elija el número.
+Opciones: (a) conservar la constante fija; (b) sustituirla por la contracción
+jerárquica; (c) medir ambas sobre el corpus causal antes de decidir.
+Decisión: (c), y el resultado **rechaza (b)**. La contracción jerárquica no
+supera a la constante fija en ninguno de los cuatro mercados evaluados, y en
+córners la degrada de forma confirmada.
+Motivo: la explicación importa más que el veredicto. `τ²` -la varianza real entre
+ligas- resulta grande frente a la varianza de muestreo: en córners `τ²=0.091`
+frente a `σ_j² ≤ 0.008` con el mínimo de 30 observaciones. Eso hace
+`w_j ≈ 0.08`, es decir la fórmula jerárquica **apenas contrae**, porque los datos
+dicen que las ligas difieren de verdad. La constante fija óptima va en la misma
+dirección (`5.0` en córners, contracción muy ligera). Ambas coinciden en que
+contraer hacia un prior global no es donde está el valor; la jerárquica queda
+algo peor por llegar ahí de forma menos precisa.
+Estado: propuesta
+Impacto en contratos/fases: ninguno. `market_calibration.py` no se modifica y la
+constante fija sigue vigente, ahora con evidencia de que no es un valor
+arbitrario sino uno cercano al óptimo medible.
+Evidencia requerida: comparación walk-forward con la constante fija recibiendo su
+**mejor valor posible** elegido en selección -ganarle a una constante mal elegida
+no diría nada del método-, e IC bootstrap remuestreando partidos completos, no
+equipo-partidos: las dos filas de un partido están correlacionadas y tratarlas
+como independientes estrecharía el intervalo de forma artificial.
+Evidencia obtenida: `scripts/build_team_count_corpus.py` agrega 18,930
+equipo-partido de 9,465 partidos y 39 ligas desde las micro-ventanas de Fase 74,
+con 0 rechazos. `scripts/evaluate_hierarchical_shrinkage.py` sobre 1,889 partidos
+de confirmación: córners `-0.000679` IC95% `[-0.001254, -0.000194]`
+-**degradación confirmada**-; tiros `-0.000530` IC95%
+`[-0.002684, +0.001009]`; tiros a puerta `-0.001165` IC95%
+`[-0.002708, +0.000036]`; tarjetas `-0.000101` IC95% `[-0.000482, +0.000259]`
+-los tres últimos indistinguibles-. Sellado en
+`artifacts/hierarchical_shrinkage_evaluation/`.
+Nota de alcance: esto evalúa la contracción **por liga**. Las dimensiones árbitro
+y portero que `arquitectura_matematica_v1` proponía para la misma fórmula siguen
+sin medir, y exigen campos de ESPN que este corpus no contiene.
+
+
+DEC-203
+Fecha: 2026-08-16
+Problema: `combined_dispersion` añade el término `2ρσ_Hσ_A` a la varianza del
+total de un mercado de conteo, con una correlación residual local-visitante por
+métrica sellada en `artifacts/phase_84a_team_count_markets/config.json`. Esos
+valores se estimaron sobre el corpus reducido de Fase 84A. C.2 de
+`arquitectura_matematica_v1` proponía revisarlos y, si la correlación resultaba
+inestable entre ligas, sustituir el escalar por una matriz filtrada con la ley de
+Marchenko-Pastur.
+Opciones: (a) conservar los valores sellados sin revisar; (b) reestimarlos sobre
+el corpus causal completo y cambiarlos si difieren; (c) reestimarlos y decidir
+según si el desvío es atribuible a los datos o al método de estimación.
+Decisión: (c). Los valores **quedan como están**: los cuatro signos coinciden y
+las magnitudes están dentro de `0.085` sobre cuatro veces más datos.
+Motivo: el desvío que queda es atribuible al método, no a un error del artefacto.
+La correlación que entra en la varianza condicional es la **residual**, y el
+residuo depende de contra qué media se tome: este script usa la media de (liga,
+localía) mientras el artefacto se estimó contra la media que predice el propio
+modelo NB2. Un modelo que explica más variación entre partidos deja un residuo
+distinto. Cambiar una constante servida por una estimada con otra definición de
+residuo sería sustituir un número medido por otro no comparable.
+Estado: propuesta
+Impacto en contratos/fases: ninguno. `config.json` de Fase 84A no se toca.
+Evidencia requerida: reestimación sobre el corpus completo con verificación en un
+bloque independiente, y comparación contra el **artefacto servido**, no contra la
+documentación.
+Evidencia obtenida: `scripts/estimate_residual_correlations.py` sobre 7,570
+partidos de estimación y 1,895 de verificación. Córners `-0.3090` (verif.
+`-0.3699`) frente a `-0.2245` servido; tiros `-0.2697` (`-0.3236`) frente a
+`-0.2292`; tiros a puerta `-0.0694` (`-0.1351`) frente a `-0.0358`; tarjetas
+`+0.1724` (`+0.1762`) frente a `+0.1853`. Estimación y verificación coinciden en
+signo y orden de magnitud en las cinco métricas, lo que descarta que el valor sea
+un artefacto del bloque. Sellado en `artifacts/residual_correlations/`.
+**Corrección de registro**: la primera pasada comparó contra los valores citados
+en `objetivo_auditoria_modelos_v1.md` (`-0.31`/`-0.15`/`+0.19`) en vez de contra
+`config.json`, y produjo un falso hallazgo de que tiros estaba mal por `0.12`. La
+documentación cita correlaciones *estimadas* durante aquella auditoría, que no
+son las que quedaron selladas. El script lee ahora el artefacto.
+Limitación abierta: la dispersión por liga es grande -córners de `-0.42` a
+`+0.41` en 18 ligas, desviación `0.26`-, muy por encima del error de muestreo
+esperado (~`0.05`-`0.10`), lo que sugiere que la heterogeneidad entre ligas es
+real y no ruido. Evaluar si una correlación por liga mejora las probabilidades
+publicadas exige ejecutar la maquinaria NB2 completa y queda fuera de esta
+medición.
+
+
+DEC-203
+Fecha: 2026-08-16
+Problema: dos candidatos -contracción jerárquica de tasas de conteo y filtro de
+matrices aleatorias- se habían declarado no medibles por falta de datos. Era
+falso: las micro-ventanas de Fase 74 traen córners, tiros, tiros a puerta,
+tarjetas y faltas por equipo, y el agregador a nivel partido sólo extraía goles.
+Opciones: (a) esperar a una ingesta nueva de ESPN; (b) extender el agregador con
+los conteos que el corpus ya contiene y medir.
+Decisión: (b). `build_match_level_corpus.py` agrega ahora doce métricas de
+conteo por partido.
+Motivo: declarar algo no medible sin haber mirado los campos disponibles retrasa
+trabajo que ya se podía hacer.
+Estado: propuesta
+Impacto en contratos/fases: ninguno en runtime. El corpus derivado gana columnas;
+`match_features v1` no se toca.
+Evidencia requerida: para la contracción, comparación contra el `shrinkage` fijo
+vigente -no sólo contra la media de liga, que es un baseline que cualquier
+suavizado bate-. Para el filtro espectral, contraste de los autovalores contra
+la banda que produciría el azar.
+Evidencia obtenida, **contracción jerárquica (R5): rechazada como mejora**.
+Sobre 3,615 observaciones equipo-partido de confirmación bate a la media de liga
+en córners (`+0.864689`, IC95% `[+0.376422, +1.373755]`), tiros (`+1.369382`,
+IC `[+0.879980, +1.877606]`) y faltas (`+0.588888`, IC `[+0.320890, +0.859097]`),
+pero **frente al `shrinkage` fijo ya en uso no aporta**: degrada en córners
+(`-0.228261`, IC `[-0.382471, -0.084339]`) y en tiros a puerta (`-0.018797`,
+IC `[-0.037404, -0.001080]`), e indistinguible en las otras tres. La lectura no
+es que R5 falle, sino que el `k` constante del proyecto está bien elegido para
+esta distribución de tamaños de muestra.
+Evidencia obtenida, **Marchenko-Pastur: estructura real encontrada**. Diez
+variables de conteo sobre 1,895 partidos, `q = 0.00528`, banda de ruido
+`[0.8600, 1.1506]`. **Tres autovalores caen fuera** y concentran el **72.5%** de
+la varianza. Es decir: la correlación entre conteos es real y **multidimensional**,
+mientras que `combined_dispersion` la modela hoy con un escalar por métrica entre
+local y visitante. Existen correlaciones **entre métricas distintas** -tiros,
+córners y faltas se mueven juntos- que ese escalar no puede representar.
+Esto **no** es una promoción: encontrar estructura no demuestra que explotarla
+mejore las probabilidades servidas. Es la primera evidencia de que el modelo de
+dependencia actual está subespecificado, y define un candidato concreto en vez de
+una intuición.
+Continuación permitida: sustituir el escalar por métrica por la matriz filtrada
+dentro de `team_count_markets`, y medirlo con el mismo protocolo. Exige tocar el
+modelo de conteo, no sólo el arnés.
+Artefacto: `artifacts/candidate_evaluation/count_candidates.json`.
+
+**Continuación ejecutada: estructura de factores, rechazada.** Si tres
+componentes concentran el 72.5% de la varianza, el perfil de conteos de un equipo
+debería vivir en un subespacio de dimensión baja, y proyectarlo sobre él quitaría
+ruido de muestreo sin quitar señal. Se midió con los ejes estimados **sólo en
+`fit`**, el rango elegido en `selection` y el resultado en `confirmation`.
+El bloque de selección eligió **rango 5 -la proyección completa, que es la
+identidad-**, y todos los rangos reducidos son peores que el baseline: `54.0201`,
+`53.5668`, `51.8231` y `51.1532` frente a `50.9894`. La estructura existe en la
+correlación pero proyectar sobre ella pierde más señal de la que elimina en
+ruido. El candidato no mejora la predicción de conteos.
+**Defecto del arnés encontrado y corregido en el mismo paso.** Con el candidato
+degenerado en la identidad, los deltas quedaron en el orden de `1e-16` y el
+bootstrap devolvió un intervalo estrictamente positivo por aritmética de punto
+flotante: el veredicto imprimió **"mejora confirmada" para un cambio que no hace
+nada**. Es el mecanismo exacto de una promoción falsa. Se añadió una cota de
+materialidad (`1e-9`) y un veredicto `sin efecto medible`. Verificado que las
+promociones reales de `DEC-200` y `DEC-201` la superan por un factor de ~9
+millones, así que no estaban afectadas.
+Artefacto: `artifacts/candidate_evaluation/factor_counts.json`.
+
+
 DEC-204
 Fecha: 2026-08-16
 Problema: DIKAMAHA está en produccion y no cobra nada. La membresia es un
@@ -4810,6 +5366,91 @@ PostgreSQL real; 21 pruebas pytest nuevas y `tests/test_telegram_bot.py` sin
 regresiones; `tsc --noEmit` limpio. Pendiente: los criterios que exigen
 despliegue -reaplicacion de migraciones, compra real, reembolso real y
 reparacion por reconciliacion-.
+
+
+DEC-204
+Fecha: 2026-08-16
+Problema: la contracción jerárquica por árbitro (D.1 de
+`arquitectura_matematica_v1`) no se podía medir porque ni el corpus de Fase 74 ni
+el Postgres de desarrollo traen ese campo -verificado: cero de 381 respuestas
+crudas contienen `officials`-. La duda era si conocer al árbitro antes del
+kickoff mejora la predicción de tarjetas.
+Opciones: (a) dejarlo sin medir; (b) descargar el árbitro de ESPN para el corpus
+completo y medirlo.
+Decisión: (b), con autorización explícita del usuario por el volumen de llamadas.
+El resultado es **negativo pero cuantificado**: el efecto del árbitro existe y es
+demasiado pequeño para mejorar la predicción.
+Motivo: el volumen -9,465 llamadas contra la API pública que el propio servicio
+en producción consume sin clave- podía provocar throttling por IP que afectara a
+usuarios reales, así que no se lanzó sin consultar.
+Estado: propuesta
+Impacto en contratos/fases: ninguno en runtime. Se añade
+`scripts/fetch_match_officials.py` y el artefacto
+`artifacts/match_officials/officials.jsonl`. Ningún modelo servido cambia.
+Evidencia requerida: comparación contra un baseline que **ya use** liga e
+historial de ambos equipos -no contra uno ingenuo, que cualquier señal batiría- y
+separación entre "el árbitro no influye" y "mi estimador falla".
+Evidencia obtenida: 9,464 partidos descargados, **9,426 con árbitro (99.6%)**,
+744 árbitros distintos, 1 fallo. Sobre 1,653 partidos de confirmación, añadir el
+árbitro da delta `-0.097728`, IC95% `[-0.220996, +0.021658]`: **indistinguible**.
+El diagnóstico separa las dos hipótesis y descarta la del estimador. Tras
+descontar la liga, la dispersión entre árbitros con al menos 15 partidos es
+`0.5851`, frente a `0.4451` que produciría el puro azar: hay señal real, y su
+tamaño verdadero es `sqrt(0.5851² - 0.4451²) ≈ 0.38` tarjetas. Contra una
+desviación típica de `2.2609` tarjetas por partido, eso es **~2.8% de la
+varianza**. Los extremos son plausibles -Nicolás Ramírez `+2.41`, Pablo Dovalo
+`-1.755`-, así que el dato es bueno.
+La lectura correcta no es "los árbitros dan igual", sino: **el efecto es real y
+demasiado pequeño para mover una predicción por partido**. La contracción de R5
+hace exactamente lo que debe -arrastra a la mayoría hacia la media de liga- y por
+eso el candidato no degrada; simplemente no aporta.
+Continuación permitida: el efecto podría ser detectable en un target más
+sensible al criterio arbitral que el total de amarillas -tarjetas en un tramo
+concreto, o segundas amarillas y rojas-, donde la señal relativa al ruido es
+mayor. No sobre este target.
+Artefacto: `artifacts/candidate_evaluation/referee_shrinkage.json`.
+
+
+DEC-205
+Fecha: 2026-08-16
+Problema: la auditoría propuso el teorema minimax de von Neumann para las
+formaciones tácticas (D.9). Ese marco describe cómo *deberían* elegir dos
+entrenadores en un juego de suma cero, no si su elección **predice** el
+resultado. Para que fuera un candidato promovible había que reformularlo como
+pregunta medible: conocidas ambas formaciones antes del kickoff -se publican
+alrededor de una hora antes, así que son pre-match legítimas bajo `DEC-001`-,
+¿mejora la probabilidad que ya emite la cadena Dixon-Coles/Kalman?
+Opciones: (a) implementar el minimax como herramienta exploratoria, sin capacidad
+de promover; (b) medir el aporte predictivo de la formación sobre la cadena.
+Decisión: (b), y el resultado es **degradación confirmada**: la formación no
+aporta señal utilizable por esta vía.
+Motivo: (a) habría producido una matriz de pagos interesante de mirar y sin
+efecto sobre ninguna probabilidad servida. Un candidato que no puede mejorar el
+modelo no compite por entrar en él.
+Estado: propuesta
+Impacto en contratos/fases: ninguno. Se añade
+`scripts/fetch_match_formations.py` y el artefacto
+`artifacts/match_formations/formations.jsonl` (9,422 partidos con ambas
+formaciones, 1 fallo). Ningún modelo servido cambia.
+Evidencia requerida: ajuste estimado en `selection` y aplicado en
+`confirmation`, con contracción elegida también en selección, para que una
+formación vista pocas veces no sostenga su propio ajuste.
+Evidencia obtenida: 22 formaciones distintas, 1,770 partidos de selección y
+1,845 de confirmación. En selección el ajuste **mejora** -log-loss `1.004864`
+con `k=15`, mejor que cualquier otra contracción de la rejilla-, pero en
+confirmación **empeora**: `1.021691 → 1.041408`, delta `-0.019717`, IC95%
+`[-0.036237, -0.006903]`, estrictamente negativo.
+Es sobreajuste en su forma más limpia: los residuos por formación en selección
+eran ruido que no transfirió, y la contracción elegida en ese mismo bloque
+resultó demasiado débil precisamente porque el bloque premiaba seguir el ruido.
+Vale como advertencia de método: si sólo se hubiera reportado selección, esto
+habría entrado a producción como una mejora.
+Continuación permitida: ninguna por esta vía. Un ajuste aditivo por formación
+sobre la salida de la cadena queda descartado. Si se retomara, tendría que ser
+como covariable dentro del modelo generativo y no como corrección posterior, y
+con una hipótesis de por qué la formación declarada aportaría sobre la fuerza ya
+estimada de los equipos.
+Artefacto: `artifacts/candidate_evaluation/formation_signal.json`.
 
 
 ```text

@@ -1,6 +1,211 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-14
+**Actualizado:** 2026-08-16
+
+## Cierre de la ronda de candidatos: qué se promovió y qué quedó negado
+
+Resultado final de medir todos los candidatos que el corpus disponible permite
+evaluar. Ver `DEC-197`, `DEC-200`, `DEC-201`, `DEC-202`.
+
+**Promovido y en producción:** peso de mezcla `0.8 → 0.642848` y recalibración
+de 1X2 con temperatura `1.198935`. Composición: log-loss `+0.012928`, IC95%
+`[+0.008054, +0.017857]`.
+
+**Negado con evidencia bien alimentada -no por falta de muestra-:**
+
+- **Ruido de proceso de Kalman** (`DEC-197`): con 1,845 partidos el log-loss
+  crece monótonamente con la tasa y `0.02` degrada de forma confirmada
+  (`[-0.018261, -0.002547]`). La primera medición, sobre 46 partidos, no podía
+  distinguir; ésta sí, y dice que no.
+- **Temperatura por liga** (`DEC-201`): indistinguible y peor que la global.
+- **Peso de mezcla por liga** (`DEC-202`): sin contracción **degrada**
+  (`[-0.012018, -0.000724]`); con contracción jerárquica recupera la paridad
+  pero no mejora.
+
+Los dos últimos comparten lectura: **la contracción jerárquica de R5 hizo su
+trabajo** -impidió enviar a producción un sobreajuste que la habría empeorado-
+aunque no encontrara señal adicional. El parámetro por grupo no se paga en
+ninguna de las dos dimensiones probadas.
+
+**Hallazgo sustantivo.** `DEC-200` dio a Kalman **más** peso (de `0.2` a
+`0.357`) y `DEC-197` muestra que empeora al añadirle olvido temporal. Kalman
+aporta a esta cadena como **segundo estimador estructural**, no como rastreador
+de forma reciente — lo que refuerza corregir la documentación que lo llama
+"estado temporal".
+
+**Contracción jerárquica de conteos** (`DEC-203`): medida y rechazada como
+mejora. Bate a la media de liga en córners, tiros y faltas, pero **no bate al
+`shrinkage` fijo vigente** -degrada en córners y tiros a puerta-. El `k` constante
+del proyecto está bien elegido para esta distribución de muestras.
+
+**Marchenko-Pastur** (`DEC-203`): **estructura real encontrada**. Diez variables
+de conteo, 1,895 partidos, banda de ruido `[0.8600, 1.1506]`: **tres autovalores
+caen fuera** y concentran el **72.5%** de la varianza. La correlación entre
+conteos es real y multidimensional, mientras `combined_dispersion` la modela con
+un escalar por métrica entre local y visitante — hay correlación **entre métricas
+distintas** que ese escalar no puede representar. No es promoción: encontrar
+estructura no demuestra que explotarla mejore. Es la primera evidencia de que el
+modelo de dependencia está subespecificado, y define un candidato concreto.
+
+**Sin medir, por datos y no por análisis.** Contracción por árbitro o portero,
+Cox para lesiones, minimax de formaciones, teoría de récords y el diagnóstico de
+martingala requieren campos de ESPN que el corpus de Fase 74 no contiene. Su
+medición depende de una ingesta previa, no de más trabajo sobre estos datos.
+
+## Dos candidatos promovidos: peso de mezcla y calibración de 1X2
+
+Ver `DEC-200` y `DEC-201`. Primer cambio en las probabilidades servidas desde
+Fase 42, con evidencia que no cruza cero.
+
+**El cuello de botella era la muestra, no los modelos.** `DEC-197` y `DEC-199`
+quedaron inconclusos midiendo sobre 46 partidos de una liga: con esa muestra el
+error estándar de log-loss (~0.076) es un orden de magnitud mayor que cualquier
+delta plausible, así que ningún candidato podía demostrar nada.
+`scripts/build_match_level_corpus.py` reconstruye el corpus causal de Fase 74 a
+nivel partido -**9,465 partidos, 39 ligas**, 0 rechazos- conservando el `split`
+que ese corpus ya tenía congelado, de modo que ningún candidato pueda elegir
+dónde se mide. El bloque de confirmación pasa de 46 a **1,845 partidos**.
+
+**Peso de mezcla: `0.8` → `0.642848` (`DEC-200`).** Fase 42 lo había congelado
+sin ajustarlo sobre datos. Reestimado en selección y confirmado aparte:
+1X2 log-loss `+0.008789` IC95% `[+0.004675, +0.012798]`; Brier `+0.005674`
+IC95% `[+0.002846, +0.008372]`. **Efecto colateral medido antes de conectar**,
+porque el peso altera las lambdas de las que también salen los otros mercados:
+Over 2.5 mejora (`+0.004337`, IC `[+0.000056, +0.008488]`) y BTTS no se degrada
+(indistinguible). La cola temporal de Kalman pesa más de lo que Fase 42 supuso.
+
+**1X2 recalibrado con temperatura `1.198935` (`DEC-201`).** Se reajustó sobre el
+blend ya reponderado, no sobre el anterior: adoptar la `T` medida con el peso
+viejo habría calibrado un modelo distinto del servido. La composición supera a
+cualquiera de los dos por separado: log-loss `+0.012928` IC95%
+`[+0.008054, +0.017857]`. La fiabilidad pasa de `+0.0329` de sobreconfianza
+-declara `0.5164`, acierta `0.4835`- a `-0.0101`. La variante **por liga fue
+rechazada**: cruza cero y es peor que la global, así que el sesgo de calibración
+resulta estable entre ligas y el parámetro extra no se paga. Eso corrige la
+lectura de `DEC-199`, que sobre 46 partidos había concluido lo contrario.
+
+**Dos defectos del arnés, corregidos antes de aceptar ninguna cifra.** La
+historia se cortaba por **posición en la lista** en vez de por tiempo, colando
+partidos con kickoff simultáneo al objetivo -la misma fuga que `DEC-113` cerró
+en entrenamiento, reapareciendo en evaluación-. Lo detectó el guard
+`history_not_strictly_before_cutoff` de la propia cadena: 1,647 fallos que
+pasaron a 0. Y dos procesos escribieron el mismo JSONL entrelazando líneas, que
+no falla al escribir sino al leer; el generador se niega ahora a sobrescribir.
+
+**Gates.** 14 pruebas nuevas (6 de la cadena calibrada, 8 del arnés). El guard
+`test_every_docker_artifact_survives_dockerignore` atrapó que el artefacto nuevo
+no viajaba en la imagen -el fallo que perdió `eligibility.json` dos veces-, y
+está corregido en `Dockerfile` y `.dockerignore`. Suite completa: 912 aprobadas;
+los 17 fallos restantes son el conjunto conocido de contención de CPU y **pasan
+96/96 en aislamiento** con el código de producción ya cambiado.
+
+## Auditoría de composición matemática y contrato `model_composition v1`
+
+Ver `DEC-196` a `DEC-199` y `docs/arquitectura_matematica_v1.md`. Auditoría
+externa de los modelos y de **las conexiones entre ellos**, contrastada contra el
+corpus `rag-matematicas` con libro y página por afirmación. Complementa la Fase
+113, que verificó fórmula, causalidad y validez numérica por revisión de código;
+ésta añade la pregunta que aquella no hacía: si dos piezas correctas pueden
+encadenarse. **Ningún modelo se modificó y ninguna probabilidad servida cambió.**
+
+**El paso de predicción de Kalman: implementado, con la tasa en cero
+(`DEC-197`).** `KalmanV2Filter._update_batch` implementaba correctamente la
+actualización -ganancia por pseudo-inversa, forma de Joseph, proyección
+suma-cero-, pero no había ningún paso que sumara la covarianza de ruido de
+proceso `Q` entre observaciones: los tres campos `process_noise_*` sólo se
+validaban. Con `F=I` implícito y `Q=0` la covarianza sólo puede decrecer y el
+filtro converge a la estimación de un parámetro casi estático.
+
+El corpus decidió la forma de la corrección: *"si el estado latente evoluciona
+como un proceso de difusión en tiempo continuo, la covarianza del ruido de
+proceso acumulada entre dos observaciones depende de la duración del intervalo;
+usar una covarianza constante por observación equivale a suponer que todos los
+intervalos tienen la misma duración"* -SUPPORTED, Murphy p.1042-. Un calendario
+de fútbol tiene intervalos de 3, 7, 15 y 60 días, así que **`Q` escala con `Δt`**
+y los tres campos pasan a ser tasas por día, con tope de 120 días para que un
+parón de verano no equivalga a no saber nada del equipo. El paso vive **dentro**
+de `_update_batch`, de modo que el orden que exige R1 no depende de que cada
+llamador lo recuerde. Ornstein-Uhlenbeck se descartó por coste de calibración
+-añade un parámetro de reversión no estimable con una sola liga- y queda
+documentado como continuación.
+
+**La tasa queda en cero, y eso lo decidió la evidencia.** Barrido walk-forward
+sobre 381 partidos con partición cronológica: en **selección** hay un óptimo
+interior limpio -log-loss baja monótonamente de `1.062236` (tasa 0) a `1.051676`
+(tasa 0.02) y vuelve a subir en 0.05-, pero en **confirmación se invierte**
+(`0.850504` frente a `0.842441`). El bootstrap pareado con el partido como unidad
+-10,000 remuestreos, 46 partidos- da IC95% `[-0.032335, +0.015097]` en log-loss y
+`[-0.024213, +0.009566]` en Brier: **ambos cruzan cero**. El óptimo de selección
+era ruido. Con las tasas en cero el paso de predicción es la identidad exacta, así
+que **ninguna probabilidad servida cambia**. El hallazgo de comportamiento sigue
+vigente y la documentación que llama "estado temporal" a la pieza sigue siendo
+inexacta. Sellado en `artifacts/dec_197_kalman_process_noise/`.
+
+**Markov y Hawkes no componen (`DEC-198`).** `DEC-092` congela que Markov
+redistribuye las lambdas sin alterar su masa; `hawkes_v1.predict_snapshot` suma
+un término de excitación no negativo, que es la definición correcta de un proceso
+autoexcitado. Cada pieza es correcta por separado y no pueden serlo encadenadas.
+Hoy no hay contradicción activa -Hawkes está fuera del router- pero la
+incompatibilidad no es visible leyendo ninguno de los dos módulos, sólo al mirar
+la composición. Queda como precondición de cualquier reconexión futura.
+
+**Contrato nuevo.** `docs/specs/model_composition_v1.md` congela ocho reglas de
+composición con libro y página -dónde va una recalibración, en qué bloque se
+aprenden unos pesos de mezcla, exposición como offset y no como divisor, la
+unidad IID, el filtrado de ruido antes del uso- y una tabla de seis capas donde
+cada frontera corresponde a una regla. Es criterio de revisión, no de runtime.
+De ahí se sigue una distinción que era fácil violar: `τ` de Dixon-Coles es
+**generativo**, no una recalibración, y no puede moverse a la capa de
+calibración.
+
+**Escalado de temperatura para 1X2 (`DEC-199`): medido sobre datos reales y
+rechazado para conectar.** `DEC-162` midió que 1X2 no alcanza fiabilidad en
+ningún tramo y, a diferencia de los mercados binarios, no tiene recalibración
+posterior. `src/temperature_calibration.py` añade la pieza: un único parámetro
+`T` que **no altera cuál resultado es el más probable** -`x^(1/T)` es monótona
+creciente-, sólo la confianza declarada.
+
+Ajustado sobre los mismos 381 partidos y la misma partición: en selección
+`T = 1.6801` y la log-verosimilitud baja de `1.062236` a `1.038647`; **en
+confirmación empeora** -log-loss `0.842441 → 0.916426`, Brier
+`0.486911 → 0.537283`-. El diagnóstico de fiabilidad explica por qué y es más
+útil que el número: en confirmación el modelo declara `0.5271` de confianza media
+en su argmax y acierta `0.5870`, o sea está **infra**confiado (brecha `-0.0598`);
+una `T` ajustada para corregir sobreconfianza aplana todavía más algo que ya iba
+corto, y la brecha se abre a `-0.1363`. **El sesgo de calibración cambia de signo
+entre los dos bloques cronológicos**, que es evidencia empírica de que un
+parámetro de recalibración describe el sesgo de su población y no transfiere sin
+verificarlo. La pieza sigue implementada, correcta y sin conectar -ahora con
+evidencia detrás de esa separación, no sólo cautela-. Sellado en
+`artifacts/dec_199_temperature_calibration/`.
+
+**Gates.** 18 pruebas nuevas: 9 en `tests/test_model_composition_v1.py` -que
+`Δt=7` inyecte exactamente `7/3` de lo que inyecta `Δt=3`, el tope de 120 días,
+que el orden predicción→actualización coincida con la composición explícita, que
+las tasas en cero reproduzcan el filtro anterior de forma exacta, y que la
+intensidad Hawkes exceda estrictamente a la de Markov- y 9 en
+`tests/test_temperature_calibration.py`.
+
+**915 pruebas, todas aprobadas en aislamiento.** La corrida completa devuelve 17
+fallos en `test_catalog_caching.py`, `test_dikamaha_service.py`,
+`test_phase_118_track_record.py` y `test_phase_122_high_probability.py`.
+Verificado que son contención de CPU y no regresión, con tres mediciones: la
+corrida limpia al inicio de esta sesión -antes de estos cambios y antes de
+levantar Docker- dio **912 aprobadas / 0 fallos**; los cuatro archivos pasan
+aislados (58/58 y 38/38); y el conjunto de fallos varía entre corridas. Son todos
+tests de temporización, concurrencia y caché, y el contenedor de Postgres compite
+por CPU. Es el mismo patrón que `DEC-188` documentó, medido de nuevo en vez de
+darlo por conocido.
+
+**Tres autocorrecciones registradas.** El corpus rechazó tres afirmaciones de la
+propia auditoría y, al investigar por qué en vez de reformularlas, aparecieron
+errores reales -la transformación arcoseno era innecesaria porque el proyecto ya
+usa GLMs; la "correlación espuria" entre posesiones es una identidad algebraica,
+no un artefacto composicional-. Quedan visibles en
+`docs/arquitectura_matematica_v1.md`.
+
+La skill `dikamaha-math-supervision` conserva el material de referencia y la
+técnica de formulación que hace que una verificación contra el corpus sirva.
 
 ## Tarjeta pre-match compartible por link (DEC-195)
 

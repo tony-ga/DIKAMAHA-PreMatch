@@ -23,9 +23,18 @@ import pandas as pd
 
 from src.dixon_coles_v1 import DixonColesConfig, DixonColesEstimatorV1
 from src.kalman_v2 import KalmanV2Config, KalmanV2Filter, KalmanV2State, poisson_matrix
+from src.temperature_calibration import ArtifactTemperatureCalibrationProvider
 from src.temporal_integrity import aligned_fraction_boundaries
 
 LOGGER = logging.getLogger(__name__)
+
+# Peso del prior estructural en la mezcla log-lineal con la cola temporal.
+# Reestimado por `DEC-200`; Fase 42 lo había congelado en 0.8 sin ajuste.
+BLEND_WEIGHT_DIXON_COLES = 0.642848
+
+# Mercado multiclase que recalibra `DEC-199`. Over 2.5 y BTTS son binarios y
+# tienen su propia vía de calibración, así que no pasan por aquí.
+CALIBRATED_MARKET = "match_result_1x2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,13 +82,17 @@ class _FittedChain:
 class DixonColesKalmanGoalModel(GoalModelPort):
     """Ajusta Dixon-Coles y actualiza fuerza reciente mediante Kalman."""
 
-    def __init__(self, initial_fraction: float = 0.60) -> None:
+    def __init__(
+        self, initial_fraction: float = 0.60,
+        calibrator: ArtifactTemperatureCalibrationProvider | None = None,
+    ) -> None:
         """Configura el corte fijo entre prior estructural y replay temporal."""
 
         if not 0.50 <= initial_fraction <= 0.90:
             raise ValueError("initial_fraction_out_of_range")
         self._initial_fraction = initial_fraction
         self._cache: dict[str, _FittedChain] = {}
+        self._calibrator = calibrator or ArtifactTemperatureCalibrationProvider()
 
     def predict(
         self, matches: list[dict[str, Any]], home_team_id: int,
@@ -108,16 +121,61 @@ class DixonColesKalmanGoalModel(GoalModelPort):
         markets = _markets(matrix)
         provenance = _provenance(fitted)
         audit = _audit(frame, cutoff_ts, matrix, fitted)
+        # Las lambdas de cada componente se publican para que el blend sea
+        # auditable: sin ellas no se puede medir por separado qué aporta el
+        # prior estructural y qué la cola temporal, que es lo que exige R2 de
+        # `model_composition v1` para reestimar el peso de mezcla.
+        audit["dc_lambda_home"] = float(dc_home)
+        audit["dc_lambda_away"] = float(dc_away)
+        audit["kalman_lambda_home"] = float(prediction.lambda_home)
+        audit["kalman_lambda_away"] = float(prediction.lambda_away)
+        # `tau` acompaña a las lambdas porque sin él no se puede reconstruir la
+        # matriz conjunta con la que se derivaron los mercados: recomputar un
+        # blend distinto sin su `tau` mediría un modelo que no es el servido.
+        audit["tau_dc"] = float(fitted.tau_dc)
         if not all((
             audit["cutoff_causal"], audit["score_matrix_normalized"],
             audit["score_matrix_finite"], audit["probabilities_valid"],
             audit["dc_converged"],
         )):
             raise RuntimeError("official_goal_chain_integrity_gate_failed")
+        result_1x2 = self._calibrate_1x2(markets, provenance)
         return GoalChainPrediction(
             home, away,
-            markets["home"], markets["draw"], markets["away"],
+            result_1x2["1"], result_1x2["X"], result_1x2["2"],
             markets["over_2_5"], markets["btts"], provenance, audit)
+
+    def _calibrate_1x2(
+        self, markets: dict[str, float], provenance: dict[str, Any],
+    ) -> dict[str, float]:
+        """Recalibra 1X2 con la temperatura sellada, o degrada a sin calibrar.
+
+        R6 sitúa este paso al final, sobre probabilidades ya formadas. El
+        escalado de temperatura no altera cuál resultado es el más probable
+        -`x^(1/T)` es monótona creciente-, así que sólo cambia la confianza
+        declarada.
+
+        Si el artefacto falta o no verifica su hash se sirve la salida sin
+        calibrar, y la procedencia lo declara. La alternativa -no predecir- sería
+        peor para un servicio desplegado, pero la degradación tiene que ser
+        visible: un fallo silencioso aquí devuelve exactamente el
+        comportamiento anterior y nadie se enteraría.
+        """
+
+        uncalibrated = {
+            "1": markets["home"], "X": markets["draw"], "2": markets["away"]}
+        try:
+            calibrated, calibration = self._calibrator.predict(
+                CALIBRATED_MARKET, uncalibrated)
+        except Exception as error:  # noqa: BLE001
+            LOGGER.warning(
+                "temperature_calibration_unavailable: %s", error)
+            provenance["temperature_calibrated"] = False
+            provenance["temperature_status"] = "artifact_unavailable"
+            return uncalibrated
+        provenance["temperature_calibrated"] = True
+        provenance["temperature"] = calibration["temperature"]
+        return calibrated
 
     def _fit_or_load(
         self, frame: pd.DataFrame, cutoff_ts: str,
@@ -223,13 +281,24 @@ def _initial_state(
 
 
 def _replay(state: KalmanV2State, frame: pd.DataFrame) -> KalmanV2State:
-    """Actualiza Kalman por kickoff sin contaminación dentro del mismo bucket."""
+    """Actualiza Kalman por kickoff sin contaminación dentro del mismo bucket.
+
+    El intervalo entre kickoffs consecutivos se pasa al filtro para que su paso
+    de predicción escale el ruido de proceso con el tiempo transcurrido
+    (`DEC-197`). Los partidos de un mismo kickoff comparten intervalo y se
+    aplican en un único lote, de modo que ninguno ve el resultado de otro.
+    """
 
     filter_ = KalmanV2Filter(KalmanV2Config())
+    previous = pd.to_datetime(state.cutoff_ts, utc=True, errors="coerce")
     for cutoff, bucket in frame.groupby("match_date", sort=True):
         updates = [_predict_update(filter_, state, row) for _, row in bucket.iterrows()]
-        state = filter_._update_batch(state, updates)
+        elapsed = 0.0
+        if previous is not None and not pd.isna(previous):
+            elapsed = max((cutoff - previous).total_seconds() / 86400.0, 0.0)
+        state = filter_._update_batch(state, updates, elapsed_days=elapsed)
         state.cutoff_ts = cutoff.isoformat()
+        previous = cutoff
     return state
 
 
@@ -276,9 +345,17 @@ def _dc_lambdas(
 
 
 def _blend_lambda(dc_value: float, kalman_value: float) -> float:
-    """Fusiona en escala log con pesos congelados por Fase 42."""
+    """Fusiona en escala log con el peso reestimado por `DEC-200`.
 
-    return math.exp(0.8 * math.log(dc_value) + 0.2 * math.log(kalman_value))
+    Fase 42 congeló `0.8` sin ajustarlo sobre datos; `DEC-200` lo reestima en el
+    bloque de selección de Fase 74 y confirma la mejora en un bloque que no
+    participó en esa elección (R2 de `model_composition v1`). El peso baja a
+    `0.6428`: la cola temporal de Kalman pesa más de lo que Fase 42 supuso.
+    """
+
+    return math.exp(
+        BLEND_WEIGHT_DIXON_COLES * math.log(dc_value)
+        + (1.0 - BLEND_WEIGHT_DIXON_COLES) * math.log(kalman_value))
 
 
 def _history_hash(frame: pd.DataFrame, cutoff_ts: str) -> str:
@@ -300,7 +377,8 @@ def _provenance(fitted: _FittedChain) -> dict[str, Any]:
         "kalman_used": True, "kalman_version": "kalman_v2",
         "markov_used": False, "markov_status": "goal_trajectory_shadow_only",
         "hawkes_used": False, "promotion_status": "candidate_gated",
-        "dixon_coles_weight": 0.8, "kalman_weight": 0.2,
+        "dixon_coles_weight": BLEND_WEIGHT_DIXON_COLES,
+        "kalman_weight": round(1.0 - BLEND_WEIGHT_DIXON_COLES, 6),
         "history_hash": fitted.history_hash,
     }
 
