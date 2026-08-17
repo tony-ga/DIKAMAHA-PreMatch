@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveEntitlement } from "@/lib/auth/entitlements";
 import { database } from "@/lib/db";
 import { alertSubscriptions } from "@/lib/db/schema";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";
@@ -26,7 +27,14 @@ export async function POST(request: NextRequest) {
     const rows = await database().select({ enabled: alertSubscriptions.enabled })
       .from(alertSubscriptions)
       .where(eq(alertSubscriptions.userId, session.userId));
-    if (parsed.data.enabled && rows.filter((row) => row.enabled).length >= 20) {
+    // Mismo tope duplicado que en favoritos: ruta y trigger
+    // (`enforce_alert_subscription_limit`) deben leer el mismo plan.
+    const entitlement = await resolveEntitlement(session.userId);
+    if (
+      entitlement.plan !== "premium"
+      && parsed.data.enabled
+      && rows.filter((row) => row.enabled).length >= 20
+    ) {
       return jsonError("subscription_limit_reached", 409);
     }
     const [created] = await database().insert(alertSubscriptions).values({

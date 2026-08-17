@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import postgres from "postgres";
 
+import { reconcileStarTransactions } from "./billing-reconcile";
+
 type JsonValue = null | string | number | boolean | Json | readonly JsonValue[];
 type Json = { readonly [key: string]: JsonValue | undefined };
 type Subscription = {
@@ -37,6 +39,18 @@ function config() {
   if (!apiUrl.startsWith("https://")) {
     throw new Error("dikamaha_bot_api_url_https_required");
   }
+  const reconcileSeconds = Number(
+    process.env.MINIAPP_BILLING_RECONCILE_SECONDS ?? "900");
+  if (!Number.isFinite(reconcileSeconds) || reconcileSeconds < 60) {
+    throw new Error("miniapp_billing_reconcile_seconds_invalid");
+  }
+  const billingSecret = process.env.MINIAPP_BILLING_SECRET ?? "";
+  const billingEnabled = process.env.MINIAPP_BILLING_ENABLED === "true";
+  // Sin secreto no se puede verificar ninguna factura, y reconciliar sin
+  // verificar concedería planes a partir de cargos ajenos.
+  if (billingEnabled && billingSecret.length < 32) {
+    throw new Error("miniapp_billing_secret_invalid");
+  }
   return {
     botToken: process.env.TELEGRAM_BOT_TOKEN!,
     apiUrl,
@@ -44,6 +58,9 @@ function config() {
     databaseUrl: process.env.DATABASE_URL!,
     pollSeconds,
     enabled: process.env.MINIAPP_ALERTS_ENABLED === "true",
+    billingEnabled,
+    billingSecret,
+    reconcileSeconds,
   };
 }
 
@@ -323,6 +340,7 @@ export async function main(): Promise<void> {
   const cfg = config();
   const sql = postgres(cfg.databaseUrl, { max: 3, prepare: false });
   console.info(JSON.stringify({ event: "telegram_alert_worker_started", enabled: cfg.enabled }));
+  let lastReconcileMs = 0;
   try {
     for (;;) {
       const started = Date.now();
@@ -333,6 +351,25 @@ export async function main(): Promise<void> {
         } catch (error) {
           console.error(JSON.stringify({
             event: "telegram_alert_cycle_failed",
+            code: error instanceof Error ? error.message.slice(0, 80) : "unknown",
+          }));
+        }
+      }
+      // La reconciliación va en su propio try/catch y con su propia cadencia:
+      // un fallo del cobro no puede detener el ciclo de alertas, que es la
+      // misma disciplina de aislamiento que ya se aplica por suscripción.
+      if (cfg.billingEnabled && started - lastReconcileMs >= cfg.reconcileSeconds * 1000) {
+        lastReconcileMs = started;
+        try {
+          const report = await reconcileStarTransactions(sql, {
+            botToken: cfg.botToken, billingSecret: cfg.billingSecret,
+          });
+          // `repaired > 0` significa que el reenvío del bot está perdiendo
+          // pagos: es una incidencia, no una métrica de rutina.
+          console.info(JSON.stringify({ event: "star_reconcile_ok", ...report }));
+        } catch (error) {
+          console.error(JSON.stringify({
+            event: "star_reconcile_failed",
             code: error instanceof Error ? error.message.slice(0, 80) : "unknown",
           }));
         }

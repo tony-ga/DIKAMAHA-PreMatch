@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { EntityImage } from "@/components/entity-image";
 import { LoadingProgress } from "@/components/loading-progress";
+import { PremiumUpsell, usePremium } from "@/components/premium-gate";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, probabilityWidth, queryString, record } from "@/lib/client-api";
 
@@ -133,11 +134,16 @@ function FixtureCard({ fixture, picks }: FixtureGroup) {
 }
 
 export default function HighProbabilityPage() {
+  const premium = usePremium();
   const query = useQuery({
     queryKey: ["high-probability"],
     queryFn: () => api<Record<string, unknown>>(`/api/high-probability${queryString({ date: today(), limit: 12 })}`),
     refetchInterval: 120_000,
     refetchOnWindowFocus: true,
+    // Sin plan no se pide: el servidor devolvería 402 y ese error quedaría
+    // cacheado, así que el usuario vería un panel de fallo en lugar de una
+    // oferta.
+    enabled: premium,
   });
   const picks = Array.isArray(query.data?.picks) ? query.data.picks.map(record) : [];
   const fixtureGroups = groupByFixture(picks);
@@ -166,7 +172,17 @@ export default function HighProbabilityPage() {
         <Metric label="Partidos con picks" value={(query.data?.fixtures_with_picks as number | undefined) ?? "—"} />
         <Metric label="Celdas de gol aptas" value={(provenance.eligible_cells as number | undefined) ?? "—"} />
       </div>
-      {query.isError ? (
+      {!premium ? (
+        // El encabezado, el aviso metodológico y los contadores se dejan a la
+        // vista: explican qué es esto y cuántos picks hay hoy, que es la mejor
+        // presentación posible de la función. Lo que se retira son los picks
+        // en sí. Nada borroso: un placeholder difuminado invita a intentar
+        // leerlo y convierte el muro en un reto.
+        <PremiumUpsell
+          headline="Los picks del día son parte de Premium"
+          detail="Puedes ver cuántos hay hoy; para abrirlos hace falta el nivel de pago."
+        />
+      ) : query.isError ? (
         <StatePanel title="Servicio no disponible" action={<button className="primary-button" onClick={() => void query.refetch()}>Reintentar</button>}>
           No se pudo consultar el menú de mayor probabilidad.
         </StatePanel>

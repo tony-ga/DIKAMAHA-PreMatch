@@ -4710,6 +4710,107 @@ defecto real durante una revision. Pendiente: no hay Playwright de la pagina
 publica porque exigiria sembrar una fila en la base de datos desde el arnes
 e2e, que hoy no hace nada parecido.
 
+DEC-204
+Fecha: 2026-08-16
+Problema: DIKAMAHA está en produccion y no cobra nada. La membresia es un
+administrador aprobando a mano un identificador de Telegram, y la columna `plan`
+de `miniapp_users` -creada en `0002_user_accounts.sql`- es un no-op declarado:
+viaja dentro de la cookie firmada y ninguna ruta la consulta. El coste fijo
+mensual medido es de ~46 USD: ~26 de Railway -de los cuales 18.2 son el servicio
+PreMatch, por el barrido de 63 ligas contra ESPN- mas 20 de Claude Pro. El
+requisito es cobrar lo minimo que cubra ese piso sin degradar lo que ya reciben
+los usuarios existentes.
+Opciones: (a) Stripe, comision ~2.9%+0.30 USD, pero pagos web fuera de Telegram
+y riesgo de politica al vender bienes digitales dentro de una Mini App;
+(b) Telegram Stars con suscripcion recurrente nativa, retencion ~35%;
+(c) no automatizar el cobro y limitarse a un panel de administracion con alta
+manual.
+Decisión: (b), a 250 estrellas al mes -~4.90 USD-, con seis ejes propios que se
+detallan abajo. El punto de equilibrio son 15 suscriptores: 250 estrellas se
+retiran a ~0.013 USD cada una via Fragment, es decir ~3.25 USD netos.
+Motivo: (a) queda descartada por la politica de Telegram para bienes digitales
+dentro de una Mini App, que es la superficie principal del producto. (c) no
+resuelve el problema: el coste sigue sin cubrirse y el alta manual ya es el
+cuello de botella que `0002` intento quitar. El coste marginal por suscriptor es
+practicamente cero -todo el computo caro es por catalogo y con cache global-, de
+modo que el precio no tiene que cubrir consumo sino amortizar un fijo, y eso
+permite el precio mas bajo que el requisito pedia.
+Decisión (a) Frescura: lectura por peticion con cache de proceso de 60 s, **no**
+una cookie con caducidad embebida ni un TTL de sesion mas corto. La cookie dura
+30 dias y `refreshedSessionToken` la reemite sin releer la cuenta, asi que
+fallaria en los dos sentidos: quien cancela conservaria el producto y quien paga
+desde el bot no lo tendria en la Mini App. Meter `planExpiresAt` en la cookie
+acota la degradacion pero no puede resolver el alta, y arreglar eso exige releer
+la fila -es decir, esta misma opcion con pasos de mas-. La lectura es por clave
+primaria y solo en rutas de pago: el catalogo y el historial siguen sin tocar la
+base, que es lo que protegia el diseno original de la sesion.
+Decisión (b) Donde se escriben los pagos: HTTP interno del bot hacia la Mini App
+con secreto compartido, **no** una conexion a PostgreSQL en Python, aunque
+SQLAlchemy ya este en `requirements.telegram-bot.txt`. Aplicar un pago son tres
+escrituras acopladas -asiento, suscripcion y plan- que deben ir en una
+transaccion; dos implementaciones en dos lenguajes divergirian, y su modo de
+divergencia es "el usuario pago y no es premium". Ademas la Fase 109 diseno el
+bot sin base de datos a proposito, y revertir eso justo para el subsistema de
+mayor consecuencia es la peor eleccion posible de excepcion.
+Decisión (c) Granularidad de la cuota: por partido y por dia, **no** por
+peticion. `components/providers.tsx` activa `refetchOnWindowFocus` global y
+`prediction-detail.tsx` cachea por `["prediction", fixtureId]`, de modo que una
+cuota por peticion se habria consumido sola al recuperar el foco de la WebView.
+La promesa es "3 predicciones al dia de tu eleccion", no "3 peticiones HTTP".
+Decisión (d) Semantica de caducidad: se calcula al leer, **no** se mantiene por
+barrido. Un barrido que no corra deja premium a quien no paga. Como efecto
+lateral, la cancelacion mas comun -el propio panel de Telegram, que no notifica
+nada- no necesita codigo alguno: el cobro no vuelve, la fecha pasa y el plan cae.
+Decisión (e) Degradacion del bot: fail-open a `free`, **ni** cerrado **ni**
+abierto a premium. Cerrar le diria "no tienes acceso" a un suscriptor por un
+reinicio de 30 segundos que ademas es culpa nuestra; abrir a premium regala el
+producto en cada parpadeo. La degradacion no se cachea y lleva bandera propia,
+para que el mensaje diga "temporalmente no disponible" y nunca "necesitas
+premium": una resolucion degradada no puede acusar a nadie de no haber pagado.
+Decisión (f) Ubicacion del precio: fila en `billing_plans`, con la variable de
+entorno solo como semilla. `lib/env.ts` cachea el entorno a nivel de modulo, asi
+que un precio por variable exigiria reiniciar; la economia de las estrellas
+puede moverse y el equilibrio esta en 15 suscriptores, de modo que un precio
+equivocado se paga en meses.
+Estado: propuesta
+Impacto en contratos/fases: `plan` deja de ser un no-op y pasa a gobernar que se
+sirve; `session.plan` queda degradado a pista de interfaz, con la invariante de
+que ninguna ruta autoriza leyendolo. Dos migraciones aditivas -`0004` de
+infraestructura y `0005` de acceso heredado, separadas para poder revisar y
+deshacer la segunda sola-. Cinco endpoints internos con un esquema de
+autenticacion nuevo -secreto compartido, sin sesion ni CSRF-, que es la segunda
+superficie no basada en sesion del proyecto despues de `/s/<token>` de `DEC-195`.
+Los triggers `enforce_miniapp_favorite_limit` y
+`enforce_alert_subscription_limit` pasan a consultar `effective_plan`, porque el
+tope vive duplicado desde `0000` y relajar solo la ruta daria un 500 en lugar de
+un 409. `specs/telegram_miniapp_bot_parity_v1.md` deja de afirmar paridad
+incondicional: ahora vale **dentro de un nivel**. Ningun modelo, artefacto
+sellado ni probabilidad servida cambia.
+Se registran tres defectos preexistentes encontrados al implementar, los tres
+silenciosos: `allowed_updates` del bot no incluia `pre_checkout_query`, asi que
+ningun pago se habria confirmado nunca; `process_update` descartaba todo mensaje
+sin campo `text`, que es exactamente la forma de un `successful_payment`; y
+`app/api/share/route.ts` llamaba a `/v1/predict/upcoming` sin pasar por el
+proxy, de modo que "compartir" habria sido una via para pedir predicciones
+ilimitadas sin tocar el contador.
+Restriccion de comunicacion: ninguna superficie de venta menciona ROI, Kelly,
+stake, cuotas ni rentabilidad. Premium se vende por acceso y volumen. Monetizar
+no relaja `DEC-169` ni el cierre de la fase 83: lo tensa, porque justificar un
+precio es exactamente cuando mas tienta citar una cifra de retorno.
+Evidencia requerida: que reaplicar las migraciones no cambie nada; que repetir
+un `telegram_payment_charge_id` no altere el estado; que doce peticiones
+simultaneas contra un PostgreSQL real concedan exactamente tres; que una ruta de
+pago devuelva 402 **sin** emitir ninguna llamada aguas arriba; que el
+pre-checkout se resuelva sin red; que con `MINIAPP_BILLING_ENABLED=false` el
+comportamiento sea identico al previo a la fase; y que, deteniendo la Mini App a
+proposito durante una compra real, el reconciliador la repare -la red de
+seguridad se prueba rompiendo el camino primario, no leyendo el codigo-.
+Evidencia obtenida: 133 pruebas Vitest en 18 archivos, 1 omitida por exigir
+PostgreSQL real; 21 pruebas pytest nuevas y `tests/test_telegram_bot.py` sin
+regresiones; `tsc --noEmit` limpio. Pendiente: los criterios que exigen
+despliegue -reaplicacion de migraciones, compra real, reembolso real y
+reparacion por reconciliacion-.
+
 
 ```text
 DEC-NNN

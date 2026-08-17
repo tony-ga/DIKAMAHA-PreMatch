@@ -24,6 +24,22 @@ export const shareCardSchema = z.object({
   awayName: z.string().trim().max(80).default(""),
 });
 
+/**
+ * Cuerpo de una petición de predicción pre-match.
+ *
+ * La ruta era un proxy ciego hasta la Fase 125. Ahora tiene que validar,
+ * porque el plan gratuito concede 3 predicciones al día **por partido** y sin
+ * leer el cuerpo no hay clave contra la que cobrar. Llega en `snake_case`
+ * porque así lo manda el cliente y así lo espera `/v1/predict/upcoming`.
+ */
+export const predictionRequestSchema = z.object({
+  match_id: z.number().int().positive(),
+  league_slug: z.string().trim().regex(/^[A-Za-z0-9._]+$/),
+  home_team_id: z.number().int().positive(),
+  away_team_id: z.number().int().positive(),
+  kickoff_ts: z.string().trim().min(10).max(40),
+});
+
 export const alertRuleTypes = [
   "kickoff",
   "score_change",

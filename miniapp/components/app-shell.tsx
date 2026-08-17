@@ -4,14 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
+import { QuotaChip, usePremium } from "@/components/premium-gate";
 import { useAuth } from "@/components/providers";
 import { isPublicRoute } from "@/lib/public-routes";
 
 const navigation = [
   { href: "/", icon: "⌂", label: "Inicio" },
-  { href: "/live", icon: "●", label: "En vivo" },
+  // El candado se pinta antes del toque, no después: descubrir el muro al
+  // llegar a la pantalla es peor que verlo desde la barra.
+  { href: "/live", icon: "●", label: "En vivo", premium: true },
   { href: "/predictions", icon: "◫", label: "Predicciones" },
-  { href: "/mayor-probabilidad", icon: "▲", label: "Mayor prob." },
+  { href: "/mayor-probabilidad", icon: "▲", label: "Mayor prob.", premium: true },
   { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/historial", icon: "✓", label: "Aciertos" },
 ];
@@ -20,6 +23,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const premium = usePremium();
 
   useEffect(() => {
     const back = window.Telegram?.WebApp.BackButton;
@@ -45,6 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/" className="wordmark" aria-label="Ir al inicio">
           <span className="wordmark-dot" /> DIKAMAHA
         </Link>
+        <QuotaChip />
         <Link href="/settings" className="user-chip" aria-label="Abrir ajustes">
           <span className="status-dot" />
           <span className="user-chip-name">{user?.firstName ?? "Usuario"}</span>
@@ -57,7 +62,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           return (
             <Link key={item.href} href={item.href} className={active ? "nav-item active" : "nav-item"}>
               <span aria-hidden="true">{item.icon}</span>
-              <small>{item.label}</small>
+              <small>
+                {item.label}
+                {item.premium && !premium
+                  ? <span className="nav-lock" aria-label="Requiere Premium"> ·</span>
+                  : null}
+              </small>
             </Link>
           );
         })}

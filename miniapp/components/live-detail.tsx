@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
+import { PremiumUpsell, usePremium } from "@/components/premium-gate";
 import { api, countLabel, edgeLabel, percentage, probabilityWidth, record, unavailableReason } from "@/lib/client-api";
 import { useAuth } from "@/components/providers";
 import { EntityImage } from "@/components/entity-image";
@@ -246,6 +247,7 @@ function RecentActions({ value }: { value: unknown }) {
 
 export function LiveDetail({ fixtureId, league }: Props) {
   const { csrfToken } = useAuth();
+  const premium = usePremium();
   const query = useQuery({
     queryKey: ["live-prediction", fixtureId, league],
     queryFn: () => api<Record<string, unknown>>("/api/predict/live", {
@@ -254,8 +256,10 @@ export function LiveDetail({ fixtureId, league }: Props) {
     }, csrfToken),
     // `csrfToken` entra en la condición porque esta lectura viaja por POST y
     // el proxy la rechaza sin token: durante el arranque optimista la interfaz
-    // ya está pintada pero la sesión aún no se ha confirmado.
-    enabled: Boolean(csrfToken && league && fixtureId),
+    // ya está pintada pero la sesión aún no se ha confirmado. `premium` se
+    // suma por el mismo motivo: sin plan el servidor responde 402 y ese error
+    // quedaría cacheado como si fuera un fallo del servicio.
+    enabled: Boolean(csrfToken && league && fixtureId && premium),
     refetchInterval: (activeQuery) => {
       const code = activeQuery.state.error instanceof Error ? activeQuery.state.error.message : "";
       return TERMINAL_LIVE_ERRORS.has(code) ? false : LIVE_REFRESH_MS;
@@ -273,6 +277,14 @@ export function LiveDetail({ fixtureId, league }: Props) {
     : "—";
   const homeName = String(fixture.home_team_name ?? `Equipo ${String(fixture.home_team_id ?? "A")}`);
   const awayName = String(fixture.away_team_name ?? `Equipo ${String(fixture.away_team_id ?? "B")}`);
+  if (!premium) {
+    return (
+      <PremiumUpsell
+        headline="El análisis en vivo es parte de Premium"
+        detail="El marcador y el reloj del partido siguen disponibles en el listado."
+      />
+    );
+  }
   if (query.isError) {
     const { title, detail } = unavailableReason(query.error);
     return <StatePanel title={title}>{detail}</StatePanel>;

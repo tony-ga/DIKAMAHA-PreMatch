@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { PremiumUpsell, usePremium } from "@/components/premium-gate";
 import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel, TruncatedCatalogNotice } from "@/components/ui";
 import { api, type Catalog, type League, queryString } from "@/lib/client-api";
 import { useState } from "react";
@@ -40,19 +41,31 @@ function LiveScanStatus({ snapshot }: { snapshot: ScanProgress | undefined }) {
 
 export default function LivePage() {
   const [league, setLeague] = useState("");
+  const premium = usePremium();
   const leagues = useQuery({ queryKey: ["explorer-leagues"], queryFn: () => api<{ leagues: League[] }>("/api/explorer/leagues") });
   const query = useQuery({
     queryKey: ["live", league],
     queryFn: () => api<Catalog>(`/api/live${queryString({ limit: 20, leagues: league })}`),
     refetchInterval: 20_000,
     refetchOnWindowFocus: true,
+    // Sin plan el servidor responde 402 y cachearlo pintaría un fallo del
+    // servicio donde debe haber una oferta.
+    enabled: premium,
   });
   const progress = useQuery({
     queryKey: ["live-progress", league],
     queryFn: () => api<ScanProgress>(`/api/live/progress${queryString({ limit: 20, leagues: league })}`),
-    enabled: query.isLoading,
+    enabled: premium && query.isLoading,
     refetchInterval: query.isLoading ? 400 : false,
   });
+  if (!premium) {
+    return (
+      <>
+        <PageHeader eyebrow="IN-PLAY" title="Partidos en vivo" />
+        <PremiumUpsell headline="El seguimiento en vivo es parte de Premium" />
+      </>
+    );
+  }
   return (
     <>
       <PageHeader eyebrow="IN-PLAY · AUTO 20 S" title="Partidos en vivo" action={

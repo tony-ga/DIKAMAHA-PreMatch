@@ -16,6 +16,15 @@ declare global {
         // de una Mini App; `navigator.share` no está disponible en el WebView
         // de Telegram en Android.
         openTelegramLink?(url: string): void;
+        // Abre la hoja de pago nativa de Telegram sobre un enlace de factura
+        // creado con `createInvoiceLink`. El callback informa del resultado en
+        // el cliente, pero **no es la confirmación**: el asiento llega por
+        // `successful_payment` al bot, así que tras un `paid` hay que
+        // reconsultar la titularidad en vez de darla por hecha.
+        openInvoice?(
+          url: string,
+          callback?: (status: "paid" | "cancelled" | "failed" | "pending") => void,
+        ): void;
         BackButton: {
           show(): void;
           hide(): void;

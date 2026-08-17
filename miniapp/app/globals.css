@@ -489,3 +489,18 @@ button { color: inherit; }
 .share-hint, .share-disclosure { color:var(--muted); max-width:460px; }
 .share-hint { font-size:.82rem; }
 .share-disclosure { font-size:.72rem; line-height:1.5; }
+
+/* Nivel de pago (Fase 125). Reutiliza `.data-panel` y los botones existentes:
+   el muro no introduce lenguaje visual nuevo, sólo reordena el que ya hay. */
+.premium-upsell { display:flex; flex-direction:column; gap:10px; }
+.premium-benefits { margin:0; padding-left:18px; color:var(--muted); font-size:.84rem;
+  line-height:1.7; }
+.premium-upsell .primary-button { align-self:flex-start; }
+.premium-disclaimer { font-size:.72rem; line-height:1.5; }
+
+/* Contador de predicciones del día. Invisible para quien ya paga: un
+   suscriptor no debe ver nunca un contador. */
+.quota-chip { margin-left:auto; padding:3px 8px; border-radius:999px;
+  border:1px solid var(--line); color:var(--muted); font-size:.68rem;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+.nav-lock { color:var(--signal); }

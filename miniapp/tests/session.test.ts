@@ -80,4 +80,48 @@ describe("signed Mini App sessions", () => {
     // sabría resucitar sesiones muertas con sólo llamarla.
     expect(refreshedSessionToken(dead)).toBeNull();
   });
+
+  it("carries the plan without re-reading it when the cookie is renewed", async () => {
+    // Esto documenta el problema que obligó a separar titularidad de sesión:
+    // la renovación copia `plan` tal cual, así que una cookie emitida cuando
+    // alguien era premium lo seguirá diciendo durante 30 días aunque haya
+    // cancelado al día siguiente.
+    const { issueSession, parseSession, refreshedSessionToken } =
+      await import("@/lib/auth/session");
+    const issued = issueSession({ userId: 42, firstName: "Marco", plan: "premium" });
+    const aged = { ...issued.session, expiresAt: issued.session.expiresAt - 2 * 24 * 60 * 60 };
+
+    const parsed = parseSession(refreshedSessionToken(aged)!);
+
+    expect(parsed?.plan).toBe("premium");
+  });
+
+  it("never lets the cookie plan authorize a paid feature", async () => {
+    // La contrapartida de la prueba anterior: el `plan` de la cookie es una
+    // pista para el primer pintado y nada más. Quien decide es la fila, así
+    // que una cookie que dice "premium" sobre una cuenta gratuita no abre
+    // ninguna función de pago.
+    const { issueSession } = await import("@/lib/auth/session");
+    const issued = issueSession({ userId: 42, firstName: "Marco", plan: "premium" });
+    expect(issued.session.plan).toBe("premium");
+
+    vi.resetModules();
+    process.env.MINIAPP_BILLING_ENABLED = "true";
+    vi.doMock("@/lib/db", () => ({
+      database: () => ({
+        execute: async () => [{
+          role: "user", plan_source: "default",
+          plan_expires_at: null, effective_plan: "free",
+        }],
+      }),
+    }));
+    const { requireFeature, resolveEntitlement } =
+      await import("@/lib/auth/entitlements");
+
+    const entitlement = await resolveEntitlement(issued.session.userId);
+
+    expect(entitlement.plan).toBe("free");
+    expect(() => requireFeature(entitlement, "live")).toThrow("premium_required");
+    delete process.env.MINIAPP_BILLING_ENABLED;
+  });
 });

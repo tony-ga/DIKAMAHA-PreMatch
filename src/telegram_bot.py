@@ -4,7 +4,7 @@
 # requests>=2.31
 # tenacity>=8.2
 
-Version: 2.4.0
+Version: 2.5.0
 Created: 2026-07-30
 """
 from __future__ import annotations
@@ -28,6 +28,13 @@ from tenacity import (
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
+)
+
+from src.telegram_billing import (
+    BillingConfig,
+    Entitlement,
+    MiniappBillingClient,
+    verify_billing_payload,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -67,6 +74,13 @@ class TelegramTransport(ABC):
 
     def set_chat_menu_button(self, web_app_url: str) -> None:
         """Configura el acceso persistente a la Mini App cuando existe."""
+
+        return None
+
+    def answer_pre_checkout_query(
+        self, query_id: str, ok: bool, error_message: str | None = None,
+    ) -> None:
+        """Acepta o rechaza un pago dentro de la ventana de 10 segundos."""
 
         return None
 
@@ -202,6 +216,9 @@ class TelegramBotConfig:
     miniapp_url: str | None = None
     bot_username: str | None = None
     miniapp_short_name: str | None = None
+    #: Cobro con Stars. Apagado reproduce exactamente el bot anterior a la
+    #: Fase 125: nadie queda gateado y no se emite ninguna llamada interna.
+    billing: BillingConfig = field(default_factory=BillingConfig)
 
     def __post_init__(self) -> None:
         """Valida límites sin inspeccionar o exponer secretos."""
@@ -247,6 +264,13 @@ def telegram_config_from_env() -> TelegramBotConfig:
         miniapp_url=os.getenv("DIKAMAHA_MINIAPP_URL") or None,
         bot_username=os.getenv("TELEGRAM_BOT_USERNAME") or None,
         miniapp_short_name=os.getenv("TELEGRAM_MINIAPP_SHORT_NAME") or None,
+        billing=BillingConfig(
+            enabled=os.getenv(
+                "TELEGRAM_BILLING_ENABLED", "false").strip().casefold() == "true",
+            billing_secret=os.getenv("MINIAPP_BILLING_SECRET") or None,
+            miniapp_internal_url=os.getenv("MINIAPP_INTERNAL_URL") or None,
+            miniapp_internal_key=os.getenv("MINIAPP_INTERNAL_API_KEY") or None,
+        ),
     )
 
 
@@ -287,8 +311,12 @@ class TelegramHttpTransport(TelegramTransport):
         """Consulta long polling con retry exponencial."""
 
         payload: dict[str, Any] = {
+            # `pre_checkout_query` es obligatorio para cobrar: si no se pide
+            # explícitamente, Telegram no lo entrega y **todo pago queda sin
+            # confirmar**. `successful_payment` y `refunded_payment` viajan
+            # dentro de `message`, así que no necesitan entrada propia.
             "timeout": timeout_seconds,
-            "allowed_updates": ["message", "callback_query"],
+            "allowed_updates": ["message", "callback_query", "pre_checkout_query"],
         }
         if offset is not None:
             payload["offset"] = offset
@@ -339,6 +367,20 @@ class TelegramHttpTransport(TelegramTransport):
                 "web_app": {"url": web_app_url},
             },
         }, 10)
+
+    def answer_pre_checkout_query(
+        self, query_id: str, ok: bool, error_message: str | None = None,
+    ) -> None:
+        """Responde a Telegram dentro de la ventana de 10 segundos.
+
+        Timeout corto y deliberado: pasados los 10 segundos Telegram cancela el
+        pago, así que colgarse aquí es peor que fallar rápido.
+        """
+
+        payload: dict[str, Any] = {"pre_checkout_query_id": query_id, "ok": ok}
+        if not ok and error_message:
+            payload["error_message"] = error_message
+        self._post("answerPreCheckoutQuery", payload, 5)
 
     def _post(
         self, method: str, payload: dict[str, Any], timeout: int,
@@ -604,9 +646,100 @@ class TelegramPredictionBot:
             config.rate_limit_requests, config.rate_limit_window_seconds)
         self._menus: dict[int, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._team_search: dict[int, str] = {}
+        self._billing = (
+            MiniappBillingClient(
+                config.billing.miniapp_internal_url or "",
+                config.billing.miniapp_internal_key or "")
+            if config.billing.enabled else None)
+
+    def _entitlement(self, user_id: int) -> Entitlement:
+        """Resuelve el nivel del usuario, o premium si el cobro está apagado."""
+
+        if self._billing is None:
+            return Entitlement(plan="premium")
+        return self._billing.entitlement_for(user_id)
+
+    def _process_pre_checkout(self, query: dict[str, Any]) -> None:
+        """Acepta o rechaza un pago con verificación puramente local.
+
+        Telegram concede 10 segundos y cancela el pago si se agotan. Una
+        consulta a la Mini App dentro de esa ventana es una moneda al aire
+        durante un arranque en frío o un despliegue; comprobar el HMAC en local
+        es determinista y cuesta microsegundos.
+
+        No pasa por `_is_authorized` ni por el rate limiter a propósito: esto es
+        Telegram preguntando sí o no por un dinero que el usuario ya
+        comprometió, no un comando.
+        """
+
+        query_id = str(query.get("id", ""))
+        sender = query.get("from")
+        user_id = int(sender.get("id", 0)) if isinstance(sender, dict) else 0
+        payload = verify_billing_payload(
+            str(query.get("invoice_payload", "")),
+            self._config.billing.billing_secret,
+            expected_user_id=user_id or None,
+            max_age_seconds=3600,
+        )
+        self._transport.answer_pre_checkout_query(
+            query_id, payload is not None,
+            None if payload else
+            "La factura caducó. Vuelve a abrir Premium en DIKAMAHA.")
+
+    def _process_successful_payment(
+        self, user_id: int, chat_id: int, message: dict[str, Any],
+    ) -> None:
+        """Reenvía el cobro a quien escribe en la base y avisa al usuario."""
+
+        payment = message.get("successful_payment", {})
+        body = {
+            "user_id": user_id,
+            "telegram_payment_charge_id": payment.get("telegram_payment_charge_id"),
+            "invoice_payload": payment.get("invoice_payload"),
+            "total_amount": payment.get("total_amount"),
+            "currency": payment.get("currency"),
+            "is_recurring": bool(payment.get("is_recurring")),
+            "is_first_recurring": bool(payment.get("is_first_recurring")),
+            "subscription_expiration_date": payment.get("subscription_expiration_date"),
+        }
+        delivered = bool(self._billing and self._billing.forward_payment(body))
+        if delivered:
+            self._billing.invalidate(user_id)  # type: ignore[union-attr]
+            _send(self._transport, chat_id, _premium_active_text(), _main_keyboard())
+            return
+        # El pago existe en Telegram aunque no haya llegado a la base. Decirle
+        # que falló sería falso, y decirle que ya está activo sería prematuro:
+        # la reconciliación por `getStarTransactions` lo recogerá en minutos.
+        LOGGER.error("star_payment_forward_failed user_id=%s", user_id)
+        _send(self._transport, chat_id, _premium_pending_text(), _main_keyboard())
+
+    def _process_refunded_payment(
+        self, user_id: int, message: dict[str, Any],
+    ) -> None:
+        """Reenvía un reembolso, venga de donde venga.
+
+        Telegram entrega este update también cuando el reembolso se inició
+        desde su propio panel. Sin manejarlo, alguien a quien se le devolvió el
+        dinero conservaría premium hasta el fin del periodo.
+        """
+
+        refund = message.get("refunded_payment", {})
+        if self._billing is None:
+            return
+        self._billing.forward_refund({
+            "user_id": user_id,
+            "telegram_payment_charge_id": refund.get("telegram_payment_charge_id"),
+            "total_amount": refund.get("total_amount", 0),
+        })
+        self._billing.invalidate(user_id)
 
     def process_update(self, update: dict[str, Any]) -> None:
-        """Procesa mensajes y botones únicamente en chats privados."""
+        """Procesa mensajes, botones y pagos en chats privados."""
+
+        pre_checkout = update.get("pre_checkout_query")
+        if isinstance(pre_checkout, dict):
+            self._process_pre_checkout(pre_checkout)
+            return
 
         callback = update.get("callback_query")
         if isinstance(callback, dict):
@@ -619,6 +752,19 @@ class TelegramPredictionBot:
         chat, sender = message.get("chat", {}), message.get("from", {})
         if chat.get("type") != "private" or not isinstance(sender, dict):
             return
+
+        # Los mensajes de servicio de pago llegan **sin campo `text`**, así que
+        # tienen que ramificar antes de la guarda de abajo: si se dejaran caer
+        # hasta ella, cada cobro se descartaría en silencio y el suscriptor
+        # pagaría sin recibir nada.
+        if isinstance(message.get("successful_payment"), dict):
+            self._process_successful_payment(
+                int(sender["id"]), int(chat["id"]), message)
+            return
+        if isinstance(message.get("refunded_payment"), dict):
+            self._process_refunded_payment(int(sender["id"]), message)
+            return
+
         text = message.get("text")
         if not isinstance(text, str):
             return
@@ -693,17 +839,24 @@ class TelegramPredictionBot:
         try:
             if command == "/partido":
                 payload = _fixture_payload(text)
-                prediction = self._gateway.predict_fixture(payload)
-                return _channel_prediction_replies(
-                    _prediction_fixture(prediction), prediction)
+                return self._metered_prediction(
+                    user_id, payload.get("league_slug"), payload.get("match_id"),
+                    lambda: self._gateway.predict_fixture(payload))
             if command == "/predict":
                 payload = _upcoming_payload(text)
-                prediction = self._gateway.predict_upcoming(payload)
-                return _channel_prediction_replies(
-                    _prediction_fixture(prediction), prediction)
+                return self._metered_prediction(
+                    user_id, payload.get("league_slug"), payload.get("match_id"),
+                    lambda: self._gateway.predict_upcoming(payload))
+            if command == "/premium":
+                return self._premium_offer(user_id)
+            if command == "/mi_plan":
+                return self._plan_status(user_id)
             if command == "/estado":
                 return [(_format_readiness(self._gateway.readiness()), _main_keyboard())]
             if command == "/en_vivo":
+                gate = self._require_premium(user_id)
+                if gate is not None:
+                    return gate
                 return self._live_reply(user_id)
             if command == "/modelos":
                 return [(_format_models(self._gateway.models()), _main_keyboard())]
@@ -720,6 +873,125 @@ class TelegramPredictionBot:
         except PredictionGatewayError:
             LOGGER.warning("Telegram: solicitud DIKAMAHA rechazada.")
             return [("No pude generar la predicción. El servicio no está disponible ahora.", _main_keyboard())]
+
+    def _require_premium(
+        self, user_id: int,
+    ) -> list[tuple[str, dict[str, Any] | None]] | None:
+        """Devuelve la respuesta de bloqueo, o `None` si puede pasar."""
+
+        entitlement = self._entitlement(user_id)
+        if entitlement.premium:
+            return None
+        # Una resolución degradada **nunca** acusa a nadie de no haber pagado:
+        # el fallo es nuestro y el usuario podría llevar meses suscrito.
+        if entitlement.degraded:
+            return [(_billing_degraded_text(), _main_keyboard())]
+        return [(_premium_upsell_text(), self._premium_keyboard(user_id))]
+
+    def _fixture_quota_key(self, league: Any, match_id: Any) -> str | None:
+        """Construye `league_slug:match_id`, la clave común de las tres superficies."""
+
+        return f"{league}:{match_id}" if league and match_id else None
+
+    def _quota_gate(
+        self, user_id: int, league: Any, match_id: Any,
+    ) -> list[tuple[str, dict[str, Any] | None]] | None:
+        """Descuenta una predicción del cupo diario, o devuelve el bloqueo.
+
+        Si no se puede construir la clave o la contabilidad no responde, se
+        sirve **sin contar**: cobrar mal es peor que no cobrar, y negarse a
+        predecir porque el contador está caído castiga al usuario por un fallo
+        nuestro. La pérdida ya la acota el rate limiter del bot.
+        """
+
+        entitlement = self._entitlement(user_id)
+        if entitlement.premium or self._billing is None:
+            return None
+        fixture_key = self._fixture_quota_key(league, match_id)
+        if fixture_key is None:
+            return None
+        outcome = self._billing.consume_prediction(user_id, fixture_key)
+        if outcome is not None and not outcome.get("granted"):
+            return [(_quota_exhausted_text(), self._premium_keyboard(user_id))]
+        return None
+
+    def _release_quota(self, user_id: int, league: Any, match_id: Any) -> None:
+        """Devuelve la unidad de una predicción que nunca llegó a servirse.
+
+        Cobrar por algo que el usuario no vio es el único fallo de este camino
+        que no se repara solo.
+        """
+
+        fixture_key = self._fixture_quota_key(league, match_id)
+        if self._billing is not None and fixture_key is not None:
+            self._billing.release_prediction(user_id, fixture_key)
+
+    def _metered_prediction(
+        self, user_id: int, league: Any, match_id: Any,
+        run: Any,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """Ejecuta una predicción descontándola del cupo diario gratuito."""
+
+        gate = self._quota_gate(user_id, league, match_id)
+        if gate is not None:
+            return gate
+        try:
+            prediction = run()
+        except PredictionGatewayError:
+            self._release_quota(user_id, league, match_id)
+            raise
+        return _channel_prediction_replies(
+            _prediction_fixture(prediction), prediction)
+
+    def _premium_keyboard(self, user_id: int) -> dict[str, Any] | None:
+        """Teclado con el enlace de pago, si se puede emitir."""
+
+        link = self._billing.create_invoice(user_id) if self._billing else None
+        if not link:
+            return _main_keyboard()
+        return {"inline_keyboard": [
+            [{"text": "⭐ Activar Premium", "url": link}],
+            [{"text": "🏠 Inicio", "callback_data": "menu:status"}],
+        ]}
+
+    def _premium_offer(
+        self, user_id: int,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """Responde al comando `/premium` con el enlace de pago."""
+
+        if self._billing is None:
+            return [("El nivel Premium no está activo todavía.", _main_keyboard())]
+        entitlement = self._entitlement(user_id)
+        if entitlement.premium and not entitlement.degraded:
+            return self._plan_status(user_id)
+        return [(_premium_upsell_text(), self._premium_keyboard(user_id))]
+
+    def _plan_status(
+        self, user_id: int,
+    ) -> list[tuple[str, dict[str, Any] | None]]:
+        """Responde al comando `/mi_plan`."""
+
+        entitlement = self._entitlement(user_id)
+        if entitlement.degraded:
+            return [(_billing_degraded_text(), _main_keyboard())]
+        if entitlement.premium:
+            until = (
+                f"\nActivo hasta el <b>{entitlement.expires_at[:10]}</b>."
+                if entitlement.expires_at else "")
+            return [(
+                "⭐ <b>DIKAMAHA PREMIUM</b>\n"
+                "Predicciones sin límite, en vivo y mayor probabilidad."
+                f"{until}",
+                _main_keyboard(),
+            )]
+        remaining = entitlement.remaining_predictions
+        left = "sin límite" if remaining is None else f"{remaining}"
+        return [(
+            "🆓 <b>PLAN GRATUITO</b>\n"
+            f"Predicciones disponibles hoy: <b>{left}</b>\n"
+            "Incluye aciertos del día, catálogo, equipos e historial.",
+            self._premium_keyboard(user_id),
+        )]
 
     def _upcoming_root(self) -> list[tuple[str, dict[str, Any] | None]]:
         """Muestra las tres rutas de descubrimiento de fixtures."""
@@ -836,8 +1108,20 @@ class TelegramPredictionBot:
 
         if data == "menu:upcoming":
             return self._upcoming_root()
-        if data in {"menu:live", "live:refresh"}:
-            return self._live_reply(user_id)
+        if data in {"menu:live", "live:refresh"} or data.startswith("live:"):
+            # El en vivo entero -listado, refresco y detalle- es de pago. Se
+            # comprueba aquí, antes de repartir, para que no haya una rama del
+            # menú que se salte la puerta por haber crecido después.
+            gate = self._require_premium(user_id)
+            if gate is not None:
+                return gate
+            if data in {"menu:live", "live:refresh"}:
+                return self._live_reply(user_id)
+            return self._live_prediction_reply(user_id, data.split(":", 1)[1])
+        if data == "menu:premium":
+            return self._premium_offer(user_id)
+        if data == "menu:plan":
+            return self._plan_status(user_id)
         if data == "menu:models":
             return [(_format_models(self._gateway.models()), _main_keyboard())]
         if data == "upcoming:all":
@@ -867,9 +1151,6 @@ class TelegramPredictionBot:
             return self._league_menu(data.split(":", 1)[1])
         if data.startswith("match:"):
             return self._match_menu(user_id, data.split(":", 1)[1])
-        if data.startswith("live:"):
-            return self._live_prediction_reply(
-                user_id, data.split(":", 1)[1])
         if data.startswith("context:"):
             return self._context_reply(user_id, data.split(":", 1)[1])
         if data.startswith("predict:"):
@@ -941,6 +1222,12 @@ class TelegramPredictionBot:
         fixture = self._menus.get(user_id, {}).get(key)
         if not fixture:
             return [("El menú expiró. Pulsa Próximos partidos.", _main_keyboard())]
+        # Es la otra puerta a una predicción, además de `/predict` y `/partido`.
+        # Sin medirla aquí, el menú sería una vía libre alrededor del cupo.
+        gate = self._quota_gate(
+            user_id, fixture.get("league_slug"), fixture.get("match_id"))
+        if gate is not None:
+            return gate
         try:
             result = self._gateway.predict_upcoming(_prediction_payload(fixture))
             result.setdefault("fixture", {
@@ -954,6 +1241,8 @@ class TelegramPredictionBot:
                         self._config, fixture, "prediction"),
                 ))
         except PredictionGatewayError:
+            self._release_quota(
+                user_id, fixture.get("league_slug"), fixture.get("match_id"))
             return [("No pude generar la predicción ahora. Intenta de nuevo.", _main_keyboard())]
 
     def _market_menu(
@@ -2484,6 +2773,14 @@ def _help_text() -> str:
         "   Partido → Poisson + CTMC + Hazard + Elo + residual Hawkes\n"
         "   <i>Composición oficial auditable con fallback automático a Markov.</i>\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "⭐ <b>PLANES</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🆓 <b>Gratuito</b>: aciertos del día, catálogo, equipos,\n"
+        "   estadísticas, historial y 3 predicciones diarias.\n\n"
+        "⭐ <b>Premium</b>: predicciones sin límite, en vivo, mayor\n"
+        "   probabilidad y sin topes de favoritos ni alertas.\n\n"
+        "   <b>/premium</b> para activarlo · <b>/mi_plan</b> para consultarlo\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n"
         "ℹ️ <b>Sobre las predicciones</b>\n"
         "Pre-match usa datos anteriores al inicio. Live usa snapshots ESPN y\n"
         "un prior causal reconstruido sólo con historia anterior al kickoff.\n"
@@ -2516,6 +2813,70 @@ def _rate_limit_text() -> str:
     """Informa el límite sin revelar la configuración interna."""
 
     return "Demasiadas solicitudes. Intenta de nuevo en un minuto."
+
+
+def _premium_upsell_text() -> str:
+    """Presenta el nivel de pago por acceso y volumen.
+
+    Nunca por rentabilidad, retorno ni aciertos garantizados: el proyecto tiene
+    congelados ROI, Kelly y stakes, y la superficie de venta es exactamente
+    donde más tienta saltarse esa restricción.
+    """
+
+    return (
+        "⭐ <b>DIKAMAHA PREMIUM</b>\n"
+        "<i>Esta función forma parte del nivel de pago</i>\n\n"
+        "Con Premium tienes:\n"
+        "• Predicciones pre-match sin límite\n"
+        "• Análisis en vivo\n"
+        "• Menú de mayor probabilidad completo\n"
+        "• Favoritos y alertas sin tope\n\n"
+        "El plan gratuito mantiene los aciertos del día, el catálogo, "
+        "los equipos, las estadísticas y 3 predicciones diarias.\n\n"
+        "<i>DIKAMAHA publica análisis estadístico. No es asesoramiento "
+        "financiero ni una recomendación de apuesta.</i>")
+
+
+def _quota_exhausted_text() -> str:
+    """Informa el agotamiento del cupo diario y cuándo vuelve."""
+
+    return (
+        "🕐 <b>Has usado tus 3 predicciones de hoy</b>\n"
+        "Vuelves a tener 3 mañana.\n\n"
+        "Con Premium las predicciones no tienen límite.")
+
+
+def _billing_degraded_text() -> str:
+    """Explica una indisponibilidad temporal sin acusar de no haber pagado."""
+
+    return (
+        "⏳ No puedo comprobar tu plan en este momento.\n"
+        "Vuelve a intentarlo en unos segundos; tu suscripción no se ve "
+        "afectada.")
+
+
+def _premium_active_text() -> str:
+    """Confirma un cobro ya asentado."""
+
+    return (
+        "⭐ <b>Premium activo</b>\n"
+        "Ya tienes predicciones sin límite, análisis en vivo y el menú de "
+        "mayor probabilidad.\n\n"
+        "Puedes gestionar o cancelar la renovación desde los ajustes de "
+        "Telegram, en Estrellas → Suscripciones.")
+
+
+def _premium_pending_text() -> str:
+    """Reconoce un cobro cuyo asiento aún no se ha confirmado.
+
+    Ni "falló" -sería falso, el dinero salió- ni "ya está activo" -sería
+    prematuro-. La reconciliación lo recogerá en minutos.
+    """
+
+    return (
+        "✅ <b>Pago recibido</b>\n"
+        "Estamos activando tu Premium; puede tardar unos minutos.\n"
+        "Si en 15 minutos sigue sin aparecer, escribe /mi_plan.")
 
 
 def _usage_text(command: str) -> str:

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { database } from "@/lib/db";
 import {
+  type AccountPlan,
   type AccountRole,
   type AccountStatus,
   miniappUsers,
@@ -11,7 +12,12 @@ import { allowedUserIds, env } from "@/lib/env";
 export type Account = {
   status: AccountStatus;
   role: AccountRole;
-  plan: string;
+  /**
+   * Se sigue transportando para que la interfaz pinte algo razonable al
+   * arrancar, pero **no autoriza nada**: la autoridad sobre el nivel es
+   * `resolveEntitlement` (`lib/auth/entitlements.ts`), que relee la fila.
+   */
+  plan: AccountPlan;
 };
 
 /** Resultado de evaluar el acceso: o entra, o hay un motivo publicable. */

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import type { Feature } from "@/lib/auth/entitlements";
 import { DikamahaError, dikamahaRequest } from "@/lib/dikamaha";
-import { authError, authorizeRequest, jsonError } from "@/lib/http";
+import { authError, authorizeFeature, authorizeRequest, jsonError } from "@/lib/http";
 
-export async function proxyGet(request: NextRequest, path: string) {
+/**
+ * `feature` es opcional: sin él la ruta queda gratuita, que es lo que sigue
+ * siendo la mayoría -catálogo, historial, explorador-. Marcar una ruta como de
+ * pago es añadir un argumento, y quitarle el muro es borrarlo.
+ */
+export async function proxyGet(request: NextRequest, path: string, feature?: Feature) {
   try {
-    await authorizeRequest(request);
+    if (feature) await authorizeFeature(request, feature);
+    else await authorizeRequest(request);
     const payload = await dikamahaRequest(`${path}${request.nextUrl.search}`);
     return NextResponse.json(payload);
   } catch (error) {
@@ -20,10 +27,11 @@ export async function proxyGet(request: NextRequest, path: string) {
 }
 
 export async function proxyPost(
-  request: NextRequest, path: string, idempotent = false,
+  request: NextRequest, path: string, idempotent = false, feature?: Feature,
 ) {
   try {
-    await authorizeRequest(request, true);
+    if (feature) await authorizeFeature(request, feature, true);
+    else await authorizeRequest(request, true);
     const body = await request.json();
     const payload = await dikamahaRequest(path, {
       method: "POST",

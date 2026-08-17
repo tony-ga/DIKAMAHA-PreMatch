@@ -115,3 +115,96 @@ describe("authenticated BFF to DIKAMAHA connection", () => {
     );
   });
 });
+
+/**
+ * Puerta de pago sobre el proxy.
+ *
+ * Lo que hay que demostrar no es sólo el código de estado: es que un usuario
+ * gratuito **no llega a consumir cómputo aguas arriba**. Si el 402 se emitiera
+ * después de llamar a DIKAMAHA, el muro no protegería nada -que es justamente
+ * el recurso caro que esta fase intenta amortizar-.
+ */
+describe("gated proxy routes", () => {
+  async function setup(billingEnabled: string, plan: "free" | "premium") {
+    vi.resetModules();
+    Object.assign(process.env, {
+      NODE_ENV: "test",
+      TELEGRAM_BOT_TOKEN: "123456789:abcdefghijklmnopqrstuvwxyzABCDE",
+      TELEGRAM_ACCESS_MODE: "private",
+      TELEGRAM_ALLOWED_USER_IDS: "999",
+      DIKAMAHA_BOT_API_URL: baseUrl,
+      DIKAMAHA_API_KEY: "server-only-test-key",
+      DATABASE_URL: "postgres://test:test@example.test:5432/test",
+      MINIAPP_SESSION_SECRET: "0123456789abcdef0123456789abcdef",
+      MINIAPP_INTERNAL_API_KEY: "0123456789abcdef0123456789abcdef",
+      MINIAPP_BILLING_SECRET: "0123456789abcdef0123456789abcdef",
+      MINIAPP_ENABLED: "true",
+      MINIAPP_BILLING_ENABLED: billingEnabled,
+    });
+    let token = "";
+    vi.doMock("next/headers", () => ({
+      cookies: async () => ({ get: () => ({ value: token }) }),
+    }));
+    vi.doMock("@/lib/db", () => ({
+      database: () => ({
+        execute: async () => [{
+          role: "user",
+          plan_source: plan === "premium" ? "stars" : "default",
+          plan_expires_at: plan === "premium"
+            ? new Date(Date.now() + 864e5).toISOString() : null,
+          effective_plan: plan,
+        }],
+      }),
+    }));
+    const { issueSession } = await import("@/lib/auth/session");
+    // Un id distinto por caso: la caché de titularidad es por usuario y vive
+    // 60 s, así que reutilizarlo mezclaría los escenarios.
+    const userId = Math.floor(Math.random() * 1e6) + 1000;
+    token = issueSession({ userId, firstName: "Marco" }).token;
+    const { NextRequest } = await import("next/server");
+    const { proxyGet } = await import("@/lib/proxy");
+    return { NextRequest, proxyGet };
+  }
+
+  it("returns 402 for a free account without spending an upstream call", async () => {
+    const { NextRequest, proxyGet } = await setup("true", "free");
+    const before = requests.length;
+
+    const response = await proxyGet(
+      new NextRequest("http://mini.local/api/live"), "/v1/live", "live");
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toEqual({ error: "premium_required" });
+    // Ni una sola petición aguas arriba: el muro corta antes del cómputo.
+    expect(requests.length - before).toBe(0);
+  });
+
+  it("serves a premium account", async () => {
+    const { NextRequest, proxyGet } = await setup("true", "premium");
+
+    const response = await proxyGet(
+      new NextRequest("http://mini.local/api/live"), "/v1/live", "live");
+
+    expect(response.status).toBe(200);
+  });
+
+  it("serves everyone while billing is switched off", async () => {
+    // Garantía del despliegue por pasos: con el interruptor apagado, una ruta
+    // marcada de pago se comporta igual que antes de la fase.
+    const { NextRequest, proxyGet } = await setup("false", "free");
+
+    const response = await proxyGet(
+      new NextRequest("http://mini.local/api/live"), "/v1/live", "live");
+
+    expect(response.status).toBe(200);
+  });
+
+  it("leaves free routes untouched", async () => {
+    const { NextRequest, proxyGet } = await setup("true", "free");
+
+    const response = await proxyGet(
+      new NextRequest("http://mini.local/api/track-record"), "/v1/track-record");
+
+    expect(response.status).toBe(200);
+  });
+});

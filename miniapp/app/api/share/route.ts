@@ -1,6 +1,8 @@
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveEntitlement } from "@/lib/auth/entitlements";
+import { consumePrediction, releasePrediction } from "@/lib/billing/quota";
 import { database } from "@/lib/db";
 import { sharedPredictionCards } from "@/lib/db/schema";
 import { DikamahaError, dikamahaRequest } from "@/lib/dikamaha";
@@ -21,6 +23,7 @@ import { shareCardSchema } from "@/lib/validation";
  * de diferencia- contradirían la premisa de la predicción sellada.
  */
 export async function POST(request: NextRequest) {
+  let consumedKey: { userId: number; fixtureKey: string } | null = null;
   try {
     const session = await authorizeRequest(request, true);
     const parsed = shareCardSchema.safeParse(await request.json());
@@ -30,6 +33,21 @@ export async function POST(request: NextRequest) {
 
     const existing = await readCard(fixtureKey);
     if (existing) return NextResponse.json({ token: existing, status: "existing" });
+
+    // Sólo se cobra cuota cuando hay que predecir de verdad. Servir una tarjeta
+    // ya congelada no cuesta nada, y por eso la comprobación va después de
+    // `readCard`. Sin esta puerta, "compartir" sería una vía para pedir
+    // predicciones ilimitadas sin pasar por el contador: es la misma llamada a
+    // `/v1/predict/upcoming` que la ruta medida, sólo que por otra puerta.
+    const entitlement = await resolveEntitlement(session.userId);
+    const quota = await consumePrediction(
+      session.userId, fixtureKey, "share",
+      { premium: entitlement.plan === "premium" },
+    );
+    if (!quota.granted) throw new Error("prediction_quota_exhausted");
+    if (quota.reason === "consumed") {
+      consumedKey = { userId: session.userId, fixtureKey };
+    }
 
     const prediction = await dikamahaRequest("/v1/predict/upcoming", {
       method: "POST",
@@ -70,6 +88,10 @@ export async function POST(request: NextRequest) {
     if (!token) return jsonError("share_card_unavailable", 503);
     return NextResponse.json({ token, status: "created" }, { status: 201 });
   } catch (error) {
+    if (consumedKey) {
+      await releasePrediction(consumedKey.userId, consumedKey.fixtureKey)
+        .catch(() => undefined);
+    }
     if (error instanceof DikamahaError) {
       console.error("[bff] share prediction unavailable", { status: error.status });
       return jsonError(error.reason ?? "upstream_unavailable",

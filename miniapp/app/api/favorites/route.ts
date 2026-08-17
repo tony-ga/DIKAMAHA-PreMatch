@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveEntitlement } from "@/lib/auth/entitlements";
 import { database } from "@/lib/db";
 import { miniappFavorites } from "@/lib/db/schema";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";
@@ -33,7 +34,14 @@ export async function POST(request: NextRequest) {
       row.entityType === parsed.data.entityType
       && row.entityId === parsed.data.entityId
     ));
-    if (!duplicate && existing.length >= 10) return jsonError("favorite_limit_reached", 409);
+    // El tope vive duplicado -aquí y en el trigger `enforce_miniapp_favorite_limit`-
+    // desde la migración 0000. Las dos comprobaciones tienen que consultar el
+    // mismo plan: relajar sólo ésta dejaría al trigger rechazando igual y el
+    // suscriptor recibiría un 500 en vez de un 409.
+    const entitlement = await resolveEntitlement(session.userId);
+    if (entitlement.plan !== "premium" && !duplicate && existing.length >= 10) {
+      return jsonError("favorite_limit_reached", 409);
+    }
     await database().insert(miniappFavorites).values({
       userId: session.userId,
       ...parsed.data,

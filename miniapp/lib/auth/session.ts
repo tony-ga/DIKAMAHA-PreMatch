@@ -34,8 +34,15 @@ export type Session = {
    * Rol y plan viajan dentro de la cookie firmada, no se consultan por
    * petición. `authorizeRequest` corre en cada llamada al proxy: leer la fila
    * ahí convertiría cada petición de catálogo en un viaje extra a PostgreSQL.
-   * La cookie va firmada con HMAC, así que el cliente no puede alterarlos, y
-   * cualquier cambio de estado se aplica en la siguiente emisión.
+   * La cookie va firmada con HMAC, así que el cliente no puede alterarlos.
+   *
+   * **`plan` es sólo una pista para el primer pintado y no autoriza nada.**
+   * Esta cookie dura 30 días y `refreshedSessionToken` la reemite sin releer la
+   * cuenta, de modo que para una suscripción mensual sería obsoleta en los dos
+   * sentidos: quien cancela conservaría el producto, y quien paga desde el bot
+   * no lo tendría aquí hasta la siguiente emisión. La autoridad sobre el nivel
+   * es `resolveEntitlement` (`lib/auth/entitlements.ts`). Invariante revisable
+   * por grep: ninguna ruta puede autorizar leyendo `session.plan`.
    *
    * Opcionales porque las cookies emitidas antes de las cuentas en base de
    * datos no los traen y deben seguir siendo válidas hasta caducar.

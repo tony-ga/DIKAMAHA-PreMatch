@@ -9,6 +9,7 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
 import { MarketGrid } from "@/components/market-grid";
+import { PremiumUpsell } from "@/components/premium-gate";
 import { useAuth } from "@/components/providers";
 import { api, percentage, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
 import { EntityImage } from "@/components/entity-image";
@@ -62,6 +63,21 @@ export function PredictionDetail(props: Props) {
     enabled: Boolean(csrfToken && props.league && props.home && props.away && props.kickoff),
   });
   if (query.isError) {
+    const code = query.error instanceof Error ? query.error.message : "";
+    // El cupo agotado no es un fallo del servicio: es el plan gratuito
+    // funcionando. Mostrarlo como "servicio no disponible" haría creer al
+    // usuario que algo está roto.
+    if (code === "prediction_quota_exhausted") {
+      return (
+        <PremiumUpsell
+          headline="Has usado tus 3 predicciones de hoy"
+          detail="Vuelves a tener 3 mañana. Con Premium no hay límite."
+        />
+      );
+    }
+    if (code === "premium_required") {
+      return <PremiumUpsell headline="Esta función es parte de Premium" />;
+    }
     const { title, detail } = unavailableReason(query.error);
     return <StatePanel title={title}>{detail}</StatePanel>;
   }
