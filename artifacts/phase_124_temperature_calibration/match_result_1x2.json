@@ -1,0 +1,13 @@
+{
+  "blend_weight": 0.6428477932518503,
+  "confirmation_matches": 1845,
+  "fitted_on": "phase_74_selection_split",
+  "log_loss_ci": [
+    0.00805363582890172,
+    0.01785674249645294
+  ],
+  "log_loss_delta": 0.012928349555339558,
+  "market": "match_result_1x2",
+  "temperature": 1.1989353004933132,
+  "version": "temperature_scaling_v1"
+}
