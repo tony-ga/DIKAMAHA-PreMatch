@@ -562,8 +562,13 @@ def test_with_logos_skips_a_broken_league_and_keeps_the_rest() -> None:
     assert healthy_league["home_team_logo"] == "https://img.test/puebla.png"
 
 
-def test_lite_mode_freezes_only_three_nearest_fixtures() -> None:
-    """Comprueba que el interruptor lite limita la entrega a tres partidos."""
+def test_lite_mode_freezes_everything_but_publishes_only_three() -> None:
+    """El interruptor lite limita el canal, nunca lo que Aciertos ve.
+
+    `channel_predictions` alimenta el historial de "Aciertos" además del
+    canal de Telegram, así que `lite` sólo puede recortar mensajes -no
+    predicciones congeladas- o el historial quedaría tan corto como el canal.
+    """
 
     gateway, transport = _Gateway(), _Transport()
     original = gateway.list_upcoming
@@ -584,7 +589,7 @@ def test_lite_mode_freezes_only_three_nearest_fixtures() -> None:
         gateway, _repository(), transport, mode="lite")
     result = publisher.run_cycle(
         datetime(2026, 7, 29, 15, 0, tzinfo=timezone.utc))
-    assert result["frozen"] == 3
+    assert result["frozen"] == 5
     assert result["cards"] == 3
     assert result["markets"] == 3
     assert len(transport.card_logos) == 3

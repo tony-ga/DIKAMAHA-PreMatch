@@ -1,6 +1,32 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-16
+**Actualizado:** 2026-08-17
+
+## Aciertos congelaba sólo 3 partidos al día, acoplado al canal en modo lite (DEC-206)
+
+Ver `DEC-206`. Reporte del usuario: "Aciertos" muestra sólo 3 partidos.
+Confirmado con Postgres de producción -exactamente 3 filas por cada lote de
+congelación en `channel_predictions`, 7 lotes seguidos, sin excepción-: el
+canal de Telegram corre en modo `lite` (`LITE_FIXTURE_LIMIT=3`, Fase 101 v1.1),
+y ese mismo tope, pensado como cuota de mensajes de Telegram, también recortaba
+qué se congelaba para liquidación. Como Aciertos, "Mayor probabilidad" y el
+track record sólo leen `channel_predictions`, heredaban el mismo límite de 3.
+
+Desacoplado por pedido explícito del usuario: el canal sigue en `lite`
+-mismo volumen de mensajes-, pero `_daily`/`_same_day_catch_up` en
+`telegram_channel_publisher.py` ahora congelan siempre el universo completo de
+fixtures predecibles del día; `lite` sólo actúa en el nuevo `_select_publish`,
+que decide cuáles de las predicciones ya congeladas reciben tarjeta/mercados en
+el canal. La Mini App sube su ventana de `window=60` a `window=200` -el tope
+real del backend- para no volver a quedarse corta ahora que se congela más por
+día. Limitación aceptada, sin medir: el congelado completo multiplica las
+llamadas a `/v1/predict/upcoming` frente a las ~3/día de antes.
+
+Gates: test de `lite` reescrito para exigir congelado completo con publicación
+recortada a 3; suite Python 949/950 -1 fallo preexistente y no relacionado en
+`test_match_level_corpus.py`, reproducido en aislamiento antes del cambio-;
+typecheck y 133 Vitest de la Mini App sin regresiones. Despliegue a producción
+pendiente.
 
 ## Cierre de la ronda de candidatos: qué se promovió y qué quedó negado
 

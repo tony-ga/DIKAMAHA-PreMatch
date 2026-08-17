@@ -66,6 +66,11 @@ DAILY_DIGEST_DELAY = timedelta(minutes=30)
 # el ledger para que un redeploy no reinicie el conteo.
 SAME_DAY_CATCH_UP_MINUTES = 30
 CHANNEL_MODES = frozenset({"full", "lite"})
+# `lite` sólo limita cuántas predicciones se publican como mensaje en el canal
+# de Telegram cada día -su volumen de avisos-, nunca cuántas se congelan.
+# `channel_predictions` siempre recibe el universo completo de fixtures
+# predecibles, porque `_results`/Aciertos/"Mayor probabilidad" recorren esa
+# misma tabla y el usuario quiere el historial íntegro con el canal en lite.
 LITE_FIXTURE_LIMIT = 3
 DISTRIBUTIONAL_CONTRACT_VERSION = "phase102_v4_direct_totals"
 TRACK_RECORD_WINDOW = 60
@@ -570,6 +575,10 @@ class TelegramChannelPublisher:
         al congelarlo. Cada predicción trae los tres mercados oficiales y el
         snapshot de rejilla (córners, tiros y tarjetas por mitad y partido
         completo) que `_seal_settlement` liquidará al terminar el partido.
+
+        Congela todo lo pendiente sin importar el modo -el tope `lite` sólo
+        se aplica después, en `_select_publish`, sobre qué se envía al canal-,
+        así que "Aciertos" ve el día completo aunque el canal siga en lite.
         """
 
         target_text = target.isoformat()
@@ -589,10 +598,10 @@ class TelegramChannelPublisher:
                 late += 1
                 continue
             pending.append(fixture)
-        pending = self._same_day_budget(pending, target_text)
         predictions = self._freeze_all(
             self._with_logos(pending), target_text, now) if pending else []
-        cards, markets = self._publish_predictions(predictions, now)
+        cards, markets = self._publish_predictions(
+            self._select_publish(target_text), now)
         # Se marca al final, no al entrar: un barrido que muere a media
         # ejecución debe reintentarse en el ciclo siguiente en vez de dar la
         # franja por cubierta.
@@ -608,60 +617,57 @@ class TelegramChannelPublisher:
             "markets": markets, "late": late,
         }
 
-    def _same_day_budget(
-        self, fixtures: list[dict[str, Any]], target_text: str,
-    ) -> list[dict[str, Any]]:
-        """Respeta el tope de `lite` contando lo ya congelado de ese día.
-
-        `_select_fixtures` corta a `LITE_FIXTURE_LIMIT` sobre una lista
-        completa; aquí la lista es sólo el faltante, así que aplicarlo tal cual
-        sumaría tres partidos nuevos en cada ciclo y convertiría `lite` en
-        `full` a lo largo del día. El tope se mide contra el total del día.
-        """
-
-        if self._mode == "full":
-            return fixtures
-        already = sum(1 for row in self._repository.predictions()
-                      if row.target_date == target_text)
-        return fixtures[:max(0, LITE_FIXTURE_LIMIT - already)]
-
     def _daily(
         self, target: date, now: datetime,
     ) -> tuple[int, int, int, int]:
-        """Publica aviso y predicciones juntas una sola vez."""
+        """Publica aviso y predicciones juntas una sola vez.
+
+        Congela siempre el universo completo de fixtures predecibles del día
+        -`lite` no recorta la lista de entrada-, y sólo decide con
+        `_select_publish` cuáles de esas predicciones ya congeladas se
+        publican como mensaje en el canal. Aciertos y el resto de la Mini App
+        leen `channel_predictions` directamente y ven el día completo aunque
+        el canal siga en lite.
+        """
 
         target_text = target.isoformat()
         complete_key = f"daily:{target_text}:complete"
         if self._repository.publication_exists(complete_key):
-            predictions = [row for row in self._repository.predictions()
-                           if row.target_date == target_text]
             cards, markets = self._publish_predictions(
-                self._select_frozen(predictions), now)
+                self._select_publish(target_text), now)
             return 0, 0, cards, markets
-        fixtures = self._select_fixtures(self._fixtures_for(target))
-        fixtures = self._with_logos(fixtures)
+        fixtures = self._with_logos(self._fixtures_for(target))
         predictions = self._freeze_all(fixtures, target_text, now)
         if not predictions:
             LOGGER.warning(
                 "daily_summary_skipped_no_predictable_fixture target=%s "
                 "fixtures=%d", target_text, len(fixtures))
             return 0, 0, 0, 0
-        chunks = _summary_chunks(target, predictions, self._mode)
+        to_publish = self._select_publish(target_text)
+        chunks = _summary_chunks(target, to_publish, self._mode)
         published = sum(self._publish(
             f"daily:{target_text}:{index}", "daily_summary", text, now,
             target_date=target_text) for index, text in enumerate(chunks))
-        cards, markets = self._publish_predictions(predictions, now)
+        cards, markets = self._publish_predictions(to_publish, now)
         self._repository.record_publication(
             complete_key, "daily_complete", "internal",
             f"daily_complete:{target_text}:{len(chunks)}", now,
             target_date=target_text)
         return len(predictions), published, cards, markets
 
-    def _select_frozen(
-        self, predictions: list[FrozenPrediction],
-    ) -> list[FrozenPrediction]:
-        """Aplica lite a predicciones ya congeladas durante un replay."""
+    def _select_publish(self, target_text: str) -> list[FrozenPrediction]:
+        """Decide qué predicciones ya congeladas se envían al canal hoy.
 
+        Único punto donde `lite` sigue actuando: recorta a
+        `LITE_FIXTURE_LIMIT`, por kickoff más próximo primero, cuántas
+        predicciones reciben tarjeta/mercados en Telegram. El congelado en
+        `channel_predictions` -de donde lee Aciertos- nunca pasa por aquí.
+        """
+
+        predictions = sorted(
+            (row for row in self._repository.predictions()
+             if row.target_date == target_text),
+            key=lambda row: row.kickoff_ts)
         return predictions if self._mode == "full" else predictions[:LITE_FIXTURE_LIMIT]
 
     def _publish_predictions(
@@ -715,13 +721,6 @@ class TelegramChannelPublisher:
                     rows.append({**row, "league_name": league.get("name") or slug})
         unique = {str(row.get("match_id")): row for row in rows if row.get("match_id")}
         return sorted(unique.values(), key=lambda row: str(row.get("kickoff_ts")))
-
-    def _select_fixtures(
-        self, fixtures: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """Aplica el interruptor full/lite sin alterar el universo consultado."""
-
-        return fixtures if self._mode == "full" else fixtures[:LITE_FIXTURE_LIMIT]
 
     def _with_logos(
         self, fixtures: list[dict[str, Any]],

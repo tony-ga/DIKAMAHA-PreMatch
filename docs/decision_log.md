@@ -5453,6 +5453,58 @@ estimada de los equipos.
 Artefacto: `artifacts/candidate_evaluation/formation_signal.json`.
 
 
+DEC-206
+Fecha: 2026-08-17
+Problema: "Aciertos" (`/historial` en la Mini App) sólo mostraba 3 partidos
+verificados por día, calcado del límite del canal de Telegram en modo `lite`
+(`LITE_FIXTURE_LIMIT=3`, Fase 101 v1.1). Confirmado contra Postgres de
+producción: `channel_predictions` sólo tenía 21 filas en 6 días, exactamente 3
+por cada lote de congelación diaria/catch-up -el mismo tope que decide cuántos
+mensajes envía el canal decidía también cuántos partidos podían llegar alguna
+vez a liquidarse y aparecer en Aciertos, porque `_results`/
+`prediction_settlements`/track-record sólo recorren `channel_predictions`.
+Opciones: (a) mover todo el canal a modo `full` -deja de ser "lite", multiplica
+el volumen de mensajes de Telegram-; (b) desacoplar congelado
+(`channel_predictions`, alimenta Aciertos/settlement) de publicación (mensajes
+al canal): congelar siempre el universo completo de fixtures predecibles y
+aplicar `LITE_FIXTURE_LIMIT` sólo al elegir qué predicciones ya congeladas se
+envían como tarjeta/mercados al canal.
+Decisión: (b), pedido explícito del usuario: "quiero que sean funciones
+distintas, el avisador de telegram mantenlo en lite pero el menú aciertos lo
+quiero en modo completo".
+Motivo: el límite de 3 nunca fue una decisión sobre cuántos partidos debía
+cubrir el historial -Fase 101 v1.1 lo diseñó como cuota de mensajes por volumen
+de Telegram-; que también recortara el congelado era un acoplamiento
+accidental entre dos responsabilidades distintas, no una elección deliberada
+sobre Aciertos.
+Estado: congelada
+Impacto en contratos/fases: `telegram_channel_publisher.py` -`_daily`/
+`_same_day_catch_up` congelan siempre `self._fixtures_for(target)` completo
+(`_select_fixtures`/`_same_day_budget` eliminados, quedaron sin uso); el nuevo
+`_select_publish(target_text)` es el único punto donde `lite` sigue actuando,
+sobre predicciones ya persistidas, por kickoff más próximo primero. No cambia
+`_freeze`, `_seal_settlement`, `SETTLEMENT_DELAY` ni ningún contrato de
+`prediction_settlements`. Frontend: `miniapp/components/track-record.tsx` sube
+`window` de 60 a 200 -el tope real de `MAXIMUM_WINDOW` en
+`settlement_store.py`-, porque un canal que ahora congela más partidos por día
+llenaría una ventana de 60 en pocos días.
+Evidencia requerida: test dirigido de `lite` que confirme congelado completo
+con publicación recortada a 3; suite completa sin regresiones; typecheck y
+Vitest de la Mini App sin regresiones.
+Evidencia obtenida: `test_lite_mode_freezes_everything_but_publishes_only_three`
+(antes `test_lite_mode_freezes_only_three_nearest_fixtures`) reescrito: con 5
+fixtures disponibles, `frozen == 5`, `cards == 3`, `markets == 3`. Suite Python
+completa: 949 aprobadas / 1 fallo -
+`test_match_level_corpus.py::test_goals_are_summed_across_windows_per_side`, no
+relacionado con este cambio, reproducido en aislamiento antes de tocar nada- /
+8 omitidas. Typecheck y 133 Vitest de la Mini App sin regresiones.
+Limitación aceptada: congelar el universo completo cada día multiplica las
+llamadas a `/v1/predict/upcoming` desde ~3/día a potencialmente decenas -una
+por fixture predecible de las 63 ligas-, en vez de las 3 que pagaba el modo
+lite hasta ahora. No se midió el costo/latencia de ese aumento en producción;
+si el gateway de predicción se satura, es la primera señal a revisar.
+
+
 ```text
 DEC-NNN
 Fecha:

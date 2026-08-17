@@ -222,7 +222,7 @@ export function DailyTrackRecord() {
 export function TrackRecord() {
   const query = useQuery({
     queryKey: ["track-record"],
-    queryFn: () => api<Record<string, unknown>>("/api/track-record?window=60"),
+    queryFn: () => api<Record<string, unknown>>("/api/track-record?window=200"),
     staleTime: 300_000,
   });
   if (query.isLoading) {
