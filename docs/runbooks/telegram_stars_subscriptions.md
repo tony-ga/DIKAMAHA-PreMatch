@@ -10,10 +10,26 @@ migraciones son aditivas y no necesitan camino de vuelta.
 
 ## Prerrequisito externo al repositorio
 
-Las suscripciones Stars deben estar habilitadas para el bot en **@BotFather**, y
-el bot debe haber completado el alta de Stars. Sin eso, `createInvoiceLink` con
-`subscription_period` falla y el botón de compra devuelve
-`billing_invoice_unavailable`.
+**Corrección (2026-08-17): esta sección afirmaba que Stars requiere
+"habilitación" en BotFather. Es falso y quedó sin verificar hasta que un
+despliegue real lo expuso.** A diferencia de un proveedor tradicional (Stripe,
+etc.), Stars **no se activa por proveedor**: `createInvoiceLink` con
+`currency: "XTR"` no lleva `provider_token` y no aparece en
+`/mybots → Payments → elegir proveedor`, porque no es un proveedor. El panel
+"Telegram Stars" que BotFather muestra aparte es informativo -saldo, retiro vía
+Fragment- y no es un interruptor de activación.
+
+No se encontró en la documentación oficial (`core.telegram.org/bots/payments-stars`,
+`core.telegram.org/bots/payments`) ningún paso de configuración previa
+necesario para pagos únicos con Stars. La referencia completa de la Bot API
+(`core.telegram.org/bots/api#createinvoicelink`) es demasiado extensa para
+haberse podido revisar por completo buscando una condición específica sobre
+`subscription_period`; **no verificado, no descartado**. La única forma
+confiable de confirmarlo es la prueba empírica del paso 5 de este runbook: una
+compra real con `subscription_period` fijado. Si Telegram la rechaza, el error
+de `createInvoiceLink` (capturado como `billing_invoice_unavailable` en los
+logs, con el `description` de Telegram) es la señal real, no una suposición
+de este documento.
 
 ## Matriz de variables
 
