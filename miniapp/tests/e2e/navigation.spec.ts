@@ -699,7 +699,7 @@ function dailySettlement(index: number, hit: boolean) {
   };
 }
 
-test("shows today's daily digest above the accumulated historial, hits and misses both visible", async ({ page }) => {
+test("shows the accumulated historial above today's daily digest, hits and misses both visible", async ({ page }) => {
   // DEC-161 / Fase 121: el resumen diario nunca oculta un fallo.
   // Playwright resuelve por el patrón registrado más recientemente, así que
   // el genérico "/track-record" debe registrarse ANTES que el específico
@@ -751,6 +751,13 @@ test("shows today's daily digest above the accumulated historial, hits and misse
   const crosses = await page.getByText("Fallo").count();
   expect(checks).toBeGreaterThan(0);
   expect(crosses).toBeGreaterThan(0);
+
+  const headings = await page.getByRole("heading").allTextContents();
+  const historyIndex = headings.indexOf("Historial de aciertos");
+  const dailyIndex = headings.indexOf("Resultados de hoy");
+  expect(historyIndex).toBeGreaterThanOrEqual(0);
+  expect(dailyIndex).toBeGreaterThanOrEqual(0);
+  expect(historyIndex).toBeLessThan(dailyIndex);
 });
 
 test("shows every calculated market and line for a settled match, not just 1X2/O2.5/BTTS", async ({ page }) => {
