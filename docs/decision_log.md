@@ -5505,6 +5505,78 @@ lite hasta ahora. No se midió el costo/latencia de ese aumento en producción;
 si el gateway de predicción se satura, es la primera señal a revisar.
 
 
+DEC-207
+Fecha: 2026-08-14
+Problema: la tarjeta compartible de DEC-195 no cabia en pantalla y su contenido
+seguia sin servir. El usuario pidio reducir lo que se muestra y reorganizarlo:
+los dos equipos con nombre y escudo, solo quien gana del 1X2, ambos marcan, y
+una tabla por equipo con las tres metricas en filas y los tres periodos en
+columnas. Fijo ademas el criterio de exito: sin redundancias ni obviedades del
+tipo "Over 0.5 corners", y con probabilidades over o under que ronden algo mas
+del 50% sin pasar del 75%.
+Opciones: (a) mantener el formato de DEC-195 -media esperada y rango central-
+reorganizado en matriz; (b) volver a lineas over/under acotando la
+probabilidad a una banda publicable.
+Decision: (b), que es lo que el criterio de exito describe. Por cada grupo se
+recorre la escalera completa, se consideran las dos direcciones de cada linea y
+se publica la de mayor probabilidad dentro de `[0.55, 0.75]`. No es una regla
+nueva: es exactamente lo que ya hace `_recommendations`
+(`src/team_count_market_runtime.py`) para elegir un escenario no trivial por
+grupo, con la misma banda salvo el techo, que alli es 0.80 y aqui baja a 0.75
+por peticion explicita.
+
+La banda resuelve por si sola el dilema que DEC-195 no supo cerrar. Una linea
+unica no puede ser informativa y decidida a la vez -cerca del centro de la
+distribucion es ~50% y lejos es ~certeza- pero eso solo es cierto si la linea
+esta fijada de antemano. Teniendo la escalera entera, la banda selecciona la
+linea, no al reves: se busca donde la distribucion cae en el rango util. Por
+eso tampoco hace falta una lista de casos prohibidos: "Mas de 0.5 corners" en
+un partido completo ronda el 99% y el techo lo descarta sin nombrarlo.
+
+Una celda sin candidato en la banda se publica vacia. La fila no se elimina: la
+tabla es una rejilla fija y quitar una fila desalinearia las columnas.
+
+Se lee de `distributional_market_view`, lados `home` y `away` -18 grupos por
+partido, `_distributional_view`-, no del lado `total` de DEC-195, que no
+permite una tabla por equipo. Tampoco de `bounded_market_grid_view`, cuyo tope
+de 9.5 fue la causa original del defecto.
+
+Los escudos se descargan al congelar y se guardan como data URI dentro del
+payload. Con la URL, cada vista previa de WhatsApp haria que el servidor
+saliera a buscar el escudo a ESPN, y un link que circula recibe muchas
+seguidas -la misma razon por la que la prediccion se guarda ya resuelta-. La
+descarga va por `/v1/media/image`, el proxy que ya valida host permitido,
+tamano y firma PNG (`src/provider_media.py`), no por un `fetch` directo a una
+URL que llega en el cuerpo de la peticion. Sin escudo se pinta el monograma de
+iniciales, la misma degradacion que `EntityImage` en la aplicacion.
+Motivo: la banda convierte el criterio del usuario en la regla de seleccion en
+vez de en una revision manual, y reusa el umbral que el proyecto ya tenia para
+la misma pregunta. La matriz por equipo cabe donde nueve filas por periodo no
+cabian, y separa lo que el lado `total` mezclaba.
+Estado: congelada
+Impacto en contratos/fases: `SHARE_CARD_VERSION` sube a 2 y la forma del
+payload cambia entera. `shareCardByToken` no sirve una version que no sea la
+vigente -pintar v1 con el renderizador de v2 daria una imagen rota en vez de un
+error-, y `POST /api/share` reconstruye en su sitio la tarjeta que se quedo
+atras conservando su token. Eso matiza DEC-195 (d) sin contradecirlo: no gana
+una prediccion mas fresca, se repara un link que de otro modo quedaria muerto.
+El alto del PNG baja de 1540 a 1180. `shareCardSchema` gana `homeLogo` y
+`awayLogo`. Ningun contrato del backend cambia.
+Evidencia requerida: prueba de que ninguna celda publique fuera de la banda; de
+que la linea obvia se descarte; de que se use el lado `under` cuando es el
+informativo; de que el desempate sea determinista -dos congelaciones del mismo
+partido no pueden diferir-; de que una metrica sin datos deje celdas vacias sin
+romper la rejilla; y revision visual del PNG renderizado.
+Evidencia obtenida: 27 pruebas en `miniapp/tests/share-card.test.ts` (144
+Vitest en total, sin regresiones), `tsc --noEmit` limpio y `next build`
+resolviendo las tres rutas. PNG renderizado y revisado en tres pasadas: se
+corrigieron el espacio muerto del pie, un "vs" posicionado en absoluto que
+dependia del padding del lienzo, el nombre truncado con puntos suspensivos en
+la cabecera, y la etiqueta "GANA", que prometia una victoria cuando el
+escenario mas probable de tres puede rondar el 37%; ahora dice "Escenario
+principal", el mismo vocabulario de la tarjeta del canal.
+
+
 ```text
 DEC-NNN
 Fecha:

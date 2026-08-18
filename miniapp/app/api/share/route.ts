@@ -7,7 +7,11 @@ import { database } from "@/lib/db";
 import { sharedPredictionCards } from "@/lib/db/schema";
 import { DikamahaError, dikamahaRequest } from "@/lib/dikamaha";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";
-import { buildShareCard, shareFixtureKey, shareToken } from "@/lib/share-card";
+import { record } from "@/lib/client-api";
+import {
+  SHARE_CARD_VERSION, buildShareCard, shareFixtureKey, shareToken,
+} from "@/lib/share-card";
+import { shareLogoDataUri } from "@/lib/share-logo";
 import { shareCardSchema } from "@/lib/validation";
 
 /**
@@ -32,7 +36,9 @@ export async function POST(request: NextRequest) {
     const fixtureKey = shareFixtureKey(input.leagueSlug, input.matchId);
 
     const existing = await readCard(fixtureKey);
-    if (existing) return NextResponse.json({ token: existing, status: "existing" });
+    if (existing && existing.version === SHARE_CARD_VERSION) {
+      return NextResponse.json({ token: existing.token, status: "existing" });
+    }
 
     // Sólo se cobra cuota cuando hay que predecir de verdad. Servir una tarjeta
     // ya congelada no cuesta nada, y por eso la comprobación va después de
@@ -62,31 +68,54 @@ export async function POST(request: NextRequest) {
 
     const kickoff = new Date(input.kickoffTs);
     if (!Number.isFinite(kickoff.getTime())) return jsonError("share_kickoff_invalid", 422);
+    // En paralelo: los dos escudos son independientes entre sí y de todo lo
+    // demás, y `shareLogoDataUri` ya degrada a cadena vacía por su cuenta.
+    const [homeLogo, awayLogo] = await Promise.all([
+      shareLogoDataUri(input.homeLogo),
+      shareLogoDataUri(input.awayLogo),
+    ]);
     const card = buildShareCard(prediction, {
       leagueSlug: input.leagueSlug,
       homeName: input.homeName,
       awayName: input.awayName,
       kickoffTs: kickoff.toISOString(),
+      homeLogo,
+      awayLogo,
     });
+    const payload = card as unknown as Record<string, unknown>;
+
+    // Una tarjeta congelada con un formato que la aplicación ya no sabe pintar
+    // se reconstruye en su sitio, conservando su token. No contradice que "la
+    // primera congelación es la que circula" (DEC-195): no gana una predicción
+    // más fresca, se repara un link que de otro modo quedaría muerto -
+    // `shareCardByToken` no sirve una versión que no es la vigente-.
+    if (existing) {
+      await database().update(sharedPredictionCards).set({
+        homeTeamName: card.home.name,
+        awayTeamName: card.away.name,
+        payload,
+      }).where(eq(sharedPredictionCards.fixtureKey, fixtureKey));
+      return NextResponse.json({ token: existing.token, status: "rebuilt" });
+    }
 
     await database().insert(sharedPredictionCards).values({
       fixtureKey,
       token: shareToken(),
       leagueSlug: input.leagueSlug,
       matchId: input.matchId,
-      homeTeamName: card.homeName,
-      awayTeamName: card.awayName,
+      homeTeamName: card.home.name,
+      awayTeamName: card.away.name,
       kickoffTs: kickoff,
-      payload: card as unknown as Record<string, unknown>,
+      payload,
       createdBy: session.userId,
     }).onConflictDoNothing({ target: sharedPredictionCards.fixtureKey });
 
     // Se relee en vez de confiar en la inserción: con `onConflictDoNothing`,
     // dos usuarios compartiendo el mismo partido a la vez dejan a uno sin
     // fila insertada, y devolverle su token descartado daría un link muerto.
-    const token = await readCard(fixtureKey);
-    if (!token) return jsonError("share_card_unavailable", 503);
-    return NextResponse.json({ token, status: "created" }, { status: 201 });
+    const stored = await readCard(fixtureKey);
+    if (!stored) return jsonError("share_card_unavailable", 503);
+    return NextResponse.json({ token: stored.token, status: "created" }, { status: 201 });
   } catch (error) {
     if (consumedKey) {
       await releasePrediction(consumedKey.userId, consumedKey.fixtureKey)
@@ -101,11 +130,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function readCard(fixtureKey: string): Promise<string | null> {
+/** Token y versión de formato de la tarjeta ya congelada, si existe. */
+async function readCard(
+  fixtureKey: string,
+): Promise<{ token: string; version: number } | null> {
   const [row] = await database()
-    .select({ token: sharedPredictionCards.token })
+    .select({
+      token: sharedPredictionCards.token,
+      payload: sharedPredictionCards.payload,
+    })
     .from(sharedPredictionCards)
     .where(eq(sharedPredictionCards.fixtureKey, fixtureKey))
     .limit(1);
-  return row?.token ?? null;
+  if (!row) return null;
+  return { token: row.token, version: Number(record(row.payload).version) };
 }

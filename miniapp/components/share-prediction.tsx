@@ -13,6 +13,8 @@ type Props = {
   kickoffTs: string;
   homeName: string;
   awayName: string;
+  homeLogo: string;
+  awayLogo: string;
 };
 
 type ShareResponse = { token: string; status: string };
@@ -50,6 +52,8 @@ export function SharePrediction(props: Props) {
           kickoffTs: props.kickoffTs,
           homeName: props.homeName,
           awayName: props.awayName,
+          homeLogo: props.homeLogo,
+          awayLogo: props.awayLogo,
         }),
       }, csrfToken);
       const link = `${window.location.origin}/s/${response.token}`;

@@ -4,15 +4,17 @@
  * archivo desde aquí-, que es la única forma de revisar de verdad un layout de
  * Satori: soporta un subconjunto de CSS y sus fallos son visuales, no errores.
  */
-import { type ShareCard, type ShareCardPeriod, clip } from "@/lib/share-card";
+import {
+  CARD_PERIODS, type ShareCard, type ShareCardCell, type ShareCardTeam,
+  clip, initials,
+} from "@/lib/share-card";
 
-// 1080x1540. La altura no es estetica: con tres periodos de tres lineas, el
-// pie se solapaba con las ultimas filas a 1350 -Satori no recorta ni avisa,
-// simplemente pinta encima-. El resto del layout tiene altura fija por
-// construccion (titulo siempre a dos lineas, etiqueta 1X2 con alto reservado),
-// asi que este valor vale para cualquier partido, no solo para los nombres
-// cortos con los que se diseno.
-export const SHARE_IMAGE_SIZE = { width: 1080, height: 1540 };
+// 1080x1180. La v1 media 1540 de alto y aun asi no cabia en pantalla: apilaba
+// nueve filas por periodo. Con una matriz por equipo el contenido baja a dos
+// tablas de 3x3 y la altura tambien. Sigue siendo fija por construccion -el
+// numero de filas y columnas no depende del partido, y los nombres se acotan
+// con `clip`-, asi que ningun encuentro puede desbordarla.
+export const SHARE_IMAGE_SIZE = { width: 1080, height: 1180 };
 
 const PALETTE = {
   void: "#091413",
@@ -24,6 +26,9 @@ const PALETTE = {
   text: "#edf9f4",
   line: "rgba(176, 228, 204, 0.16)",
 };
+
+/** Ancho de la primera columna de cada tabla, la de la métrica. */
+const METRIC_COLUMN = 250;
 
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -48,21 +53,20 @@ function kickoffLabel(value: string): string {
  * gradient` ni pseudo-elementos, asi que la rejilla se escribe a mano.
  */
 function Watermark() {
-  const rows = [0, 1, 2, 3, 4, 5, 6, 7];
   return (
     <div style={{
       position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
       display: "flex", flexDirection: "column", justifyContent: "space-around",
       transform: "rotate(-24deg)", opacity: 0.05,
     }}>
-      {rows.map((row) => (
+      {[0, 1, 2, 3, 4, 5, 6].map((row) => (
         <div key={row} style={{
           display: "flex", flexDirection: "row", justifyContent: "space-around",
           width: "150%", marginLeft: "-25%",
         }}>
           {[0, 1, 2].map((column) => (
             <span key={column} style={{
-              fontSize: 58, fontWeight: 700, color: PALETTE.mint,
+              fontSize: 56, fontWeight: 700, color: PALETTE.mint,
               letterSpacing: 10,
             }}>DIKAMAHA</span>
           ))}
@@ -72,80 +76,125 @@ function Watermark() {
   );
 }
 
-function OutcomeColumn(
-  { label, value, accent }: { label: string; value: number; accent?: boolean },
+/** Escudo del equipo, o sus iniciales cuando no hay PNG que pintar. */
+function Crest({ team, size }: { team: ShareCardTeam; size: number }) {
+  if (team.logo) {
+    return <img src={team.logo} width={size} height={size} alt="" />;
+  }
+  return (
+    <div style={{
+      display: "flex", width: size, height: size, borderRadius: size,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: PALETTE.panelHigh, color: PALETTE.mint,
+      fontSize: size * 0.4, fontWeight: 700,
+    }}>{initials(team.name)}</div>
+  );
+}
+
+/** Bloque destacado: quién gana, o si ambos marcan. */
+function Verdict(
+  { caption, value, probability, accent }: {
+    caption: string; value: string; probability: number; accent?: boolean;
+  },
 ) {
   return (
     <div style={{
-      display: "flex", flexDirection: "column", alignItems: "center",
-      flex: 1, padding: "22px 12px", borderRadius: 20,
+      display: "flex", flexDirection: "column", flex: 1,
+      padding: "18px 26px", borderRadius: 18,
       backgroundColor: accent ? PALETTE.signal : PALETTE.panelHigh,
     }}>
       <span style={{
-        fontSize: 52, fontWeight: 700,
-        color: accent ? PALETTE.void : PALETTE.mint,
-      }}>{percent(value)}</span>
-      {/* Alto fijo de dos líneas: así el bloque mide lo mismo con "Puebla" que
-          con un nombre que se parte en dos, y nada de lo que va debajo se
-          desplaza según el partido. */}
+        fontSize: 20, letterSpacing: 3,
+        color: accent ? PALETTE.void : PALETTE.muted,
+      }}>{caption}</span>
       <div style={{
-        display: "flex", height: 62, marginTop: 8, alignItems: "flex-start",
-        justifyContent: "center",
+        display: "flex", flexDirection: "row", alignItems: "baseline",
+        justifyContent: "space-between", marginTop: 6,
       }}>
         <span style={{
-          fontSize: 24, textAlign: "center",
-          color: accent ? PALETTE.void : PALETTE.muted,
-        }}>{clip(label, 22)}</span>
+          fontSize: 30, fontWeight: 700,
+          color: accent ? PALETTE.void : PALETTE.text,
+        }}>{clip(value, 22)}</span>
+        <span style={{
+          fontSize: 32, fontWeight: 700,
+          color: accent ? PALETTE.void : PALETTE.mint,
+        }}>{percent(probability)}</span>
       </div>
     </div>
   );
 }
 
-function GoalMarket({ label, value }: { label: string; value: number }) {
+/** Una celda de la matriz: dirección, línea y probabilidad, o un hueco. */
+function Cell({ cell }: { cell: ShareCardCell | null }) {
+  if (!cell) {
+    return (
+      <div style={{
+        display: "flex", flex: 1, justifyContent: "center",
+      }}>
+        <span style={{ fontSize: 24, color: PALETTE.signal }}>—</span>
+      </div>
+    );
+  }
   return (
     <div style={{
-      display: "flex", flexDirection: "row", alignItems: "center",
-      justifyContent: "space-between", flex: 1, padding: "18px 26px",
-      borderRadius: 18, backgroundColor: PALETTE.panelHigh,
+      display: "flex", flex: 1, flexDirection: "row",
+      alignItems: "baseline", justifyContent: "center",
     }}>
-      <span style={{ fontSize: 26, color: PALETTE.muted }}>{label}</span>
-      <span style={{ fontSize: 38, fontWeight: 700, color: PALETTE.mint }}>
-        {percent(value)}
+      <span style={{ fontSize: 23, color: PALETTE.text }}>
+        {cell.direction === "under" ? "−" : "+"}{cell.line}
       </span>
+      <span style={{
+        fontSize: 25, fontWeight: 700, color: PALETTE.mint, marginLeft: 10,
+      }}>{percent(cell.probability)}</span>
     </div>
   );
 }
 
-function PeriodBlock({ period }: { period: ShareCardPeriod }) {
+/** Tabla de un equipo: métricas en filas, periodos en columnas. */
+function TeamTable({ team }: { team: ShareCardTeam }) {
   return (
     <div style={{
-      display: "flex", flexDirection: "column", marginTop: 18, flexShrink: 0,
+      display: "flex", flexDirection: "column", flexShrink: 0,
+      padding: "18px 24px", borderRadius: 20, backgroundColor: PALETTE.panel,
     }}>
-      <span style={{
-        fontSize: 21, letterSpacing: 3, color: PALETTE.signal,
-        textTransform: "uppercase",
-      }}>{period.label}</span>
-      <div style={{ display: "flex", flexDirection: "column", marginTop: 10 }}>
-        {period.lines.map((line) => (
-          <div key={line.metric} style={{
-            display: "flex", flexDirection: "row", alignItems: "center",
-            justifyContent: "space-between", padding: "11px 4px",
-            borderBottom: `1px solid ${PALETTE.line}`,
+      <div style={{
+        display: "flex", flexDirection: "row", alignItems: "center",
+      }}>
+        <Crest team={team} size={40} />
+        <span style={{
+          fontSize: 30, fontWeight: 700, marginLeft: 14, color: PALETTE.text,
+        }}>{clip(team.name, 26)}</span>
+      </div>
+
+      <div style={{
+        display: "flex", flexDirection: "row", marginTop: 14,
+        paddingBottom: 8, borderBottom: `1px solid ${PALETTE.line}`,
+      }}>
+        <span style={{ width: METRIC_COLUMN }} />
+        {CARD_PERIODS.map(([period, label]) => (
+          <div key={period} style={{
+            display: "flex", flex: 1, justifyContent: "center",
           }}>
-            <span style={{ fontSize: 26, color: PALETTE.text }}>
-              {line.label}
-            </span>
-            <div style={{ display: "flex", flexDirection: "row", alignItems: "baseline" }}>
-              <span style={{ fontSize: 30, fontWeight: 700, color: PALETTE.mint }}>
-                {line.expected.toFixed(1)}
-              </span>
-              <span style={{ fontSize: 22, color: PALETTE.muted, marginLeft: 12 }}>
-                entre {line.intervalLow} y {line.intervalHigh}
-              </span>
-            </div>
+            <span style={{
+              fontSize: 19, letterSpacing: 2, color: PALETTE.signal,
+            }}>{label}</span>
           </div>
         ))}
       </div>
+
+      {team.rows.map((row) => (
+        <div key={row.metric} style={{
+          display: "flex", flexDirection: "row", alignItems: "center",
+          padding: "13px 0", borderBottom: `1px solid ${PALETTE.line}`,
+        }}>
+          <span style={{
+            width: METRIC_COLUMN, fontSize: 24, color: PALETTE.muted,
+          }}>{row.label}</span>
+          {row.cells.map((cell, index) => (
+            <Cell key={CARD_PERIODS[index][0]} cell={cell} />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -155,84 +204,96 @@ export function ShareCardImage({ card }: { card: ShareCard }) {
     <div style={{
       position: "relative", width: "100%", height: "100%", display: "flex",
       flexDirection: "column", backgroundColor: PALETTE.void,
-      padding: 56, color: PALETTE.text,
+      padding: 48, color: PALETTE.text,
     }}>
       <Watermark />
+
       <div style={{
         display: "flex", flexDirection: "row", alignItems: "center",
         justifyContent: "space-between",
       }}>
         <div style={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
           <div style={{
-            width: 20, height: 20, borderRadius: 20,
-            backgroundColor: PALETTE.mint, marginRight: 16,
+            width: 18, height: 18, borderRadius: 18,
+            backgroundColor: PALETTE.mint, marginRight: 14,
           }} />
-          <span style={{ fontSize: 34, fontWeight: 700, letterSpacing: 6 }}>
+          <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: 6 }}>
             DIKAMAHA
           </span>
         </div>
-        <span style={{ fontSize: 22, letterSpacing: 3, color: PALETTE.signal }}>
-          PRE-MATCH
-        </span>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", marginTop: 38 }}>
-        <span style={{ fontSize: 24, color: PALETTE.muted }}>
+        <span style={{ fontSize: 20, letterSpacing: 3, color: PALETTE.signal }}>
           {card.leagueSlug} · {kickoffLabel(card.kickoffTs)}
         </span>
-        {/* Siempre dos líneas, una por equipo. Escribirlo en una sola dejaba
-            que el salto dependiera del largo de los nombres, y con él la
-            altura de todo lo que viene detrás. */}
-        <span style={{
-          fontSize: 50, fontWeight: 700, marginTop: 8, lineHeight: 1.2,
-        }}>{clip(card.homeName, 24)}</span>
-        <span style={{
-          fontSize: 50, fontWeight: 700, lineHeight: 1.2, color: PALETTE.mint,
-        }}>vs {clip(card.awayName, 22)}</span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "row", gap: 14, marginTop: 34 }}>
-        <OutcomeColumn label={card.homeName} value={card.probabilityHome}
-          accent={card.headlineLabel === card.homeName} />
-        <OutcomeColumn label="Empate" value={card.probabilityDraw}
-          accent={card.headlineLabel === "Empate"} />
-        <OutcomeColumn label={card.awayName} value={card.probabilityAway}
-          accent={card.headlineLabel === card.awayName} />
+      {/* Los dos escudos con su nombre, alto fijo: el bloque mide lo mismo
+          con "Puebla" que con un nombre que se parte en dos líneas. El "vs" es
+          un hijo más del flex, no un absoluto: posicionarlo a mano lo ataba al
+          padding del lienzo y cualquier cambio de altura lo descolocaba. */}
+      <div style={{
+        display: "flex", flexDirection: "row", alignItems: "center",
+        height: 120, marginTop: 14,
+      }}>
+        <div style={{
+          display: "flex", flexDirection: "row", alignItems: "center", flex: 1,
+        }}>
+          <Crest team={card.home} size={72} />
+          <span style={{
+            fontSize: 32, fontWeight: 700, marginLeft: 16,
+          }}>{clip(card.home.name, 30)}</span>
+        </div>
+        <span style={{
+          fontSize: 22, color: PALETTE.signal, paddingLeft: 12, paddingRight: 12,
+        }}>vs</span>
+        <div style={{
+          display: "flex", flexDirection: "row", alignItems: "center", flex: 1,
+          justifyContent: "flex-end",
+        }}>
+          <span style={{
+            fontSize: 32, fontWeight: 700, marginRight: 16, textAlign: "right",
+          }}>{clip(card.away.name, 30)}</span>
+          <Crest team={card.away} size={72} />
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "row", gap: 14, marginTop: 16 }}>
-        <GoalMarket label="Más de 2.5 goles" value={card.probabilityOver25} />
-        <GoalMarket label="Ambos marcan" value={card.probabilityBtts} />
+      <div style={{ display: "flex", flexDirection: "row", gap: 14, marginTop: 6 }}>
+        {/* "GANA" prometia de mas: el resultado mas probable de tres puede
+            rondar el 37%, y anunciarlo como una victoria seria afirmar algo que
+            el modelo no dice. "Escenario principal" es el mismo vocabulario que
+            ya usa la tarjeta del canal de Telegram. */}
+        <Verdict caption="ESCENARIO PRINCIPAL" value={card.outcomeLabel}
+          probability={card.outcomeProbability} accent />
+        <Verdict caption="AMBOS MARCAN" value={card.bttsLabel}
+          probability={card.bttsProbability} />
+      </div>
+
+      <span style={{
+        fontSize: 19, color: PALETTE.muted, marginTop: 18, flexShrink: 0,
+      }}>
+        Córners, tiros y tarjetas por equipo · + más de / − menos de
+      </span>
+
+      <div style={{
+        display: "flex", flexDirection: "column", gap: 12, marginTop: 10,
+      }}>
+        <TeamTable team={card.home} />
+        <TeamTable team={card.away} />
       </div>
 
       <div style={{
-        display: "flex", flexDirection: "column", flex: 1, marginTop: 16,
-        padding: "20px 28px", borderRadius: 22, backgroundColor: PALETTE.panel,
+        display: "flex", flexDirection: "column", marginTop: "auto",
+        paddingTop: 18,
       }}>
-        {/* `flexShrink: 0` en la leyenda y en cada bloque: sin el, flex
-            comprime los hijos cuando el contenido roza el alto disponible y
-            Satori los superpone en vez de recortarlos -la leyenda acababa
-            pintada sobre "PRIMERA MITAD"-. */}
-        <span style={{
-          fontSize: 21, color: PALETTE.muted, flexShrink: 0, marginBottom: 4,
-        }}>
-          Conteo esperado de ambos equipos · rango central del 60%
-        </span>
-        {card.periods.map((period) => (
-          <PeriodBlock key={period.period} period={period} />
-        ))}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", marginTop: "auto", paddingTop: 22 }}>
-        <span style={{ fontSize: 22, color: PALETTE.muted }}>
+        <span style={{ fontSize: 20, color: PALETTE.muted }}>
           Probabilidades calculadas antes del inicio · no es asesoría ni
           recomendación de apuesta
         </span>
-        <span style={{ fontSize: 26, fontWeight: 700, color: PALETTE.signal, marginTop: 6 }}>
+        <span style={{
+          fontSize: 24, fontWeight: 700, color: PALETTE.signal, marginTop: 4,
+        }}>
           DIKAMAHA · PREDICCIÓN CONGELADA
         </span>
       </div>
     </div>
   );
 }
-

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
+import { SHARE_IMAGE_SIZE } from "@/lib/share-card-image";
 import { shareCardByToken } from "@/lib/share-store";
 
 type Props = { params: Promise<{ token: string }> };
@@ -31,10 +32,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token } = await params;
   const card = await shareCardByToken(token);
   if (!card) return { title: "DIKAMAHA" };
-  const title = `${card.homeName} vs ${card.awayName}`;
+  const title = `${card.home.name} vs ${card.away.name}`;
   const description =
-    `Escenario principal: ${card.headlineLabel} `
-    + `${Math.round(card.headlineProbability * 100)}%. `
+    `Escenario principal: ${card.outcomeLabel} `
+    + `${Math.round(card.outcomeProbability * 100)}%. `
     + "Predicción congelada antes del kickoff.";
   const image = `${await absoluteBase()}/s/${token}/image`;
   return {
@@ -42,7 +43,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     openGraph: {
       title, description, type: "article",
-      images: [{ url: image, width: 1080, height: 1350, alt: title }],
+      images: [{ url: image, ...SHARE_IMAGE_SIZE, alt: title }],
     },
     twitter: { card: "summary_large_image", title, description, images: [image] },
     robots: { index: false, follow: false },
@@ -64,9 +65,9 @@ export default async function SharedPredictionPage({ params }: Props) {
       <img
         className="share-card-image"
         src={`/s/${token}/image`}
-        width={1080}
-        height={1350}
-        alt={`Predicción pre-match de ${card.homeName} contra ${card.awayName}`}
+        width={SHARE_IMAGE_SIZE.width}
+        height={SHARE_IMAGE_SIZE.height}
+        alt={`Predicción pre-match de ${card.home.name} contra ${card.away.name}`}
       />
       <p className="share-hint">
         Mantén pulsada la imagen para guardarla o compartirla.

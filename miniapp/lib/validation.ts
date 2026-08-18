@@ -22,6 +22,11 @@ export const shareCardSchema = z.object({
   kickoffTs: z.string().trim().min(10).max(40),
   homeName: z.string().trim().max(80).default(""),
   awayName: z.string().trim().max(80).default(""),
+  // URLs de escudo. No se visitan directamente: viajan al proxy
+  // `/v1/media/image`, que valida host, tamaño y firma PNG antes de devolver
+  // nada (ver `lib/share-logo.ts`).
+  homeLogo: z.string().trim().max(500).default(""),
+  awayLogo: z.string().trim().max(500).default(""),
 });
 
 /**

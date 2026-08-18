@@ -11,73 +11,85 @@ import { record } from "@/lib/client-api";
  * tambien deja la imagen fuera del camino critico del backend -servirla no
  * llama a `/v1/predict/upcoming`-, que importa cuando el link circula por
  * WhatsApp y cada vista previa dispara una peticion.
+ *
+ * v2 reemplaza el contenido de v1 por completo: v1 apilaba nueve filas por
+ * periodo con la media y su rango, y no cabia legible. v2 es una matriz por
+ * equipo -metrica x periodo- mas el ganador y ambos marcan. `share-store` no
+ * sirve una tarjeta cuya version no sea la vigente, y `POST /api/share`
+ * reconstruye en su sitio la que se quedo atras conservando su token, para que
+ * un link ya repartido no muera.
  */
-export const SHARE_CARD_VERSION = 1 as const;
+export const SHARE_CARD_VERSION = 2 as const;
 
-/** Periodos publicados, en el orden en que se leen en la tarjeta. */
-const PERIOD_LABELS: Array<[string, string]> = [
-  ["first_half", "Primera mitad"],
-  ["second_half", "Segunda mitad"],
-  ["full_match", "Partido completo"],
+/** Columnas de cada tabla, en orden. */
+export const CARD_PERIODS: Array<[string, string]> = [
+  ["first_half", "1ª MITAD"],
+  ["second_half", "2ª MITAD"],
+  ["full_match", "COMPLETO"],
 ];
 
 /**
- * Metricas que entran en la tarjeta, en orden fijo.
+ * Filas de cada tabla, en orden fijo.
  *
  * `shots` es la semantica comercial de DEC-110 (incluye goles), la misma que
  * publica el canal.
  */
-const CARD_METRICS = ["corners", "shots", "yellow_cards"] as const;
+export const CARD_METRICS = ["corners", "shots", "yellow_cards"] as const;
 
 /**
- * Una fila de conteo: cuantos se esperan y entre que valores cae el 60%.
+ * Banda de probabilidad que una celda puede publicar.
  *
- * No es una linea over/under, y el cambio no es cosmetico. Una linea unica no
- * puede ser informativa y decidida a la vez: cerca del centro de la
- * distribucion es ~50% por definicion, y lejos del centro es ~certeza. La
- * primera version publicaba la linea central de `bounded_market_grid_view`
- * -centrada en P(over)=50% por `_centered_lines`- y las nueve filas eran
- * volados; elegir en su lugar la mas alejada del 50% degenera en la contraria,
- * una fila que siempre roza el 97% escogida precisamente por ser casi segura.
- * El tope de 9.5 de la rejilla (`VISIBLE_LINE_MAX`) agravaba las dos: los
- * tiros superan esa linea en cualquier periodo, asi que la tarjeta repetia
- * "Tiros - Mas de 8.5" en las tres mitades con 77%, 87% y 100%, que no dice
- * nada del partido, solo que dura mas que una mitad.
+ * Es el mismo criterio que ya usa `_recommendations`
+ * (`src/team_count_market_runtime.py`) para elegir un escenario no trivial por
+ * grupo: recorrer la escalera, considerar over y under de cada linea, quedarse
+ * con las que caen dentro de una banda y publicar la mas alta. Alli la banda es
+ * `[0.55, 0.80]`; aqui el techo baja a 0.75 por peticion explicita.
  *
- * La media con su rango central si distingue los periodos por construccion
- * -4.7 en la primera mitad, 5.6 en la segunda, 10.3 en el partido- y no puede
- * degenerar en ninguno de los dos extremos.
+ * El techo es lo que elimina las obviedades. "Mas de 0.5 corners" en un partido
+ * completo ronda el 99% y no informa de nada; queda fuera por si solo, sin una
+ * lista de casos prohibidos que habria que mantener a mano. El piso descarta el
+ * extremo contrario, la linea centrada en el 50% que es un volado disfrazado de
+ * prediccion.
+ *
+ * Una celda sin ningun candidato en la banda se publica vacia. Es el caso de
+ * una metrica cuya distribucion esta tan concentrada que ninguna linea cae en
+ * el rango util -media tarjeta por mitad, por ejemplo-: preferible un hueco a
+ * rellenarlo con una cifra que no dice nada.
  */
-export type ShareCardLine = {
-  metric: string;
-  label: string;
-  /** Media de la distribucion congelada. */
-  expected: number;
-  /** Cuantiles 20% y 80%, la misma definicion que `_central_interval`. */
-  intervalLow: number;
-  intervalHigh: number;
+export const CARD_BAND_MIN = 0.55;
+export const CARD_BAND_MAX = 0.75;
+
+export type ShareCardCell = {
+  line: number;
+  direction: "over" | "under";
+  probability: number;
 };
 
-export type ShareCardPeriod = {
-  period: string;
+export type ShareCardRow = {
+  metric: string;
   label: string;
-  lines: ShareCardLine[];
+  /** Una celda por periodo de `CARD_PERIODS`; `null` si no hay nada que decir. */
+  cells: Array<ShareCardCell | null>;
+};
+
+export type ShareCardTeam = {
+  name: string;
+  /** PNG en data URI, incrustado al congelar. Vacio si no se pudo obtener. */
+  logo: string;
+  rows: ShareCardRow[];
 };
 
 export type ShareCard = {
   version: typeof SHARE_CARD_VERSION;
   leagueSlug: string;
-  homeName: string;
-  awayName: string;
   kickoffTs: string;
-  probabilityHome: number;
-  probabilityDraw: number;
-  probabilityAway: number;
-  probabilityOver25: number;
-  probabilityBtts: number;
-  headlineLabel: string;
-  headlineProbability: number;
-  periods: ShareCardPeriod[];
+  home: ShareCardTeam;
+  away: ShareCardTeam;
+  /** Sólo el resultado más probable, no los tres. */
+  outcomeLabel: string;
+  outcomeProbability: number;
+  bttsLabel: "Sí" | "No";
+  bttsProbability: number;
 };
 
 function probability(value: unknown): number {
@@ -86,86 +98,76 @@ function probability(value: unknown): number {
   return Math.min(1, Math.max(0, number));
 }
 
-/** Menor conteo cuya CDF alcanza el cuantil, igual que `_quantile`. */
-function quantile(mass: Array<{ count: number; probability: number }>, target: number): number {
-  let cumulative = 0;
-  for (const point of mass) {
-    cumulative += point.probability;
-    if (cumulative >= target) return point.count;
+/**
+ * Elige la linea mas decidida de un grupo dentro de la banda publicable.
+ *
+ * Recorre la escalera entera -no la rejilla acotada de
+ * `bounded_market_grid_view`, cuyo tope de 9.5 deja fuera todo el rango util de
+ * los tiros- y considera las dos direcciones de cada linea. `over_probability`
+ * y `under_probability` son complementarias y monotonas por construccion: el
+ * audit del propio runtime lo exige (`over_under_complementary`,
+ * `over_under_monotonic`), asi que no hace falta recalcular ninguna.
+ *
+ * Desempate explicito -probabilidad, luego linea mas baja, luego `over`- para
+ * que dos congelaciones del mismo partido no puedan diferir por el orden en que
+ * llegaron los datos.
+ */
+export function bandCell(ladder: unknown): ShareCardCell | null {
+  const candidates: ShareCardCell[] = [];
+  for (const entry of Array.isArray(ladder) ? ladder : []) {
+    const row = record(entry);
+    const line = Number(row.line);
+    if (!Number.isFinite(line)) continue;
+    const over = probability(row.over_probability);
+    const under = Number.isFinite(Number(row.under_probability))
+      ? probability(row.under_probability) : 1 - over;
+    candidates.push({ line, direction: "over", probability: over });
+    candidates.push({ line, direction: "under", probability: under });
   }
-  return mass.length ? mass[mass.length - 1].count : 0;
+  const eligible = candidates.filter(
+    (item) => item.probability >= CARD_BAND_MIN
+      && item.probability <= CARD_BAND_MAX);
+  if (!eligible.length) return null;
+  return eligible.reduce((best, item) => {
+    if (item.probability !== best.probability) {
+      return item.probability > best.probability ? item : best;
+    }
+    if (item.line !== best.line) return item.line < best.line ? item : best;
+    return item.direction === "over" ? item : best;
+  });
 }
 
 /**
- * Resume la distribucion congelada de un grupo en media y rango central.
+ * Construye la matriz metrica x periodo de un equipo.
  *
- * Lee `probability_mass` de `distributional_market_view`, no la rejilla
- * acotada: la rejilla recorta sus lineas a 1.5-9.5 y para los tiros eso deja
- * fuera todo el rango util. La PMF no tiene ese tope.
- *
- * El intervalo son los cuantiles 20% y 80%, exactamente la definicion de
- * `_central_interval` (`src/team_count_market_runtime.py`), para que la cifra
- * de la tarjeta y la que publica `global_market_view` en la aplicacion sean la
- * misma y no dos versiones de "rango central".
+ * Lee el lado `home` o `away` de `distributional_market_view`, que publica los
+ * 18 grupos por equipo (3 metricas x 3 periodos x 2 lados, `_distributional_view`
+ * en `src/team_count_market_runtime.py`). La version anterior de la tarjeta
+ * usaba solo el lado `total`, que no permite una tabla por equipo.
  */
-function countSummary(group: Record<string, unknown>): Omit<ShareCardLine, "metric" | "label"> | null {
-  const mass = (Array.isArray(group.probability_mass) ? group.probability_mass : [])
-    .map(record)
-    .filter((point) => Number.isFinite(Number(point.count))
-      && Number.isFinite(Number(point.probability)))
-    .map((point) => ({
-      count: Number(point.count), probability: Number(point.probability),
-    }))
-    .sort((a, b) => a.count - b.count);
-  if (!mass.length) return null;
-  const expected = Number(group.expected_count);
-  if (!Number.isFinite(expected)) return null;
-  return {
-    expected,
-    intervalLow: quantile(mass, 0.2),
-    intervalHigh: quantile(mass, 0.8),
-  };
-}
-
-/**
- * Reduce la rejilla congelada a tres filas por periodo.
- *
- * Se publica unicamente el lado `total` -la suma de ambos equipos-. La rejilla
- * completa son hasta 27 grupos (3 lados x 3 metricas x 3 periodos) y ninguna
- * imagen los sostiene legibles; el total es ademas el unico de los tres lados
- * que se entiende sin saber cual equipo es local. Un grupo sin lado `total`
- * para esa metrica y periodo simplemente no aparece, en vez de sustituirse por
- * otro lado que diria algo distinto de lo que su etiqueta promete.
- */
-export function shareCardPeriods(teamMarkets: unknown): ShareCardPeriod[] {
+export function teamRows(teamMarkets: unknown, side: "home" | "away"): ShareCardRow[] {
   const view = record(teamMarkets).distributional_market_view;
   const groups = (Array.isArray(view) ? view.map(record) : [])
-    .filter((group) => String(group.team_side) === "total");
-  const periods: ShareCardPeriod[] = [];
-  for (const [period, label] of PERIOD_LABELS) {
-    const lines: ShareCardLine[] = [];
-    for (const metric of CARD_METRICS) {
+    .filter((group) => String(group.team_side) === side);
+  return CARD_METRICS.map((metric) => ({
+    metric,
+    label: metricLabel(metric),
+    cells: CARD_PERIODS.map(([period]) => {
       const group = groups.find(
         (row) => String(row.period) === period && String(row.metric) === metric);
-      const summary = group ? countSummary(group) : null;
-      if (summary) {
-        lines.push({ ...summary, metric, label: metricLabel(metric) });
-      }
-    }
-    if (lines.length) periods.push({ period, label, lines });
-  }
-  return periods;
+      return group ? bandCell(group.ladder) : null;
+    }),
+  }));
 }
 
 /** Etiqueta y probabilidad del resultado 1X2 mas probable. */
 export function headlineOutcome(
-  card: Pick<ShareCard,
-    "homeName" | "awayName" | "probabilityHome" | "probabilityDraw" | "probabilityAway">,
+  homeName: string, awayName: string, source: Record<string, unknown>,
 ): { label: string; probability: number } {
-  const options: Array<{ label: string; probability: number }> = [
-    { label: card.homeName, probability: card.probabilityHome },
-    { label: "Empate", probability: card.probabilityDraw },
-    { label: card.awayName, probability: card.probabilityAway },
+  const options = [
+    { label: homeName, probability: probability(source.probability_home) },
+    { label: "Empate", probability: probability(source.probability_draw) },
+    { label: awayName, probability: probability(source.probability_away) },
   ];
   return options.reduce((best, option) => (
     option.probability > best.probability ? option : best));
@@ -175,7 +177,9 @@ export function headlineOutcome(
  * Construye la tarjeta desde la respuesta cruda de `/v1/predict/upcoming`.
  *
  * No recalcula ninguna probabilidad: toma exactamente las que el modelo
- * devolvio, igual que hace la pantalla de detalle.
+ * devolvio, igual que hace la pantalla de detalle. Los logos llegan ya
+ * resueltos como data URI porque descargarlos es una operacion de red que no
+ * pertenece a una funcion pura -ver `lib/share-logo.ts`-.
  */
 export function buildShareCard(
   payload: unknown,
@@ -184,28 +188,35 @@ export function buildShareCard(
     homeName: string;
     awayName: string;
     kickoffTs: string;
+    homeLogo?: string;
+    awayLogo?: string;
   },
 ): ShareCard {
   const source = record(payload);
   const fixture = record(source.fixture);
-  const base = {
+  const homeName = String(fixture.home_team_name || identity.homeName || "Local");
+  const awayName = String(fixture.away_team_name || identity.awayName || "Visitante");
+  const markets = source.experimental_team_markets;
+  const outcome = headlineOutcome(homeName, awayName, source);
+  const btts = probability(source.probability_btts);
+  return {
     version: SHARE_CARD_VERSION,
     leagueSlug: identity.leagueSlug,
-    homeName: String(fixture.home_team_name || identity.homeName || "Local"),
-    awayName: String(fixture.away_team_name || identity.awayName || "Visitante"),
     kickoffTs: identity.kickoffTs,
-    probabilityHome: probability(source.probability_home),
-    probabilityDraw: probability(source.probability_draw),
-    probabilityAway: probability(source.probability_away),
-    probabilityOver25: probability(source.probability_over_2_5),
-    probabilityBtts: probability(source.probability_btts),
-  };
-  const headline = headlineOutcome(base);
-  return {
-    ...base,
-    headlineLabel: headline.label,
-    headlineProbability: headline.probability,
-    periods: shareCardPeriods(source.experimental_team_markets),
+    home: {
+      name: homeName, logo: identity.homeLogo ?? "",
+      rows: teamRows(markets, "home"),
+    },
+    away: {
+      name: awayName, logo: identity.awayLogo ?? "",
+      rows: teamRows(markets, "away"),
+    },
+    outcomeLabel: outcome.label,
+    outcomeProbability: outcome.probability,
+    // Se publica el lado probable, no siempre el "Sí": "Ambos marcan: No, 62%"
+    // es la misma afirmacion que "Sí, 38%" y se lee sin tener que invertirla.
+    bttsLabel: btts >= 0.5 ? "Sí" : "No",
+    bttsProbability: btts >= 0.5 ? btts : 1 - btts,
   };
 }
 
@@ -234,15 +245,18 @@ export function isShareToken(value: string): boolean {
  * Acorta un nombre de equipo para que ocupe siempre una línea.
  *
  * La altura de la tarjeta es fija y Satori no recorta lo que se sale: pinta
- * encima. Un par de nombres largos -"Wolverhampton Wanderers" contra
- * "Brighton & Hove Albion"- añadía dos líneas entre el título y las columnas
- * 1X2, y el pie acababa solapando la última fila de mercados. Recortar aquí,
- * en la capa de presentación, deja el nombre completo intacto en la tarjeta
- * guardada.
+ * encima. Recortar aqui, en la capa de presentacion, deja el nombre completo
+ * intacto en la tarjeta guardada.
  */
 export function clip(value: string, limit: number): string {
   const clean = value.trim();
   return clean.length <= limit ? clean : `${clean.slice(0, limit - 1).trimEnd()}…`;
+}
+
+/** Iniciales de un equipo, para cuando no hay escudo que pintar. */
+export function initials(label: string): string {
+  const parts = label.split(/\s+/).filter(Boolean).slice(0, 2);
+  return parts.map((part) => part[0]).join("").toUpperCase() || "?";
 }
 
 /** Clave estable del partido, la misma que usa el publicador del canal. */

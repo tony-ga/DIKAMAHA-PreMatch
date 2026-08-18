@@ -121,6 +121,7 @@ export function PredictionDetail(props: Props) {
             matchId={props.fixtureId} leagueSlug={props.league}
             homeTeamId={props.home} awayTeamId={props.away}
             kickoffTs={props.kickoff} homeName={homeName} awayName={awayName}
+            homeLogo={homeLogo} awayLogo={awayLogo}
           />
         </article>
         <ProviderPredictor eventId={props.fixtureId} league={props.league} scope="pre_match" homeName={homeName} awayName={awayName} />

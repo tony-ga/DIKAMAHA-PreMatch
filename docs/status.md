@@ -2,6 +2,34 @@
 
 **Actualizado:** 2026-08-17
 
+## Rediseño de la tarjeta compartible: matriz por equipo y banda de probabilidad (DEC-207)
+
+Ver `DEC-207`. La tarjeta de `DEC-195` no cabía en pantalla y su contenido no
+servía. Ahora publica los dos equipos con escudo, sólo el escenario principal
+del 1X2, ambos marcan, y **una tabla por equipo** con córners, tiros y tarjetas
+en filas y primera mitad / segunda mitad / completo en columnas.
+
+**La regla que hace útil cada celda.** Se recorre la escalera entera, se
+consideran las dos direcciones de cada línea, y se publica la de mayor
+probabilidad dentro de `[0.55, 0.75]`. Es la misma regla que ya usa
+`_recommendations` en el backend, con el techo bajado de 0.80 a 0.75. La banda
+elimina las obviedades sin una lista de casos prohibidos: "Más de 0.5 córners"
+ronda el 99% y queda fuera por sí solo. Una celda sin candidato en la banda se
+deja vacía; la fila no se elimina, porque la tabla es una rejilla fija.
+
+**Por qué esto sí cierra el dilema de DEC-195.** Allí se concluyó que una línea
+over/under no puede ser informativa y decidida a la vez. Es cierto sólo si la
+línea está fijada de antemano: teniendo la escalera completa, la banda
+selecciona la línea en vez de al revés.
+
+**Escudos.** Se descargan al congelar y se guardan como data URI en el payload,
+vía el proxy `/v1/media/image` que ya valida host, tamaño y firma PNG. Servir
+la imagen no sale a la red. Sin escudo se pinta el monograma de iniciales.
+
+**Versión de formato.** `SHARE_CARD_VERSION` sube a 2; una tarjeta v1 no se
+sirve (404) y se reconstruye en su sitio, con su mismo token, la próxima vez
+que alguien comparta ese partido.
+
 ## Aciertos congelaba sólo 3 partidos al día, acoplado al canal en modo lite (DEC-206)
 
 Ver `DEC-206`. Reporte del usuario: "Aciertos" muestra sólo 3 partidos.
