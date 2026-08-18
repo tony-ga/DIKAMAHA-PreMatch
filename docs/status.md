@@ -2,6 +2,68 @@
 
 **Actualizado:** 2026-08-17
 
+## Constructor de Picks: una sola probabilidad para varios mercados (DEC-208)
+
+Ver `DEC-208`. Menú independiente `/constructor` en la Mini App. Desde
+cualquier predicción pre-match, cada mercado gana un botón **+** / **−**:
+1X2, Más de 2.5, Ambos marcan y todas las líneas de córners, tiros y tarjetas,
+de la escalera auditada y de la rejilla adaptativa. El menú devuelve una única
+probabilidad de que ocurran todos a la vez, y admite mercados de partidos
+distintos.
+
+**Cómo se combina, de menor a mayor supuesto.** Dos líneas de la misma
+variable -mismo equipo, métrica y periodo- no son dos eventos, son uno: se
+resuelven de forma exacta sobre la propia escalera ("más de 4.5" y "más de 6.5"
+córners valen "más de 6.5", no su producto). Los mercados de gol del mismo
+partido se resuelven sumando la masa de la matriz de marcadores sobre las
+celdas que cumplen todas las condiciones: exacto, y "gana el local" con "gana
+el visitante" da cero sin ninguna regla especial. Entre variables distintas del
+mismo partido, y entre partidos distintos, se multiplica; el menú lo dice en
+pantalla.
+
+**Por qué la matriz se ajusta a las marginales publicadas.** El 1X2 pasa por
+calibración de temperatura (`DEC-199`) y Ambos marcan viene de un modelo propio
+(Fase 106), así que la matriz reconstruida no reproduce por sí sola lo que el
+usuario acaba de leer. Se ajusta por escalado iterativo proporcional a las tres
+marginales antes de sumar celdas, de modo que **una selección única devuelve
+exactamente el porcentaje publicado**. Es el criterio de éxito que pidió el
+usuario, y es lo primero que verifican las pruebas.
+
+**Sin backend nuevo.** El cálculo vive entero en la Mini App y sólo lee campos
+que `/v1/predict/upcoming` ya publica -`lambda_home`, `lambda_away` y
+`audit.tau_dc`, que se expuso justamente para poder reconstruir la conjunta.
+Ningún contrato cambia. Las selecciones viven en `localStorage`: no se
+congelan ni se liquidan, así que no entran en el historial de aciertos.
+
+Gates: 42 pruebas nuevas en `miniapp/tests/pick-builder.test.ts`, con los
+valores de referencia de las conjuntas de gol calculados aparte y no derivados
+del propio módulo; 200 Vitest/1 omitida sin regresiones; `tsc --noEmit` limpio
+y `next build` resolviendo `/constructor`.
+
+**Revisión en el navegador.** Se levantó la Mini App contra un stub local del
+motor -no contra producción- y con `MINIAPP_BILLING_ENABLED=false`, que hace
+que ni la titularidad ni el cupo consulten PostgreSQL: la revisión no tocó la
+base ni escribió nada en ella. Los tres regímenes se comprobaron en la interfaz
+real, no sólo en pruebas: cuatro mercados de un partido dieron `6.93%`, que es
+exactamente 0.288888848 × 0.24 -conjunta de gol por matriz, más escalera
+recortada en la misma variable-; "gana local" con "gana visitante" dio `0%`
+declarándolo imposible; y el mismo mercado en dos partidos distintos dio
+`24.0%` = 0.47 × 0.51. A 375 px no hay desbordamiento horizontal, las siete
+entradas de navegación caben sin truncarse, ninguna fila de escalera desborda
+su tarjeta y la barra flotante queda 8 px por encima de la barra inferior sin
+taparla.
+
+Dos defectos encontrados y corregidos en esa revisión: las cadenas visibles del
+constructor salían sin acentos ("Mas de 2.5", "manda la linea mas alta")
+mientras el resto de la aplicación sí los lleva; y el botón "+" medía 26×28 px
+-por debajo de un objetivo táctil razonable siendo la interacción principal del
+feature-, ahora 34×44 px mínimos.
+
+Limitación: la captura de pantalla del panel de vista previa dejó de componer
+fotogramas a mitad de la sesión, así que sólo hay una imagen -la pantalla de
+predicción con los "+" del 1X2- y el resto se verificó por texto del DOM y
+geometría medida, no por revisión de píxeles. Despliegue pendiente.
+
 ## Rediseño de la tarjeta compartible: matriz por equipo y banda de probabilidad (DEC-207)
 
 Ver `DEC-207`. La tarjeta de `DEC-195` no cabía en pantalla y su contenido no

@@ -9,6 +9,7 @@ import { FavoriteButton } from "@/components/favorite-button";
 import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
 import { MarketGrid } from "@/components/market-grid";
+import { PickBuilderBar, PickToggle } from "@/components/pick-toggle";
 import { PremiumUpsell } from "@/components/premium-gate";
 import { useAuth } from "@/components/providers";
 import { api, percentage, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
@@ -16,6 +17,8 @@ import { EntityImage } from "@/components/entity-image";
 import { PredictionAnalytics } from "@/components/prediction-analytics";
 import { ProviderPredictor } from "@/components/provider-predictor";
 import { SharePrediction } from "@/components/share-prediction";
+import type { GoalMarketKey, MatchRef } from "@/lib/pick-builder";
+import { goalContextFrom, goalPick } from "@/lib/pick-sources";
 
 const ProbabilityChart = dynamic(() => import("@/components/probability-chart"), { ssr: false });
 
@@ -90,6 +93,20 @@ export function PredictionDetail(props: Props) {
   const homeLogo = String(fixture.home_team_logo || catalogFixture?.home_team_logo || "");
   const awayLogo = String(fixture.away_team_logo || catalogFixture?.away_team_logo || "");
   const teamMarkets = record(payload.experimental_team_markets);
+  // Identidad del partido que viaja con cada selección del constructor: sin
+  // ella, dos mercados de partidos distintos no se podrían separar en el menú.
+  const match: MatchRef = {
+    matchId: props.fixtureId, league: props.league,
+    homeTeamId: props.home, awayTeamId: props.away, kickoff: props.kickoff,
+    homeName, awayName, homeLogo, awayLogo,
+  };
+  // `null` cuando el payload no trae lambdas usables. Entonces no se ofrece el
+  // "+" en los mercados de gol: es preferible no poder elegirlos a combinarlos
+  // con un supuesto de independencia que la matriz de marcadores desmiente.
+  const goalContext = goalContextFrom(payload);
+  const goalToggle = (market: GoalMarketKey, caption?: string) => (
+    <PickToggle caption={caption} pick={goalContext ? goalPick(match, goalContext, market) : null} />
+  );
   const auditedRows = teamMarkets.audited_market_ladder_view;
   const gridRows = teamMarkets.bounded_market_grid_view;
   const outcomeValues = [
@@ -107,14 +124,20 @@ export function PredictionDetail(props: Props) {
         <article className="model-card">
           <div className="model-card-header"><h3>Dixon-Coles + Kalman</h3><ShadowBadge official /></div>
           <div className="probability-grid" style={{ marginTop: 16 }}>
-            <div className="probability"><span>{homeName}</span><strong>{percentage(payload.probability_home)}</strong></div>
-            <div className="probability"><span>Empate</span><strong>{percentage(payload.probability_draw)}</strong></div>
-            <div className="probability"><span>{awayName}</span><strong>{percentage(payload.probability_away)}</strong></div>
+            <div className="probability"><span>{homeName}</span><strong>{percentage(payload.probability_home)}</strong>{goalToggle("home")}</div>
+            <div className="probability"><span>Empate</span><strong>{percentage(payload.probability_draw)}</strong>{goalToggle("draw")}</div>
+            <div className="probability"><span>{awayName}</span><strong>{percentage(payload.probability_away)}</strong>{goalToggle("away")}</div>
           </div>
           <ProbabilityChart values={outcomeValues} />
           <div className="probability-grid" style={{ marginTop: 8 }}>
-            <div className="probability"><span>Over 2.5</span><strong>{percentage(payload.probability_over_2_5)}</strong></div>
-            <div className="probability"><span>BTTS</span><strong>{percentage(payload.probability_btts)}</strong></div>
+            <div className="probability">
+              <span>Over 2.5</span><strong>{percentage(payload.probability_over_2_5)}</strong>
+              <span className="pick-toggle-row">{goalToggle("over_2_5", "Más")}{goalToggle("under_2_5", "Menos")}</span>
+            </div>
+            <div className="probability">
+              <span>BTTS</span><strong>{percentage(payload.probability_btts)}</strong>
+              <span className="pick-toggle-row">{goalToggle("btts_yes", "Sí")}{goalToggle("btts_no", "No")}</span>
+            </div>
             <div className="probability"><span>Modelo</span><strong style={{ fontSize: ".72rem" }}>{String(payload.model ?? "—")}</strong></div>
           </div>
           <SharePrediction
@@ -134,10 +157,11 @@ export function PredictionDetail(props: Props) {
           />
         </article>
         <FixtureContext league={props.league} eventId={props.fixtureId} />
-        <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} />
-        <MarketGrid rows={gridRows} homeName={homeName} awayName={awayName} />
+        <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} match={match} />
+        <MarketGrid rows={gridRows} homeName={homeName} awayName={awayName} match={match} />
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
       </div>
+      <PickBuilderBar />
     </>
   );
 }

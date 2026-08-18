@@ -1,14 +1,19 @@
 "use client";
 
+import { PickToggle } from "@/components/pick-toggle";
 import { ShadowBadge } from "@/components/ui";
 import { edgeLabel, percentage, probabilityWidth, record } from "@/lib/client-api";
 import { metricLabel, teamLabel } from "@/lib/audited-ladder";
 import { orderByPeriod, periodLabel } from "@/lib/market-grid";
+import type { MatchRef } from "@/lib/pick-builder";
+import { countPick } from "@/lib/pick-sources";
 
 type Props = {
   rows: unknown;
   homeName: string;
   awayName: string;
+  /** Identidad del partido; sin ella no se ofrece el Constructor de Picks. */
+  match?: MatchRef;
 };
 
 /**
@@ -23,7 +28,7 @@ type Props = {
  * la entrega para esa liga (`src/metric_coverage.py`, DEC-173/182); este
  * componente sólo pinta lo que llega, sin repetir esa lógica en el cliente.
  */
-export function MarketGrid({ rows, homeName, awayName }: Props) {
+export function MarketGrid({ rows, homeName, awayName, match }: Props) {
   const groups = orderByPeriod(
     Array.isArray(rows) ? rows.map(record) as {
       key: string; period: string; metric: string; team_side: string;
@@ -64,6 +69,14 @@ export function MarketGrid({ rows, homeName, awayName }: Props) {
                   <small className="ladder-edge">
                     vs media de liga {edgeLabel(line.over_probability, line.baseline_over_probability)}
                   </small>
+                  {match ? (
+                    <div className="pick-toggle-row">
+                      <PickToggle caption="Más" pick={countPick(
+                        match, row, Number(line.line), Number(line.over_probability), "over", "grid")} />
+                      <PickToggle caption="Menos" pick={countPick(
+                        match, row, Number(line.line), Number(line.over_probability), "under", "grid")} />
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

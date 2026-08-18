@@ -98,7 +98,7 @@ button { color: inherit; }
   min-height: calc(70px + var(--tg-safe-area-inset-bottom));
   padding: 7px 8px var(--tg-safe-area-inset-bottom);
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 3px;
   border-top: 1px solid var(--line);
   background: rgba(9, 20, 19, 0.92);
@@ -107,7 +107,7 @@ button { color: inherit; }
 .nav-item { display: grid; place-items: center; gap: 2px; color: var(--muted); border-radius: 12px; min-height: 54px; }
 .nav-item span { font-size: 1.1rem; line-height: 1; }
 .nav-item small { font-size: 0.62rem; text-align: center; line-height: 1.05; }
-/* Con seis destinos las etiquetas no caben a 375 px sin encogerlas. */
+/* Con siete destinos las etiquetas no caben a 375 px sin encogerlas. */
 @media (max-width: 400px) {
   .nav-item small { font-size: 0.55rem; }
   .nav-item span { font-size: 1rem; }
@@ -518,3 +518,34 @@ button { color: inherit; }
 .tag-pending { color: var(--signal); border-color: var(--signal); }
 .tag-blocked { color: var(--danger); border-color: var(--danger); }
 .tag-admin { color: var(--text); background: rgba(255, 255, 255, .08); }
+
+/* Constructor de Picks (DEC-208). El "+" se pinta junto a la probabilidad que
+   el usuario está leyendo: separarlo de su número obligaría a recordar cuál
+   mercado se estaba añadiendo. */
+/* 34 px de alto y 44 px de ancho mínimos: el "+" es la interacción principal
+   del constructor y vive dentro de filas de escalera muy densas, así que un
+   botón del tamaño de su glifo se falla al tocarlo con el pulgar. */
+.pick-toggle { justify-self: start; min-height: 34px; min-width: 44px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted);
+  font-size: .68rem; font-weight: 700; line-height: 1; }
+.pick-toggle.selected { border-color: var(--mint); color: var(--mint); background: rgba(176, 228, 204, .1); }
+.pick-toggle:disabled { opacity: .35; }
+.pick-toggle-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; justify-content: center; }
+.market-probability .pick-toggle-row { justify-content: flex-start; }
+/* Flotante sobre la barra inferior: agregar un mercado en la pantalla de
+   predicción no tendría respuesta visible sin él, y el menú quedaría detrás de
+   una pestaña que nadie tiene motivo para abrir. */
+.pick-bar { position: fixed; z-index: 21; left: 50%; transform: translateX(-50%);
+  bottom: calc(78px + var(--tg-safe-area-inset-bottom)); width: min(calc(100% - 36px), 480px);
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--mint);
+  border-radius: 999px; background: rgba(9, 20, 19, .94); backdrop-filter: blur(20px);
+  color: var(--text); font-size: .72rem; font-weight: 700; }
+.pick-bar span:not(.pick-bar-count) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-bar-count { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 999px;
+  background: var(--mint); color: var(--deep); font-size: .68rem; }
+.pick-bar strong { color: var(--mint); }
+.joint-headline { display: grid; gap: 4px; margin-top: 14px; }
+.joint-headline strong { font-size: 2.1rem; line-height: 1; color: var(--mint); }
+.joint-headline small { color: var(--muted); font-size: .7rem; }
+.joint-warnings { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 6px;
+  color: var(--muted); font-size: .68rem; line-height: 1.5; }

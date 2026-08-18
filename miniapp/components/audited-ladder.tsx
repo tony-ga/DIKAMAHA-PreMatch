@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 
+import { PickToggle } from "@/components/pick-toggle";
 import { ShadowBadge } from "@/components/ui";
 import { countLabel, percentage, probabilityWidth } from "@/lib/client-api";
 import {
   auditedLines, auditedRows, countModelEdge, metricLabel, orderByLine,
   previewLines, teamLabel,
 } from "@/lib/audited-ladder";
+import type { MatchRef } from "@/lib/pick-builder";
+import { countPick } from "@/lib/pick-sources";
 
 // Los tres periodos que `METRIC_LADDERS` audita desde Fase 124. El segundo
 // tiempo se añadió con su propia medición de calibración y fiabilidad, no
@@ -25,6 +28,8 @@ type Props = {
   rows: unknown;
   homeName: string;
   awayName: string;
+  /** Identidad del partido; sin ella no se ofrece el Constructor de Picks. */
+  match?: MatchRef;
 };
 
 /**
@@ -37,7 +42,7 @@ type Props = {
  * modelo sobre la media de la liga o porque la línea es predecible por sí
  * sola. Ver `docs/objetivo_auditoria_modelos_v1.md`.
  */
-export function AuditedLadder({ rows, homeName, awayName }: Props) {
+export function AuditedLadder({ rows, homeName, awayName, match }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const groups = auditedRows(rows);
   if (!groups.length) return null;
@@ -97,6 +102,14 @@ export function AuditedLadder({ rows, homeName, awayName }: Props) {
                           <small className="ladder-edge">
                             histórico {percentage(line.observed_rate_historical)} sobre {String(line.sample_size)} partidos
                           </small>
+                          {match ? (
+                            <div className="pick-toggle-row">
+                              <PickToggle caption="Más" pick={countPick(
+                                match, row, line.line, line.over_probability, "over", "audited")} />
+                              <PickToggle caption="Menos" pick={countPick(
+                                match, row, line.line, line.over_probability, "under", "audited")} />
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}

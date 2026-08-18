@@ -5577,6 +5577,88 @@ escenario mas probable de tres puede rondar el 37%; ahora dice "Escenario
 principal", el mismo vocabulario de la tarjeta del canal.
 
 
+DEC-208
+Fecha: 2026-08-17
+Problema: el usuario pidio un menu independiente "Constructor de Picks" que
+tome mercados ya publicados en las predicciones pre-match -de uno o de varios
+partidos distintos-, los acumule con un boton "+" y "-", y devuelva una unica
+probabilidad de que ocurran todos a la vez. El criterio de exito que fijo es
+verificable: la probabilidad que publica la aplicacion tiene que coincidir con
+la que se deriva a mano del mismo modelo en varios casos.
+Opciones: (a) multiplicar las probabilidades mostradas de todas las
+selecciones; (b) multiplicar solo entre partidos distintos y resolver dentro de
+cada partido con la estructura conjunta que el modelo ya tiene; (c) simular por
+Monte Carlo una conjunta global.
+Decision: (b), con tres regimenes explicitos y un unico supuesto declarado.
+
+1. Entre partidos distintos se multiplica. El motor calcula cada partido por
+   separado -no hay estado latente compartido en la cadena servida-, asi que la
+   independencia es una propiedad del modelo, no una afirmacion empirica sobre
+   el futbol, y se comunica asi.
+2. Dentro de un partido, dos lineas sobre la misma variable (mismo grupo
+   metrica/lado/periodo de la escalera) se resuelven de forma exacta sobre la
+   propia escalera, sin supuesto ninguno: la interseccion de "mas de a" y "mas
+   de b" es "mas de max(a,b)"; la de "menos de a" y "menos de b" es "menos de
+   min(a,b)"; y la de "mas de a" con "menos de b" vale P(X>a) - P(X>b), cero si
+   a >= b. Multiplicar aqui daria un numero sin sentido: "mas de 4.5 corners" y
+   "mas de 6.5 corners" no son dos eventos, son uno.
+3. Dentro de un partido, los mercados de gol (1X2, Mas de 2.5, Ambos marcan)
+   se resuelven sumando la masa de la matriz de marcadores sobre las celdas que
+   cumplen todas las condiciones elegidas. La matriz se reconstruye en el
+   cliente con `lambda_home`, `lambda_away` y `audit.tau_dc`, que el payload ya
+   publica -`tau` se expuso justamente para poder reconstruir la conjunta con
+   la que se derivaron los mercados (`official_goal_chain.py`).
+4. Entre grupos distintos del mismo partido -corners de un equipo y tarjetas
+   del otro, o goles y tiros- se multiplica. Ese es el unico supuesto de
+   independencia condicional del constructor, y se declara en pantalla.
+
+La matriz reconstruida no reproduce por si sola lo que el usuario ve: 1X2 pasa
+por calibracion de temperatura (`DEC-199`) y Ambos marcan viene de un modelo
+propio de Fase 106, no de la matriz. Publicar una conjunta cuya marginal no
+coincide con el porcentaje mostrado dos pantallas antes seria un defecto
+visible y romperia el criterio de exito. Por eso la matriz se ajusta por
+escalado iterativo proporcional a las tres marginales publicadas -1X2 sobre su
+particion de tres clases, Mas de 2.5 y Ambos marcan sobre las suyas de dos-
+antes de sumar celdas. El ajuste conserva la estructura de dependencia de la
+matriz y fuerza que una seleccion unica devuelva exactamente el porcentaje
+publicado.
+Motivo: (a) es incorrecta y ademas visiblemente incorrecta -daria probabilidad
+positiva a "gana el local" y "gana el visitante" a la vez, y tratara "mas de
+4.5" y "mas de 6.5" corners como dos eventos independientes-. (c) exigiria un
+simulador nuevo, servido, para una conjunta que el modelo ya determina en forma
+cerrada, y su resultado no seria reproducible a mano, que es exactamente lo que
+el criterio de exito pide. (b) es exacta donde el modelo permite serlo, y donde
+no lo es lo dice.
+Estado: congelada
+Impacto en contratos/fases: ningun contrato del backend cambia. El calculo vive
+entero en la Mini App (`miniapp/lib/pick-builder.ts`), lee campos que
+`/v1/predict/upcoming` ya publica y no llama a ningun endpoint nuevo. Se agrega
+la ruta `/constructor` y una entrada de navegacion. Las selecciones viven en
+`localStorage` del dispositivo; no se persisten en Postgres ni se liquidan, y
+por lo tanto no entran en el historial de aciertos ni en ningun gate de
+promocion. El constructor es una vista derivada: no crea mercados nuevos ni
+cambia la etiqueta shadow de los que combina.
+Evidencia requerida: que una seleccion unica devuelva exactamente la
+probabilidad publicada de ese mercado, en los tres regimenes; que dos
+selecciones contradictorias del mismo partido den cero; que dos lineas de la
+misma variable no se multipliquen; que la conjunta de mercados de gol
+correlacionados difiera del producto en la direccion correcta; que partidos
+distintos si multipliquen; y que la reconstruccion de la matriz degrade de
+forma explicita -y no en silencio- cuando el payload no trae lambdas usables.
+Evidencia obtenida: 42 pruebas en `miniapp/tests/pick-builder.test.ts` (200
+Vitest en total, sin regresiones), `tsc --noEmit` limpio y `next build`
+resolviendo `/constructor`. Los valores de referencia de las conjuntas de gol
+se calcularon aparte, sin derivarlos del propio modulo, y coinciden a ~13
+digitos en dos contextos distintos. Revision en el navegador contra un stub
+local del motor, con el cobro apagado para no consultar PostgreSQL: `6.93%`
+para cuatro mercados de un partido -exactamente 0.288888848 x 0.24-, `0%` para
+un 1X2 contradictorio y `24.0%` = 0.47 x 0.51 para dos partidos distintos. Se
+corrigieron dos defectos hallados alli: cadenas visibles sin acentos y un boton
+"+" de 26x28 px, ahora 34x44 px minimos. Sin revision de pixeles completa: el
+panel de vista previa dejo de componer fotogramas y el resto se verifico por
+texto del DOM y geometria medida.
+
+
 ```text
 DEC-NNN
 Fecha:
