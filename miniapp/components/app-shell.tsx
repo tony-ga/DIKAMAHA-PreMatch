@@ -15,7 +15,7 @@ const navigation = [
   { href: "/live", icon: "●", label: "En vivo", premium: true },
   { href: "/predictions", icon: "◫", label: "Predicciones" },
   { href: "/mayor-probabilidad", icon: "▲", label: "Mayor prob.", premium: true },
-  { href: "/constructor", icon: "＋", label: "Constructor" },
+  { href: "/constructor", icon: "＋", label: "Constructor", premium: true },
   { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/historial", icon: "✓", label: "Aciertos" },
 ];

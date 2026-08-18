@@ -144,8 +144,9 @@ Gratuito
     3 predicciones al día, a tu elección.
 
 Premium (250 estrellas de Telegram al mes)
-    Todo lo anterior, más predicciones sin límite, en vivo y el menú de
-    mayor probabilidad, sin tope de favoritos ni alertas.
+    Todo lo anterior, más predicciones sin límite, en vivo, el menú de
+    mayor probabilidad y el constructor de picks, sin tope de favoritos
+    ni alertas.
 
 Se activa con /premium en el bot o desde "Ajustes" en la Mini App. Se paga
 con Estrellas de Telegram y se renueva automáticamente cada 30 días; se

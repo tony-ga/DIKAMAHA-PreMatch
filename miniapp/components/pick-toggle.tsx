@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 
+import { usePremium } from "@/components/premium-gate";
 import type { Pick } from "@/lib/pick-builder";
 import { computeJoint, jointPercentage } from "@/lib/pick-builder";
 import {
@@ -33,7 +34,13 @@ type Props = {
  */
 export function PickToggle({ pick, caption }: Props) {
   const picks = usePicks();
+  const premium = usePremium();
   if (!pick) return null;
+  // El constructor es de pago, así que el "+" no se pinta para quien no lo
+  // tiene: dejarlo visible permitiría llenar el constructor y encontrarse el
+  // muro sólo al abrirlo, después de haber elegido los mercados. El muro va
+  // en `/constructor`, y aquí simplemente no se ofrece la acción.
+  if (!premium) return null;
   const selected = picks.some((item) => item.id === pick.id);
   const full = !selected && picks.length >= MAX_PICKS;
   return (
@@ -60,7 +67,11 @@ export function PickToggle({ pick, caption }: Props) {
  */
 export function PickBuilderBar() {
   const picks = usePicks();
-  if (!picks.length) return null;
+  const premium = usePremium();
+  // Sin plan no hay barra: anunciaría un total que su pantalla de destino no
+  // le va a mostrar. Las selecciones que hubiera guardado antes siguen en
+  // `localStorage` intactas, listas para cuando active Premium.
+  if (!premium || !picks.length) return null;
   const joint = computeJoint(picks);
   return (
     <Link href="/constructor" className="pick-bar">

@@ -73,6 +73,7 @@ export function PremiumUpsell({ headline, detail }: {
         <li>Predicciones pre-match sin límite</li>
         <li>Análisis en vivo</li>
         <li>Menú de mayor probabilidad completo</li>
+        <li>Constructor de picks con probabilidad conjunta</li>
         <li>Favoritos y alertas sin tope</li>
       </ul>
       <SubscribeButton label={`Activar Premium · ${stars} ⭐ al mes`} />

@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { EntityImage } from "@/components/entity-image";
 import { usePicks } from "@/components/pick-toggle";
+import { PremiumUpsell, usePremium } from "@/components/premium-gate";
 import { PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { percentage } from "@/lib/client-api";
 import type { MatchBreakdown, Pick } from "@/lib/pick-builder";
@@ -73,8 +74,28 @@ function MatchCard({ breakdown }: { breakdown: MatchBreakdown }) {
 
 export default function PickBuilderPage() {
   const picks = usePicks();
+  const premium = usePremium();
   const joint = computeJoint(picks);
   const multipleMatches = joint.matches.length > 1;
+
+  if (!premium) {
+    // Se conserva la cabecera y se explica qué hace el constructor antes del
+    // muro: quien llega aquí desde la barra inferior necesita saber qué es lo
+    // que estaría activando, no sólo que no puede pasar.
+    return (
+      <>
+        <PageHeader eyebrow="CONSTRUCTOR" title="Construir pick" />
+        <PremiumUpsell
+          headline="El constructor de picks es parte de Premium"
+          detail={
+            "Combina los mercados que elijas -de uno o varios partidos- en una "
+            + "sola probabilidad conjunta, calculada sobre la matriz de "
+            + "marcadores del modelo."
+          }
+        />
+      </>
+    );
+  }
 
   return (
     <>
