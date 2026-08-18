@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   dailyHitRateSeries,
+  highProbabilityDailySeries,
+  highProbabilityMarketSeries,
   leagueHitRateSeries,
   officialMarketRateSeries,
   reliabilitySeries,
@@ -149,5 +151,53 @@ describe("reliabilitySeries", () => {
   it("no revienta con un bloque vacío", () => {
     expect(reliabilitySeries(null)).toEqual([]);
     expect(reliabilitySeries({})).toEqual([]);
+  });
+});
+
+function pick(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    pick_key: "esp.1:1:1x2:match:full_match:na:home",
+    market: "1x2", status: "hit", kickoff_ts: "2026-08-10T20:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("highProbabilityMarketSeries", () => {
+  it("agrega por mercado, ignora pendientes y ordena por volumen", () => {
+    const points = highProbabilityMarketSeries([
+      pick({ market: "1x2", status: "hit" }),
+      pick({ market: "1x2", status: "miss" }),
+      pick({ market: "home_corners", status: "pending" }),
+      pick({ market: "over_2_5", status: "hit" }),
+    ]);
+
+    expect(points).toEqual([
+      { key: "1x2", label: "1x2", hits: 1, total: 2, rate: 0.5 },
+      { key: "over_2_5", label: "over 2 5", hits: 1, total: 1, rate: 1 },
+    ]);
+  });
+
+  it("no revienta con un bloque vacío", () => {
+    expect(highProbabilityMarketSeries(null)).toEqual([]);
+  });
+});
+
+describe("highProbabilityDailySeries", () => {
+  it("agrega volumen diario en huso de México, cronológico", () => {
+    const points = highProbabilityDailySeries([
+      pick({ kickoff_ts: "2026-08-10T20:00:00Z", status: "hit" }),
+      pick({ kickoff_ts: "2026-08-10T21:00:00Z", status: "miss" }),
+      pick({ kickoff_ts: "2026-08-12T20:00:00Z", status: "hit" }),
+      pick({ kickoff_ts: "2026-08-11T02:00:00Z", status: "pending" }),
+    ]);
+
+    expect(points).toEqual([
+      { date: "2026-08-10", label: expect.any(String), hits: 1, total: 2 },
+      { date: "2026-08-12", label: expect.any(String), hits: 1, total: 1 },
+    ]);
+  });
+
+  it("no revienta con un bloque vacío", () => {
+    expect(highProbabilityDailySeries(null)).toEqual([]);
   });
 });

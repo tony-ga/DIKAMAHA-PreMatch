@@ -20,6 +20,8 @@ import {
 
 import type {
   DailyRatePoint,
+  HighProbabilityDailyPoint,
+  HighProbabilityMarketPoint,
   LeagueRatePoint,
   MarketRatePoint,
   ReliabilityPoint,
@@ -189,6 +191,72 @@ export function ReliabilityChart({ points }: { points: ReliabilityPoint[] }) {
             />
           </Scatter>
         </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/**
+ * Volumen y tasa cruda de "Mayor probabilidad" por mercado.
+ *
+ * Mismo tratamiento honesto que `ShadowRateChart`: color `--muted`, no
+ * `--mint`, porque la tasa aquí no pasó por el umbral de muestra de
+ * `prospective_reliability` -ese análisis riguroso ya vive en
+ * `ReliabilityChart`-. Ésta es sólo volumen liquidado por mercado.
+ */
+export function HighProbabilityMarketChart({ points }: { points: HighProbabilityMarketPoint[] }) {
+  if (!points.length) return null;
+  const height = Math.max(160, points.length * 30);
+  return (
+    <div className="chart-shell" style={{ height }} aria-label="Volumen y tasa cruda de Mayor probabilidad, por mercado">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart
+          data={points} layout="vertical"
+          margin={{ top: 4, right: 24, left: 8, bottom: 0 }}
+        >
+          <CartesianGrid stroke="var(--line)" horizontal={false} />
+          <XAxis type="number" {...PERCENT_AXIS} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <YAxis type="category" dataKey="label" width={96} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <Tooltip
+            formatter={(value: unknown, _name, item) => {
+              const point = item?.payload as HighProbabilityMarketPoint | undefined;
+              return [`${percentLabel(value)} (${point?.hits ?? 0}/${point?.total ?? 0})`, "Volumen liquidado"];
+            }}
+            contentStyle={TOOLTIP_STYLE}
+          />
+          <Bar dataKey="rate" fill="var(--muted)" radius={[2, 6, 6, 2]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/**
+ * Volumen diario de picks de "Mayor probabilidad" liquidados.
+ *
+ * Barras, no área: a diferencia de `DailyTrendChart` -una tasa entre 0 y 1-,
+ * aquí el eje es una cuenta sin techo natural, y el objetivo es mostrar el
+ * salto de volumen que trae DEC-206 (el congelado ya no depende del modo
+ * `lite` del canal), no una tendencia porcentual.
+ */
+export function HighProbabilityDailyChart({ points }: { points: HighProbabilityDailyPoint[] }) {
+  if (points.length < 2) return null;
+  return (
+    <div className="chart-shell" aria-label="Volumen diario de picks liquidados de Mayor probabilidad">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={points} margin={{ top: 8, right: 6, left: -24, bottom: 0 }}>
+          <CartesianGrid stroke="var(--line)" vertical={false} />
+          <XAxis dataKey="label" tick={AXIS_TICK} axisLine={false} tickLine={false} minTickGap={24} />
+          <YAxis allowDecimals={false} tick={AXIS_TICK} axisLine={false} tickLine={false} />
+          <Tooltip
+            formatter={(value: unknown, _name, item) => {
+              const point = item?.payload as HighProbabilityDailyPoint | undefined;
+              return [`${point?.hits ?? 0}/${value}`, "Liquidados/aciertos"];
+            }}
+            contentStyle={TOOLTIP_STYLE}
+          />
+          <Bar dataKey="total" fill="var(--muted)" radius={[4, 4, 0, 0]} />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );

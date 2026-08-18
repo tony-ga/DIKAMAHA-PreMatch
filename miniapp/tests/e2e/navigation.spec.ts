@@ -919,6 +919,15 @@ test("renders the Mayor probabilidad reliability diagram for buckets with enough
           team_side: "match", period: "full_match", line: null,
           model_probability: 0.72, observed_rate_declared: 0.8,
           status: "hit", observed_value: { verdict: { hit: true } },
+        }, {
+          pick_key: "esp.1:900002:over_2_5:match:full_match:na:over",
+          fixture_key: "esp.1:900002", league_slug: "esp.1", match_id: 900002,
+          kickoff_ts: "2026-08-14T18:00:00Z",
+          home_team_name: "Sevilla", away_team_name: "Betis",
+          market: "over_2_5", direction: "over", metric: "result",
+          team_side: "match", period: "full_match", line: null,
+          model_probability: 0.68, observed_rate_declared: 0.7,
+          status: "miss", observed_value: { verdict: { hit: false } },
         }],
       },
       high_probability_reliability: {
@@ -943,5 +952,11 @@ test("renders the Mayor probabilidad reliability diagram for buckets with enough
   await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
   await expect(page.getByLabel(
     "Confianza declarada frente a tasa observada, por tramo",
+  )).toBeVisible();
+  await expect(page.getByLabel(
+    "Volumen diario de picks liquidados de Mayor probabilidad",
+  )).toBeVisible();
+  await expect(page.getByLabel(
+    "Volumen y tasa cruda de Mayor probabilidad, por mercado",
   )).toBeVisible();
 });

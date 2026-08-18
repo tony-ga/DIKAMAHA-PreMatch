@@ -198,6 +198,95 @@ export type ShadowRatePoint = {
   rate: number;
 };
 
+/** Zona con la que el backend agrupa "el día" del kickoff local. */
+function localDayFromKickoff(kickoffTs: unknown): string | null {
+  if (typeof kickoffTs !== "string") return null;
+  const date = new Date(kickoffTs);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CHANNEL_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(date);
+}
+
+export type HighProbabilityMarketPoint = {
+  key: string;
+  label: string;
+  hits: number;
+  total: number;
+  rate: number;
+};
+
+/**
+ * Volumen y tasa cruda de picks liquidados de "Mayor probabilidad", por mercado.
+ *
+ * Sin `sufficient_sample` -a diferencia de `officialMarketRateSeries`- porque
+ * ese umbral vive en `prospective_reliability` (por tramo de confianza, no por
+ * mercado) y ya lo respeta `ReliabilityChart`. Ésta es la misma honestidad que
+ * `shadowMarketRateSeries`: conteo con tasa cruda, etiquetado en el
+ * componente como volumen, no como una tasa confirmada.
+ */
+export function highProbabilityMarketSeries(
+  picks: unknown, limit = 8,
+): HighProbabilityMarketPoint[] {
+  const rows = Array.isArray(picks) ? picks.map(record) : [];
+  const byMarket = new Map<string, { hits: number; total: number }>();
+  for (const row of rows) {
+    const status = String(row.status ?? "");
+    if (status !== "hit" && status !== "miss") continue;
+    const market = String(row.market ?? "");
+    if (!market) continue;
+    const bucket = byMarket.get(market) ?? { hits: 0, total: 0 };
+    bucket.total += 1;
+    if (status === "hit") bucket.hits += 1;
+    byMarket.set(market, bucket);
+  }
+  return Array.from(byMarket.entries())
+    .map(([market, bucket]) => ({
+      key: market, label: market.replaceAll("_", " "),
+      hits: bucket.hits, total: bucket.total,
+      rate: bucket.total > 0 ? bucket.hits / bucket.total : 0,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limit);
+}
+
+export type HighProbabilityDailyPoint = {
+  date: string;
+  label: string;
+  hits: number;
+  total: number;
+};
+
+/**
+ * Volumen diario de picks de "Mayor probabilidad" liquidados.
+ *
+ * A propósito no calcula `rate`: el objetivo de esta gráfica es mostrar
+ * cuántos picks se liquidan cada día -el efecto directo de que el congelado
+ * ya no dependa del modo `lite` del canal (DEC-206)-, no comparar tasas entre
+ * días con muestras muy distintas entre sí.
+ */
+export function highProbabilityDailySeries(picks: unknown): HighProbabilityDailyPoint[] {
+  const rows = Array.isArray(picks) ? picks.map(record) : [];
+  const byDay = new Map<string, { hits: number; total: number }>();
+  for (const row of rows) {
+    const status = String(row.status ?? "");
+    if (status !== "hit" && status !== "miss") continue;
+    const day = localDayFromKickoff(row.kickoff_ts);
+    if (!day) continue;
+    const bucket = byDay.get(day) ?? { hits: 0, total: 0 };
+    bucket.total += 1;
+    if (status === "hit") bucket.hits += 1;
+    byDay.set(day, bucket);
+  }
+  return Array.from(byDay.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, bucket]) => ({
+      date,
+      label: new Date(`${date}T12:00:00`).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }),
+      hits: bucket.hits, total: bucket.total,
+    }));
+}
+
 const SHADOW_METRIC_LABELS: Record<string, string> = {
   shots: "Tiros", shots_on_target: "Tiros a puerta", corners: "Córners",
   yellow_cards: "Amarillas", red_cards: "Rojas",

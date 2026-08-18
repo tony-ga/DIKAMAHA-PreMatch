@@ -2,6 +2,26 @@
 
 **Actualizado:** 2026-08-18
 
+## Más gráficas de volumen en "Mayor probabilidad" y refresco periódico (DEC-210)
+
+Ver `DEC-210`. Tras DEC-209 el usuario no veía el diagrama de fiabilidad y
+pidió más información visual, con refresco diario. Confirmado contra Postgres
+de producción: no es un bug -el diagrama está vacío porque el bucket con más
+muestra prospectiva de Fase 123 tiene 6 picks liquidados, contra el mínimo de
+20 que exige `prospective_reliability`-. Mientras esa muestra crece (más rápido
+ahora gracias a DEC-206), se agregaron dos gráficas que sí funcionan hoy con
+poca muestra, derivadas en el cliente de `high_probability.picks` sin tocar el
+backend: volumen y tasa cruda por mercado (`HighProbabilityMarketChart`, mismo
+criterio honesto que `ShadowRateChart` para lo no confirmado) y volumen diario
+liquidado (`HighProbabilityDailyChart`, sin tasa). Además, `DailyTrackRecord` y
+`TrackRecord` ganan `refetchInterval` (2 y 5 minutos) para que las gráficas de
+Aciertos se actualicen solas sin que el usuario recargue la pestaña.
+
+Gates: 4 pruebas nuevas en `track-record-charts.test.ts`, Playwright extendida
+para verificar las tres gráficas de "Mayor probabilidad" juntas. Typecheck, 22
+Playwright de `navigation.spec.ts` y 215 Vitest sin regresiones. Despliegue a
+producción pendiente.
+
 ## Diagrama de fiabilidad en Aciertos, expone un cálculo de Fase 123 que se tiraba (DEC-209)
 
 Ver `DEC-209`. El usuario pidió cubrir con gráficos las cifras "4/11" sueltas

@@ -5708,6 +5708,52 @@ renderizado por `aria-label`. Suite Python completa 926 aprobadas/8 omitidas
 sin regresiones.
 
 
+DEC-210
+Fecha: 2026-08-18
+Problema: tras DEC-209 el usuario reportó no ver el diagrama de fiabilidad
+nuevo y pidió más información visual, con la expectativa explícita de que
+todas las gráficas de Aciertos se actualicen a diario. Verificado contra
+Postgres de producción: el diagrama de fiabilidad no es un bug, es honestidad
+estadística -el `bucket` con más muestra tiene 6 picks liquidados de Fase 123,
+contra `MINIMUM_SAMPLE = 20`- así que hoy renderiza vacío por diseño, no por
+error. Además, ninguna de las gráficas existentes tenía refresco periódico:
+`staleTime` evita refetches redundantes al montar, pero una pestaña abierta
+todo el día se queda con los datos con los que cargó.
+Opciones: (a) esperar a que la muestra de Fase 123 crezca sola -ahora más
+rápido gracias a DEC-206- sin agregar nada más; (b) agregar gráficas que
+funcionen hoy con poca muestra -volumen, no tasa inferida-, mismo criterio de
+honestidad que ya usa `ShadowRateChart` para mercados no promovidos, y añadir
+`refetchInterval` a las dos queries de Aciertos.
+Decisión: (b).
+Motivo: el diagrama de fiabilidad es la pieza estadísticamente más rigurosa,
+pero no puede ser la única -tarda semanas en llenarse-; mientras tanto el
+usuario pidió explícitamente más información visual, y hay datos ya
+disponibles en el cliente (`high_probability.picks` trae `market`/`status`/
+`kickoff_ts`) que permiten dos gráficas honestas sin tocar el backend.
+Estado: congelada
+Impacto en contratos/fases: ningún cambio de backend ni de contrato -las dos
+gráficas nuevas se derivan en el cliente de `high_probability.picks`, ya
+servido desde DEC-184-. `HighProbabilityMarketChart` (volumen y tasa cruda por
+mercado, sin el umbral de `prospective_reliability`, color `--muted` como
+`ShadowRateChart`) se monta en ambas ventanas de "Mayor probabilidad";
+`HighProbabilityDailyChart` (volumen diario liquidado, sin tasa) sólo en la
+ventana acumulada. `DailyTrackRecord` pasa a `refetchInterval: 2min` y
+`TrackRecord` a `refetchInterval: 5min` -mismo valor que su `staleTime`
+existente-, para que las gráficas reflejen lo liquidado sin depender de que el
+usuario recargue la pestaña.
+Evidencia requerida: pruebas de las dos funciones de agregación nuevas
+(`highProbabilityMarketSeries`/`highProbabilityDailySeries`); prueba Playwright
+que renderice ambas gráficas reales junto al diagrama de fiabilidad; suite
+completa, typecheck, Vitest y Playwright sin regresiones.
+Evidencia obtenida: consulta directa a Postgres de producción confirmó
+`high_probability_pick_settlements` en 50 filas totales, máximo 6 por
+`(market, bucket)` -contra el mínimo 20-, así que el diagrama de fiabilidad
+está vacío por diseño hoy. 4 pruebas nuevas en `track-record-charts.test.ts`,
+Playwright de `navigation.spec.ts:893` extendida para verificar las tres
+gráficas de "Mayor probabilidad" a la vez. Typecheck y 22 Playwright de
+`navigation.spec.ts`, 215 Vitest, sin regresiones.
+
+
 ```text
 DEC-NNN
 Fecha:

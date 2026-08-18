@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  DailyTrendChart, LeagueRateChart, MarketRateChart, ReliabilityChart, ShadowRateChart,
+  DailyTrendChart, HighProbabilityDailyChart, HighProbabilityMarketChart, LeagueRateChart,
+  MarketRateChart, ReliabilityChart, ShadowRateChart,
 } from "@/components/track-record-charts";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
@@ -13,9 +14,21 @@ import {
   highProbabilityPicks, shadowMarketLabel, shadowMatchEntries, shadowSummary,
 } from "@/lib/track-record";
 import {
-  dailyHitRateSeries, leagueHitRateSeries, officialMarketRateSeries,
-  reliabilitySeries, shadowMarketRateSeries,
+  dailyHitRateSeries, highProbabilityDailySeries, highProbabilityMarketSeries,
+  leagueHitRateSeries, officialMarketRateSeries, reliabilitySeries, shadowMarketRateSeries,
 } from "@/lib/track-record-charts";
+
+/** Refresco periódico de las ventanas de Aciertos, en milisegundos.
+ *
+ * `staleTime` sólo evita refetches redundantes al montar/enfocar; sin
+ * `refetchInterval` una pestaña abierta todo el día seguiría mostrando los
+ * datos con los que cargó, y las gráficas -pensadas para reflejar lo que ya
+ * se liquidó hoy- se congelarían con ella. El backend recalcula desde la base
+ * en cada request, así que el único costo de refrescar seguido es la
+ * llamada misma.
+ */
+const DAILY_REFETCH_MS = 2 * 60_000;
+const WINDOW_REFETCH_MS = 5 * 60_000;
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
   ["one_x_two", "Resultado (1X2)"],
@@ -72,13 +85,16 @@ function PickStatusMark({ status }: { status: string }) {
  * `metric`/`team_side`/`period`/`line` que el menú congeló.
  */
 function HighProbabilityPicks(
-  { value, reliability }: { value: unknown; reliability?: unknown },
+  { value, reliability, dailyTrend = false }:
+  { value: unknown; reliability?: unknown; dailyTrend?: boolean },
 ) {
   const block = record(value);
   const picks = highProbabilityPicks(value);
   if (block.status !== "available" || !picks.length) return null;
   const summary = record(block.summary);
   const reliabilityPoints = reliability !== undefined ? reliabilitySeries(reliability) : [];
+  const marketPoints = highProbabilityMarketSeries(picks);
+  const dailyPoints = dailyTrend ? highProbabilityDailySeries(picks) : [];
   return (
     <article className="model-card">
       <div className="model-card-header"><h3>Mayor probabilidad</h3><ShadowBadge /></div>
@@ -101,6 +117,24 @@ function HighProbabilityPicks(
             menos. Barra de error: IC95% de Wilson.
           </p>
           <ReliabilityChart points={reliabilityPoints} />
+        </>
+      ) : null}
+      {dailyPoints.length >= 2 ? (
+        <>
+          <p className="ladder-caption" style={{ marginTop: 14 }}>
+            Picks liquidados por día. Sin tasa: el objetivo es ver el volumen, no
+            comparar días con muestras muy distintas entre sí.
+          </p>
+          <HighProbabilityDailyChart points={dailyPoints} />
+        </>
+      ) : null}
+      {marketPoints.length ? (
+        <>
+          <p className="ladder-caption" style={{ marginTop: 14 }}>
+            Volumen y tasa cruda por mercado, sin el umbral de muestra del diagrama de
+            fiabilidad de arriba -no es una tasa confirmada, sólo conteo-.
+          </p>
+          <HighProbabilityMarketChart points={marketPoints} />
         </>
       ) : null}
       <div className="stack" style={{ marginTop: 14 }}>
@@ -211,6 +245,7 @@ export function DailyTrackRecord() {
     queryFn: () =>
       api<Record<string, unknown>>(`/api/track-record/daily?date=${dateParam}`),
     staleTime: 60_000,
+    refetchInterval: DAILY_REFETCH_MS,
   });
   if (query.isLoading) {
     return <StatePanel title="Cargando resultados de hoy">Leyendo los partidos liquidados hoy.</StatePanel>;
@@ -282,6 +317,7 @@ export function TrackRecord() {
     queryKey: ["track-record"],
     queryFn: () => api<Record<string, unknown>>("/api/track-record?window=200"),
     staleTime: 300_000,
+    refetchInterval: WINDOW_REFETCH_MS,
   });
   if (query.isLoading) {
     return <StatePanel title="Cargando desempeño">Leyendo los partidos ya verificados.</StatePanel>;
@@ -383,6 +419,7 @@ export function TrackRecord() {
         <HighProbabilityPicks
           value={payload.high_probability}
           reliability={payload.high_probability_reliability}
+          dailyTrend
         />
         <div className="notice">{String(payload.disclosure ?? "")}</div>
       </div>
