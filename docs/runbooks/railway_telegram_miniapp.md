@@ -123,9 +123,41 @@ autenticadas. El navegador sólo llama rutas `/api/*` same-origin.
 
 1. Cambiar `MINIAPP_ALERTS_ENABLED=false` para detener notificaciones.
 2. Eliminar `DIKAMAHA_MINIAPP_URL` del bot y redesplegarlo para retirar el
-   botón; los comandos y menús nativos siguen funcionando.
+   botón. Desde la Fase 125 el bot no tiene menús nativos propios -catálogo,
+   predicciones, en vivo y demás sólo viven en la Mini App-, así que sin este
+   botón el bot queda reducido a `/whoami`, `/start`, `/help`, `/premium` y
+   `/mi_plan`.
 3. Cambiar `MINIAPP_ENABLED=false` o detener los dos servicios nuevos.
 4. No revertir API, modelos, snapshots ni router oficial: Fase 115 sólo añade
    presentación, autenticación, preferencias y notificaciones.
 5. Conservar PostgreSQL para auditoría. Su eliminación es una operación
    destructiva separada y no forma parte del rollback normal.
+
+## Análisis interno del historial de aciertos
+
+Lo que la Mini App muestra en "Aciertos" -incluidas las gráficas de la Fase
+126- no es un cálculo hecho al vuelo: se lee directamente de
+`prediction_settlements`, la tabla **append-only** que `TelegramChannelPublisher`
+llena vía `add_if_absent()` (`src/settlement_store.py`) sobre el mismo Postgres
+que usa la Mini App. Nunca sobrescribe una fila ya liquidada, así que no hace
+falta ninguna persistencia adicional para "no perder" esta información: ya
+sobrevive a redeploys y está disponible para análisis fuera de la app en
+cualquier momento.
+
+Para un análisis que la interfaz no cubre -por ejemplo, evolución mensual, o
+cruzar con los artefactos de calibración de Fase 122-, consulta la tabla
+directamente:
+
+```sql
+SELECT fixture_key, league_slug, kickoff_ts, home_team_name, away_team_name,
+       score_home, score_away, official_verdicts, shadow_verdicts, settled_at
+  FROM prediction_settlements
+ ORDER BY kickoff_ts DESC
+ LIMIT 500;
+```
+
+`official_verdicts` y `shadow_verdicts` son JSONB: en Postgres,
+`official_verdicts->'one_x_two'->>'hit'` extrae el acierto de un mercado sin
+tener que traer la fila completa a un cliente. Los picks del menú "Mayor
+probabilidad" (Fase 123) viven aparte, en la tabla que gestiona
+`src/high_probability_settlement.py` (`SqlAlchemyHighProbabilityPickRepository`).

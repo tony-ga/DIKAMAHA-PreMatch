@@ -3,12 +3,19 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import {
+  DailyTrendChart, LeagueRateChart, MarketRateChart, ShadowRateChart,
+} from "@/components/track-record-charts";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
 import {
   SHADOW_PREVIEW_SIZE, channelDateParam, highProbabilityPickLabel,
   highProbabilityPicks, shadowMarketLabel, shadowMatchEntries, shadowSummary,
 } from "@/lib/track-record";
+import {
+  dailyHitRateSeries, leagueHitRateSeries, officialMarketRateSeries,
+  shadowMarketRateSeries,
+} from "@/lib/track-record-charts";
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
   ["one_x_two", "Resultado (1X2)"],
@@ -241,6 +248,10 @@ export function TrackRecord() {
   const shadow = record(payload.shadow);
   const shadowMarkets = record(shadow.markets);
   const matches = Array.isArray(payload.matches) ? payload.matches : [];
+  const marketRates = officialMarketRateSeries(official);
+  const dailyRates = dailyHitRateSeries(matches);
+  const leagueRates = leagueHitRateSeries(matches);
+  const shadowRates = shadowMarketRateSeries(shadowMarkets);
   if (!matches.length) {
     return (
       <StatePanel title="Sin partidos verificados">
@@ -262,7 +273,34 @@ export function TrackRecord() {
               <MarketSummary key={key} label={label} value={official[key]} />
             ))}
           </div>
+          {marketRates.length ? (
+            <>
+              <p className="ladder-caption" style={{ marginTop: 14 }}>
+                Acertado frente a la referencia -el reparto base de esa liga, no una cuota de apuesta-.
+              </p>
+              <MarketRateChart points={marketRates} />
+            </>
+          ) : null}
         </article>
+        {dailyRates.length >= 2 || leagueRates.length ? (
+          <article className="model-card">
+            <div className="model-card-header"><h3>Tendencia</h3></div>
+            {dailyRates.length >= 2 ? (
+              <>
+                <p className="ladder-caption">Acierto agregado por día, sobre los tres mercados oficiales juntos.</p>
+                <DailyTrendChart points={dailyRates} />
+              </>
+            ) : null}
+            {leagueRates.length ? (
+              <>
+                <p className="ladder-caption" style={{ marginTop: dailyRates.length >= 2 ? 18 : 0 }}>
+                  Acierto por liga, ligas con más partidos verificados primero.
+                </p>
+                <LeagueRateChart points={leagueRates} />
+              </>
+            ) : null}
+          </article>
+        ) : null}
         {Object.keys(shadowMarkets).length ? (
           <article className="model-card">
             <div className="model-card-header"><h3>Mercados experimentales</h3><ShadowBadge /></div>
@@ -280,6 +318,7 @@ export function TrackRecord() {
                 );
               })}
             </div>
+            {shadowRates.length ? <ShadowRateChart points={shadowRates} /> : null}
           </article>
         ) : null}
         <article className="model-card">
