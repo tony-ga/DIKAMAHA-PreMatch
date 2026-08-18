@@ -111,6 +111,9 @@ export default function SettingsPage() {
           <Link className="secondary-button" href="/subscriptions">Alertas</Link>
           <Link className="secondary-button" href="/status">Estado del sistema</Link>
           <Link className="secondary-button" href="/help">Ayuda</Link>
+          {entitlement?.role === "admin" ? (
+            <Link className="secondary-button" href="/admin">Administración</Link>
+          ) : null}
         </div>
         <StatePanel title="Uso responsable">DIKAMAHA comunica probabilidades analíticas. No ofrece cuotas, stakes ni ejecución de apuestas.</StatePanel>
       </div>

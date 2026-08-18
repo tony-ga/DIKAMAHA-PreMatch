@@ -504,3 +504,17 @@ button { color: inherit; }
   border:1px solid var(--line); color:var(--muted); font-size:.68rem;
   font-variant-numeric:tabular-nums; white-space:nowrap; }
 .nav-lock { color:var(--signal); }
+
+/* Panel de administración de cuentas (/admin). Reutiliza `.data-panel` y los
+   botones existentes; sólo añade las etiquetas de estado/rol y el layout de
+   cada fila. */
+.admin-user-row { display: flex; flex-direction: column; gap: 10px; }
+.admin-user-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-user-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-user-actions .secondary-button { flex: 0 0 auto; padding: 8px 12px; font-size: .78rem; }
+.tag { padding: 2px 9px; border-radius: 999px; font-size: .68rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--line); }
+.tag-active { color: var(--mint); border-color: var(--mint); }
+.tag-pending { color: var(--signal); border-color: var(--signal); }
+.tag-blocked { color: var(--danger); border-color: var(--danger); }
+.tag-admin { color: var(--text); background: rgba(255, 255, 255, .08); }
