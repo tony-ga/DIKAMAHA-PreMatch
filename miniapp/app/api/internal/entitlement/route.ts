@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
     const premium = entitlement.plan === "premium";
     return NextResponse.json({
       plan: entitlement.plan,
+      role: entitlement.role,
       enforced: entitlement.enforced,
       expires_at: entitlement.expiresAt?.toISOString() ?? null,
       plan_source: entitlement.planSource,
