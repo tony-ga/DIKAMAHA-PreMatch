@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  DailyTrendChart, LeagueRateChart, MarketRateChart, ShadowRateChart,
+  DailyTrendChart, LeagueRateChart, MarketRateChart, ReliabilityChart, ShadowRateChart,
 } from "@/components/track-record-charts";
 import { Metric, PageHeader, ShadowBadge, StatePanel } from "@/components/ui";
 import { api, percentage, record } from "@/lib/client-api";
@@ -14,7 +14,7 @@ import {
 } from "@/lib/track-record";
 import {
   dailyHitRateSeries, leagueHitRateSeries, officialMarketRateSeries,
-  shadowMarketRateSeries,
+  reliabilitySeries, shadowMarketRateSeries,
 } from "@/lib/track-record-charts";
 
 const OFFICIAL_LABELS: Array<[string, string]> = [
@@ -23,8 +23,39 @@ const OFFICIAL_LABELS: Array<[string, string]> = [
   ["btts", "Ambos marcan"],
 ];
 
+/**
+ * Barra de proporción junto a un "hits/total" suelto.
+ *
+ * Puro conteo, no una tasa inferida: no lleva intervalo de confianza ni
+ * referencia porque la muestra detrás -un solo día, o menos de
+ * `MINIMUM_SAMPLE`- no lo soporta. Es la versión visual del mismo número que
+ * ya está en el texto, no un reemplazo del texto.
+ */
+function ProportionBar({ hits, total }: { hits: number; total: number }) {
+  if (total <= 0) return null;
+  const width = `${Math.round(Math.max(0, Math.min(1, hits / total)) * 100)}%`;
+  return (
+    <div className="hit-ratio-bar" role="img" aria-label={`${hits} de ${total}`}>
+      <span style={{ width }} />
+    </div>
+  );
+}
+
 function VerdictMark({ hit }: { hit: boolean }) {
   return <strong className={hit ? "verdict-hit" : "verdict-miss"}>{hit ? "Acierto" : "Fallo"}</strong>;
+}
+
+/** `Metric` (`components/ui.tsx`) más una `ProportionBar` bajo el número. */
+function MetricWithBar({ label, value, hits, total, accent = false }: {
+  label: string; value: string; hits: number; total: number; accent?: boolean;
+}) {
+  return (
+    <article className={accent ? "metric accent" : "metric"}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <ProportionBar hits={hits} total={total} />
+    </article>
+  );
 }
 
 function PickStatusMark({ status }: { status: string }) {
@@ -40,11 +71,14 @@ function PickStatusMark({ status }: { status: string }) {
  * que ya gobierna `MatchRow`. Reutiliza exactamente el `market`/`direction`/
  * `metric`/`team_side`/`period`/`line` que el menú congeló.
  */
-function HighProbabilityPicks({ value }: { value: unknown }) {
+function HighProbabilityPicks(
+  { value, reliability }: { value: unknown; reliability?: unknown },
+) {
   const block = record(value);
   const picks = highProbabilityPicks(value);
   if (block.status !== "available" || !picks.length) return null;
   const summary = record(block.summary);
+  const reliabilityPoints = reliability !== undefined ? reliabilitySeries(reliability) : [];
   return (
     <article className="model-card">
       <div className="model-card-header"><h3>Mayor probabilidad</h3><ShadowBadge /></div>
@@ -53,9 +87,22 @@ function HighProbabilityPicks({ value }: { value: unknown }) {
         mercado que se mostró entonces. Cronológico, incluye pendientes y fallos.
       </p>
       <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
-        <Metric label="Aciertos" value={`${Number(summary.hits ?? 0)}/${Number(summary.settled ?? 0)}`} accent />
+        <MetricWithBar
+          label="Aciertos" value={`${Number(summary.hits ?? 0)}/${Number(summary.settled ?? 0)}`}
+          hits={Number(summary.hits ?? 0)} total={Number(summary.settled ?? 0)} accent
+        />
         <Metric label="Pendientes" value={String(summary.pending ?? 0)} />
       </div>
+      {reliabilityPoints.length ? (
+        <>
+          <p className="ladder-caption" style={{ marginTop: 14 }}>
+            Diagrama de fiabilidad: confianza declarada frente a tasa observada, por
+            tramo. Sobre la diagonal el modelo acertó más de lo que dijo; debajo,
+            menos. Barra de error: IC95% de Wilson.
+          </p>
+          <ReliabilityChart points={reliabilityPoints} />
+        </>
+      ) : null}
       <div className="stack" style={{ marginTop: 14 }}>
         {picks.map((entry) => {
           const homeName = String(entry.home_team_name ?? "");
@@ -85,6 +132,7 @@ function MarketSummary({ label, value }: { label: string; value: unknown }) {
     return (
       <div className="ladder-group">
         <div className="ladder-head"><span>{label}</span><strong>{hits}/{total}</strong></div>
+        <ProportionBar hits={hits} total={total} />
         <small className="ladder-edge">
           Muestra insuficiente para un porcentaje fiable. Faltan {missing} partidos verificados.
         </small>
@@ -202,17 +250,20 @@ export function DailyTrackRecord() {
         <div className="metric-grid compact-metrics" style={{ marginTop: 10 }}>
           {OFFICIAL_LABELS.map(([key, label]) => {
             const market = record(official[key]);
+            const hits = Number(market.hits ?? 0);
+            const total = Number(market.total ?? 0);
             return (
-              <Metric
-                key={key}
-                label={label}
-                value={`${Number(market.hits ?? 0)}/${Number(market.total ?? 0)}`}
-                accent={key === "one_x_two"}
+              <MetricWithBar
+                key={key} label={label} value={`${hits}/${total}`}
+                hits={hits} total={total} accent={key === "one_x_two"}
               />
             );
           })}
           {shadow.total > 0 ? (
-            <Metric label="Córners, tiros y tarjetas" value={`${shadow.hits}/${shadow.total}`} />
+            <MetricWithBar
+              label="Córners, tiros y tarjetas" value={`${shadow.hits}/${shadow.total}`}
+              hits={shadow.hits} total={shadow.total}
+            />
           ) : null}
         </div>
         <div className="stack" style={{ marginTop: 14 }}>
@@ -329,7 +380,10 @@ export function TrackRecord() {
             ))}
           </div>
         </article>
-        <HighProbabilityPicks value={payload.high_probability} />
+        <HighProbabilityPicks
+          value={payload.high_probability}
+          reliability={payload.high_probability_reliability}
+        />
         <div className="notice">{String(payload.disclosure ?? "")}</div>
       </div>
     </>

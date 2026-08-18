@@ -436,6 +436,10 @@ def test_track_record_high_probability_block_defaults_to_unavailable() -> None:
         "status": "unavailable", "picks": [],
         "summary": {"hits": 0, "settled": 0, "pending": 0, "total": 0},
     }
+    assert payload["high_probability_reliability"] == {
+        "status": "unavailable", "cells": [],
+        "total_frozen": 0, "total_settled": 0,
+    }
 
 
 def test_daily_endpoint_high_probability_block_defaults_to_unavailable() -> None:
@@ -480,6 +484,13 @@ def test_track_record_endpoint_includes_a_settled_high_probability_pick() -> Non
     assert payload["high_probability"]["summary"] == {
         "hits": 1, "settled": 1, "pending": 0, "total": 1,
         "withheld_legacy": 0}
+    cells = payload["high_probability_reliability"]["cells"]
+    assert cells == [{
+        "market": "1x2", "bucket_low": 0.65, "bucket_high": 0.75,
+        "total": 1, "sufficient_sample": False,
+        "minimum_sample": MINIMUM_SAMPLE,
+        "declared_rate": 0.80, "missing_for_rate": MINIMUM_SAMPLE - 1,
+    }]
 
 
 def test_daily_endpoint_lists_a_pending_high_probability_pick_for_that_day() -> None:

@@ -889,3 +889,59 @@ test("shows Mayor probabilidad picks in Aciertos even when the channel settled n
   await expect(page.getByText("Pendiente").first()).toBeVisible();
   await expect(page.getByText("1/2")).toBeVisible();
 });
+
+test("renders the Mayor probabilidad reliability diagram for buckets with enough sample", async ({ page }) => {
+  // El diagrama de fiabilidad (declarada vs. observada) sale de
+  // `prospective_reliability()`, expuesto en `high_probability_reliability`
+  // junto a `high_probability` en `/v1/track-record`. Sólo la ventana
+  // acumulada (TrackRecord) lo recibe, nunca el resumen diario.
+  await page.route("**/api/track-record**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      status: "available", window: { requested: 60, available: 24 },
+      official: {
+        one_x_two: { hits: 14, total: 24, rate: 0.5833, sufficient_sample: true, interval_95: [0.3866, 0.7541], baseline_rate: 0.5 },
+        over_2_5: { hits: 15, total: 24, rate: 0.625, sufficient_sample: true, interval_95: [0.4239, 0.7943], baseline_rate: 0.5417 },
+        btts: { hits: 13, total: 24, rate: 0.5417, sufficient_sample: true, interval_95: [0.3495, 0.7203], baseline_rate: 0.5 },
+      },
+      shadow: { status: "experimental_not_promoted", markets: {} },
+      matches: [settlement(0, true), settlement(1, false)],
+      disclosure: "Cada predicción se congeló y publicó antes del kickoff.",
+      high_probability: {
+        status: "available",
+        summary: { hits: 18, settled: 24, pending: 0, total: 24 },
+        picks: [{
+          pick_key: "esp.1:900001:1x2:match:full_match:na:home",
+          fixture_key: "esp.1:900001", league_slug: "esp.1", match_id: 900001,
+          kickoff_ts: "2026-08-13T20:00:00Z",
+          home_team_name: "Real Madrid", away_team_name: "Barcelona",
+          market: "1x2", direction: "home", metric: "result",
+          team_side: "match", period: "full_match", line: null,
+          model_probability: 0.72, observed_rate_declared: 0.8,
+          status: "hit", observed_value: { verdict: { hit: true } },
+        }],
+      },
+      high_probability_reliability: {
+        status: "available",
+        total_frozen: 24, total_settled: 24,
+        cells: [{
+          market: "1x2", bucket_low: 0.65, bucket_high: 0.75,
+          total: 24, sufficient_sample: true,
+          declared_rate: 0.7, observed_rate_prospective: 0.625,
+          interval_95: [0.42, 0.79],
+        }],
+      },
+    }),
+  }));
+  await page.route("**/api/track-record/daily**", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ status: "unavailable", reason: "settlement_store_not_configured" }),
+  }));
+
+  await page.goto("/historial");
+
+  await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
+  await expect(page.getByLabel(
+    "Confianza declarada frente a tasa observada, por tramo",
+  )).toBeVisible();
+});

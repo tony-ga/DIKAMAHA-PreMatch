@@ -145,6 +145,12 @@ button { color: inherit; }
 .metric span { display: block; color: var(--muted); font-size: .65rem; margin-bottom: 6px; }
 .metric strong { font-size: 1.2rem; }
 .metric.accent { background: linear-gradient(145deg, rgba(64, 138, 113, .26), rgba(14, 28, 26, .9)); }
+/* Barra de proporción junto a un "4/11": conteo visual, no una tasa con
+   intervalo -por eso no usa colores de acierto/fallo del veredicto, sólo
+   relleno vs. fondo-, para no sugerir precisión estadística que la muestra
+   no tiene. */
+.hit-ratio-bar { position: relative; width: 100%; height: 4px; margin-top: 8px; border-radius: 999px; overflow: hidden; background: var(--line); }
+.hit-ratio-bar > span { position: absolute; top: 0; left: 0; height: 100%; border-radius: inherit; background: var(--mint); transition: width .3s ease; }
 .section-title, .page-header { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
 .section-title { margin: 26px 0 12px; }
 .section-title h2 { margin: 0; font-size: 1.08rem; }

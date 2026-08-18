@@ -88,11 +88,13 @@ try:
     from src.high_probability_settlement import (
         build_repository as build_high_probability_pick_repository,
         pick_view,
+        prospective_reliability,
     )
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from high_probability_settlement import (
         build_repository as build_high_probability_pick_repository,
         pick_view,
+        prospective_reliability,
     )
 
 try:
@@ -1160,6 +1162,34 @@ def _high_probability_recent_block(
     return block
 
 
+def _high_probability_reliability_unavailable() -> dict[str, Any]:
+    """Bloque degradado del diagrama de fiabilidad prospectivo."""
+
+    return {
+        "status": "unavailable", "cells": [],
+        "total_frozen": 0, "total_settled": 0,
+    }
+
+
+def _high_probability_reliability_block(hp_store: Any, window: int) -> dict[str, Any]:
+    """Compara confianza declarada contra tasa observada, por tramo (Fase 123).
+
+    Mismo par frozen/settled que ya arma `_high_probability_recent_block` para
+    `pick_view` -reutilizado tal cual, sin una segunda consulta a la base-,
+    pasado a `prospective_reliability` en vez de a `pick_view`.
+    """
+
+    settled_records = hp_store.settled_recent(window)
+    frozen_by_key = hp_store.frozen_for([row.pick_key for row in settled_records])
+    frozen = [
+        frozen_by_key[row.pick_key] for row in settled_records
+        if row.pick_key in frozen_by_key
+    ]
+    block = prospective_reliability(frozen, settled_records)
+    block["status"] = "available"
+    return block
+
+
 def _high_probability_daily_block(
     hp_store: Any, target: date,
     fixture_names: dict[str, tuple[str | None, str | None]],
@@ -1594,6 +1624,7 @@ def create_app(
                 "window": {"requested": int(window), "available": 0},
                 "official": {}, "shadow": {"markets": {}}, "matches": [],
                 "high_probability": _high_probability_unavailable(),
+                "high_probability_reliability": _high_probability_reliability_unavailable(),
             }
         requested = max(1, min(int(window), MAXIMUM_WINDOW))
         records = store.recent(requested)
@@ -1603,6 +1634,7 @@ def create_app(
         hp_store = getattr(app.state, "high_probability_pick_store", None)
         if hp_store is None:
             payload["high_probability"] = _high_probability_unavailable()
+            payload["high_probability_reliability"] = _high_probability_reliability_unavailable()
         else:
             fixture_names = {
                 row.fixture_key: (row.home_team_name, row.away_team_name)
@@ -1610,6 +1642,8 @@ def create_app(
             }
             payload["high_probability"] = _high_probability_recent_block(
                 hp_store, requested, fixture_names)
+            payload["high_probability_reliability"] = _high_probability_reliability_block(
+                hp_store, requested)
         return payload
 
     @app.get("/v1/track-record/daily", tags=["inference"])

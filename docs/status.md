@@ -1,6 +1,30 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-17
+**Actualizado:** 2026-08-18
+
+## Diagrama de fiabilidad en Aciertos, expone un cálculo de Fase 123 que se tiraba (DEC-209)
+
+Ver `DEC-209`. El usuario pidió cubrir con gráficos las cifras "4/11" sueltas
+de Aciertos, con el corpus de matemáticas como supervisor.
+`verificar_afirmacion` confirmó que un diagrama de fiabilidad -declarada vs.
+observada, diagonal de referencia- es la visualización estándar de
+calibración. Revisando el backend, `prospective_reliability()` (Fase 123) ya
+calculaba exactamente esos datos pero **nunca se exponía por ningún
+endpoint**.
+
+`/v1/track-record` gana `high_probability_reliability` (mismo `window` que
+`high_probability`, sólo en la ventana acumulada, no en el resumen diario). La
+Mini App monta un `ScatterChart` con barra de error del IC95% de Wilson y una
+diagonal de referencia dentro de "Mayor probabilidad", filtrando tramos sin
+`sufficient_sample`. Además, una `ProportionBar` de conteo puro reemplaza el
+texto suelto en el resumen de hoy, en el bloque de muestra insuficiente y en
+el resumen de "Mayor probabilidad".
+
+Gates: 2 pruebas nuevas del endpoint, 3 de `reliabilitySeries`, 1 Playwright
+que renderiza el gráfico real y confirma que no truena en runtime. Suite
+Python completa 926/934 -excluyendo el fallo preexistente y no relacionado de
+`test_match_level_corpus.py`-, typecheck y 22 Playwright de
+`navigation.spec.ts` sin regresiones. Despliegue a producción pendiente.
 
 ## Constructor de Picks: una sola probabilidad para varios mercados (DEC-208)
 

@@ -6,17 +6,23 @@ import {
   BarChart,
   CartesianGrid,
   ComposedChart,
+  ErrorBar,
   Legend,
+  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 import type {
   DailyRatePoint,
   LeagueRatePoint,
   MarketRatePoint,
+  ReliabilityPoint,
   ShadowRatePoint,
 } from "@/lib/track-record-charts";
 
@@ -124,6 +130,65 @@ export function LeagueRateChart({ points }: { points: LeagueRatePoint[] }) {
           />
           <Bar dataKey="rate" fill="var(--mint)" radius={[2, 6, 6, 2]} />
         </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/**
+ * Diagrama de fiabilidad: confianza declarada vs. tasa observada.
+ *
+ * `verificar_afirmacion` contra el corpus de matemáticas confirma (book2.pdf
+ * p.613, Murphy p.450) que ésta -probabilidad declarada en el eje X, frecuencia
+ * observada en el eje Y, con una diagonal de referencia- es la forma estándar
+ * de visualizar calibración: un punto sobre la diagonal es un tramo donde el
+ * modelo dijo la verdad; por debajo, sobreconfianza; por arriba, infraconfianza.
+ * La barra de error es el IC95% de Wilson que ya calcula `prospective_reliability`
+ * -no una aproximación normal-, así que un punto lejos de la diagonal pero con
+ * una barra que la toca no es una desviación confirmada.
+ */
+export function ReliabilityChart({ points }: { points: ReliabilityPoint[] }) {
+  if (!points.length) return null;
+  return (
+    <div className="chart-shell" aria-label="Confianza declarada frente a tasa observada, por tramo">
+      <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart margin={{ top: 8, right: 16, left: -16, bottom: 0 }}>
+          <CartesianGrid stroke="var(--line)" />
+          <XAxis
+            type="number" dataKey="declared" name="Declarada" {...PERCENT_AXIS}
+            tick={AXIS_TICK} axisLine={false} tickLine={false}
+          />
+          <YAxis
+            type="number" dataKey="observed" name="Observada" {...PERCENT_AXIS}
+            tick={AXIS_TICK} axisLine={false} tickLine={false}
+          />
+          <ZAxis type="number" dataKey="total" range={[40, 220]} name="Muestra" />
+          <ReferenceLine
+            segment={[{ x: 0, y: 0 }, { x: 1, y: 1 }]}
+            stroke="var(--muted)" strokeDasharray="4 4"
+          />
+          <Tooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            contentStyle={TOOLTIP_STYLE}
+            formatter={(value: unknown, name, item) => {
+              if (name === "Muestra") {
+                const point = item?.payload as ReliabilityPoint | undefined;
+                return [String(point?.total ?? value), "Muestra"];
+              }
+              return [percentLabel(value), name];
+            }}
+            labelFormatter={(_label, payload) => {
+              const point = payload?.[0]?.payload as ReliabilityPoint | undefined;
+              return point?.label ?? "";
+            }}
+          />
+          <Scatter data={points} fill="var(--mint)">
+            <ErrorBar
+              dataKey={(point: ReliabilityPoint) => [point.errorLow, point.errorHigh]}
+              direction="y" width={3} stroke="var(--muted)"
+            />
+          </Scatter>
+        </ScatterChart>
       </ResponsiveContainer>
     </div>
   );

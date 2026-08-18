@@ -4,6 +4,7 @@ import {
   dailyHitRateSeries,
   leagueHitRateSeries,
   officialMarketRateSeries,
+  reliabilitySeries,
   shadowMarketRateSeries,
 } from "@/lib/track-record-charts";
 
@@ -111,5 +112,42 @@ describe("shadowMarketRateSeries", () => {
 
     expect(points).toHaveLength(2);
     expect(points[0].total).toBeGreaterThanOrEqual(points[1].total);
+  });
+});
+
+describe("reliabilitySeries", () => {
+  it("convierte una celda con muestra suficiente a un punto declarado/observado", () => {
+    const points = reliabilitySeries({
+      cells: [{
+        market: "1x2", bucket_low: 0.65, bucket_high: 0.75,
+        total: 24, sufficient_sample: true,
+        declared_rate: 0.7, observed_rate_prospective: 0.625,
+        interval_95: [0.42, 0.79],
+      }],
+    });
+
+    expect(points).toEqual([{
+      key: "1x2:0.65-0.75", label: "1X2 65-75%",
+      declared: 0.7, observed: 0.625,
+      errorLow: 0.625 - 0.42, errorHigh: 0.79 - 0.625,
+      total: 24,
+    }]);
+  });
+
+  it("omite celdas sin muestra suficiente, igual que officialMarketRateSeries", () => {
+    const points = reliabilitySeries({
+      cells: [{
+        market: "over_2_5", bucket_low: 0.6, bucket_high: 0.7,
+        total: 5, sufficient_sample: false, declared_rate: 0.65,
+        missing_for_rate: 15,
+      }],
+    });
+
+    expect(points).toEqual([]);
+  });
+
+  it("no revienta con un bloque vacío", () => {
+    expect(reliabilitySeries(null)).toEqual([]);
+    expect(reliabilitySeries({})).toEqual([]);
   });
 });

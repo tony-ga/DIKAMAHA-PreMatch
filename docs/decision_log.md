@@ -5659,6 +5659,55 @@ panel de vista previa dejo de componer fotogramas y el resto se verifico por
 texto del DOM y geometria medida.
 
 
+DEC-209
+Fecha: 2026-08-18
+Problema: el usuario pidió cubrir con gráficos las cifras "4/11" sueltas del
+área de Aciertos y agregar más estadísticas visuales, con el corpus de
+matemáticas (`rag-matematicas`) como supervisor. `verificar_afirmacion`
+confirmó `SUPPORTED` (book2.pdf p.613; Murphy, *Probabilistic ML*, p.450) que
+un diagrama de fiabilidad -probabilidad declarada en X, frecuencia observada en
+Y, diagonal de referencia- es la forma estándar de visualizar calibración.
+Revisando el backend, `prospective_reliability()` (`high_probability_
+settlement.py:594`, Fase 123) ya calcula exactamente esos datos -tasa
+declarada vs. observada por `(mercado, tramo de confianza)`, con Wilson 95% e
+`MINIMUM_SAMPLE`- pero no se exponía por ningún endpoint: se calculaba y se
+tiraba.
+Opciones: (a) sólo agregar barras de proporción a los "4/11" sueltos, sin tocar
+el backend; (b) además exponer `prospective_reliability()` y construir el
+diagrama de fiabilidad real de "Mayor probabilidad"; (c) reconstruir un
+reliability diagram con datos aproximados en el cliente sin el cálculo exacto
+del backend.
+Decisión: (b), pedido explícito del usuario tras revisar ambas opciones.
+Motivo: (c) habría requerido re-derivar en el cliente un intervalo de Wilson
+que el backend ya calcula correctamente -riesgo de discreparlo-, y (a) sola
+deja sin usar el cálculo más valioso que el proyecto ya tiene y nunca publicó.
+Estado: congelada
+Impacto en contratos/fases: `/v1/track-record` gana la clave aditiva
+`high_probability_reliability` (`dikamaha_service.py`: `_high_probability_
+reliability_block`/`_high_probability_reliability_unavailable`), mismo
+`window` que ya rige `high_probability`; no se toca `/v1/track-record/daily`
+-un solo día no tiene muestra para calibración- ni ningún contrato de Fase
+118/122/123. Frontend: `reliabilitySeries` (`lib/track-record-charts.ts`)
+filtra tramos sin `sufficient_sample`, igual criterio que
+`officialMarketRateSeries`; `ReliabilityChart` (Recharts `ScatterChart` +
+`ErrorBar` asimétrico del IC95% + `ReferenceLine` diagonal) se monta dentro de
+"Mayor probabilidad", sólo en la ventana acumulada. Además, `ProportionBar` -
+conteo puro, sin intervalo- sustituye el texto suelto en el resumen de hoy, en
+el bloque de muestra insuficiente y en el resumen de "Mayor probabilidad".
+Evidencia requerida: pruebas del nuevo campo en el endpoint (disponible y
+degradado); pruebas de `reliabilitySeries` (incluye y excluye muestra
+insuficiente); prueba Playwright que renderice el `ScatterChart` real sin
+error de runtime; suite completa, typecheck, Vitest y Playwright sin
+regresiones.
+Evidencia obtenida: 2 pruebas nuevas en `test_phase_118_track_record.py`
+(bloque degradado y celda con `sufficient_sample=False`); 3 en
+`track-record-charts.test.ts`; 1 Playwright nueva que confirma el diagrama
+renderizado por `aria-label`. Suite Python completa 926 aprobadas/8 omitidas
+-excluyendo el fallo preexistente y no relacionado de
+`test_match_level_corpus.py`-; typecheck y 22 Playwright de `navigation.spec.ts`
+sin regresiones.
+
+
 ```text
 DEC-NNN
 Fecha:

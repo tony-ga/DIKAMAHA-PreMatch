@@ -141,6 +141,55 @@ export function leagueHitRateSeries(matches: unknown, limit = 8): LeagueRatePoin
     .slice(0, limit);
 }
 
+const HIGH_PROBABILITY_GOAL_MARKET_LABELS: Record<string, string> = {
+  "1x2": "1X2", over_2_5: "+2.5", btts: "Ambos marcan",
+};
+
+export type ReliabilityPoint = {
+  key: string;
+  label: string;
+  declared: number;
+  observed: number;
+  errorLow: number;
+  errorHigh: number;
+  total: number;
+};
+
+/**
+ * Confianza declarada vs. tasa observada, por tramo, para el diagrama de
+ * fiabilidad de "Mayor probabilidad" (Fase 123, `prospective_reliability`).
+ *
+ * Filtra los tramos sin muestra suficiente -mismo criterio que
+ * `officialMarketRateSeries`-: un punto sin `observed_rate_prospective` no
+ * tiene nada que comparar contra lo declarado, así que graficarlo con un
+ * valor inventado sería peor que no mostrarlo.
+ */
+export function reliabilitySeries(value: unknown): ReliabilityPoint[] {
+  const block = record(value);
+  const cells = Array.isArray(block.cells) ? block.cells.map(record) : [];
+  return cells.flatMap((cell) => {
+    if (!cell.sufficient_sample) return [];
+    const declared = Number(cell.declared_rate);
+    const observed = Number(cell.observed_rate_prospective);
+    const interval = Array.isArray(cell.interval_95) ? cell.interval_95 : [];
+    const low = Number(interval[0]);
+    const high = Number(interval[1]);
+    if (![declared, observed, low, high].every(Number.isFinite)) return [];
+    const market = String(cell.market ?? "");
+    const marketLabel = HIGH_PROBABILITY_GOAL_MARKET_LABELS[market] ?? market.replaceAll("_", " ");
+    const bucketLow = Math.round(Number(cell.bucket_low) * 100);
+    const bucketHigh = Math.round(Number(cell.bucket_high) * 100);
+    return [{
+      key: `${market}:${cell.bucket_low}-${cell.bucket_high}`,
+      label: `${marketLabel} ${bucketLow}-${bucketHigh}%`,
+      declared, observed,
+      errorLow: Math.max(0, observed - low),
+      errorHigh: Math.max(0, high - observed),
+      total: Number(cell.total ?? 0),
+    }];
+  });
+}
+
 export type ShadowRatePoint = {
   key: string;
   label: string;
