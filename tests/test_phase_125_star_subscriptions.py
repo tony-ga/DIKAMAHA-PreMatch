@@ -107,6 +107,7 @@ class RecordingTransport(TelegramTransport):
 
         self.sent: list[tuple[int, str]] = []
         self.pre_checkout: list[tuple[str, bool, str | None]] = []
+        self.answered_callbacks: list[str] = []
 
     def get_updates(
         self, offset: int | None, timeout_seconds: int,
@@ -129,6 +130,11 @@ class RecordingTransport(TelegramTransport):
         """Conserva el veredicto del pre-checkout."""
 
         self.pre_checkout.append((query_id, ok, error_message))
+
+    def answer_callback_query(self, callback_id: str) -> None:
+        """Conserva el id confirmado, sin enrutar nada más."""
+
+        self.answered_callbacks.append(callback_id)
 
 
 class StubGateway:
@@ -348,7 +354,14 @@ def test_entitlement_rejects_error_status_as_degraded() -> None:
 
 
 def test_degraded_reply_never_accuses_the_user_of_not_paying() -> None:
-    """Un fallo nuestro no puede decirle a un suscriptor que no ha pagado."""
+    """Un fallo nuestro no puede decirle a un suscriptor que no ha pagado.
+
+    La Fase 125 original gateaba `/en_vivo` con `_require_premium`; esa puerta
+    y el comando desaparecieron cuando el bot quedó reducido a cuenta y cobro
+    -toda predicción y exploración vive en la Mini App-. La garantía de no
+    acusar sigue siendo real porque `/mi_plan` consulta la misma
+    `entitlement.degraded`, así que se prueba ahí.
+    """
 
     import requests
 
@@ -356,36 +369,29 @@ def test_degraded_reply_never_accuses_the_user_of_not_paying() -> None:
     session = FakeSession([requests.RequestException("down")] * 6)
     bot = _bot(transport, session=session)
 
-    replies = bot._require_premium(7)  # noqa: SLF001
+    bot.process_update({"message": {
+        "chat": {"id": 70, "type": "private"},
+        "from": {"id": 7}, "text": "/mi_plan",
+    }})
 
-    assert replies is not None
-    text = replies[0][0]
+    text = transport.sent[0][1]
     assert "Premium" not in text or "no puedo comprobar" in text.casefold()
     assert "temporalmente" in text.casefold() or "unos segundos" in text.casefold()
 
 
 # --------------------------------------------------------------------------
-# Puertas por nivel
+# /mi_plan y /premium: lo único que le queda al bot para decidir un nivel
 # --------------------------------------------------------------------------
 
-def test_free_tier_blocks_live_and_allows_the_free_surface() -> None:
-    """El plan gratuito conserva historial, catálogo y estado."""
+def test_mi_plan_shows_the_status_word_not_the_brand_name() -> None:
+    """No repite el reporte real: `/mi_plan` confundía marca con estado.
 
-    transport = RecordingTransport()
-    session = FakeSession([
-        _Response(200, {"plan": "free", "remaining_predictions": 3}),
-        _Response(200, {"link": "https://t.me/invoice"}),
-    ])
-    bot = _bot(transport, session=session)
-
-    blocked = bot._require_premium(7)  # noqa: SLF001
-
-    assert blocked is not None
-    assert "PREMIUM" in blocked[0][0]
-
-
-def test_premium_passes_the_gate() -> None:
-    """Un suscriptor no ve ningún muro."""
+    "💎 DIKAMAHA PREMIUM" es el nombre del bot y aparece igual en `/start`
+    tenga el usuario el plan que tenga. Antes `/mi_plan` reutilizaba ese mismo
+    texto para confirmar el estado de pago, así que un usuario no podía
+    distinguir "así se llama esto" de "esto es lo que tienes". Ahora dice
+    explícitamente "Tu plan".
+    """
 
     transport = RecordingTransport()
     session = FakeSession([
@@ -393,49 +399,85 @@ def test_premium_passes_the_gate() -> None:
     ])
     bot = _bot(transport, session=session)
 
-    assert bot._require_premium(7) is None  # noqa: SLF001
+    bot.process_update({"message": {
+        "chat": {"id": 70, "type": "private"},
+        "from": {"id": 7}, "text": "/mi_plan",
+    }})
+
+    text = transport.sent[0][1]
+    assert "Tu plan: Premium" in text
+    assert "DIKAMAHA PREMIUM" not in text
 
 
-def test_quota_gate_blocks_when_exhausted() -> None:
-    """Agotado el cupo se ofrece Premium, no un error de servicio."""
+def test_mi_plan_reports_remaining_predictions_for_free_user() -> None:
+    """El plan gratuito ve cuántas predicciones le quedan hoy."""
 
     transport = RecordingTransport()
     session = FakeSession([
-        _Response(200, {"plan": "free", "remaining_predictions": 0}),
-        _Response(200, {"granted": False, "reason": "exhausted", "remaining": 0}),
+        _Response(200, {"plan": "free", "remaining_predictions": 2}),
         _Response(200, {"link": "https://t.me/invoice"}),
     ])
     bot = _bot(transport, session=session)
 
-    replies = bot._quota_gate(7, "esp.1", 12345)  # noqa: SLF001
+    bot.process_update({"message": {
+        "chat": {"id": 70, "type": "private"},
+        "from": {"id": 7}, "text": "/mi_plan",
+    }})
 
-    assert replies is not None
-    assert "3 predicciones" in replies[0][0]
+    text = transport.sent[0][1]
+    assert "Tu plan: Gratuito" in text
+    assert "2" in text
 
 
-def test_quota_gate_serves_when_accounting_is_down() -> None:
-    """Negarse a predecir porque el contador no responde castiga al usuario."""
-
-    import requests
+def test_premium_command_redirects_an_existing_subscriber_to_plan_status() -> None:
+    """Quien ya paga no ve una oferta de compra al escribir `/premium`."""
 
     transport = RecordingTransport()
     session = FakeSession([
-        _Response(200, {"plan": "free", "remaining_predictions": 3}),
-        requests.RequestException("down"),
+        _Response(200, {"plan": "premium", "remaining_predictions": None}),
     ])
     bot = _bot(transport, session=session)
 
-    assert bot._quota_gate(7, "esp.1", 12345) is None  # noqa: SLF001
+    bot.process_update({"message": {
+        "chat": {"id": 70, "type": "private"},
+        "from": {"id": 7}, "text": "/premium",
+    }})
+
+    assert "Tu plan: Premium" in transport.sent[0][1]
 
 
-def test_quota_key_matches_the_shared_fixture_key() -> None:
-    """Bot, Mini App y tarjeta compartida gastan el mismo presupuesto."""
+def test_stale_callback_query_is_only_acknowledged() -> None:
+    """Un botón de un mensaje anterior a la Fase 125 no puede hacer nada.
 
-    bot = _bot(RecordingTransport(), session=FakeSession())
+    El bot ya no genera ningún botón con `callback_data`; si Telegram entrega
+    uno igual -de un chat viejo-, sólo se confirma para apagar el reloj de
+    arena, sin enrutarlo a ningún menú que ya no existe.
+    """
 
-    assert bot._fixture_quota_key("esp.1", 12345) == "esp.1:12345"  # noqa: SLF001
-    # Sin clave no se cobra: cobrar mal es peor que no cobrar.
-    assert bot._fixture_quota_key(None, 12345) is None  # noqa: SLF001
+    transport = RecordingTransport()
+    bot = _bot(transport, billing=False)
+
+    bot.process_update({"callback_query": {
+        "id": "cb-1", "data": "menu:upcoming", "from": {"id": 7},
+        "message": {"chat": {"id": 70, "type": "private"}},
+    }})
+
+    assert transport.answered_callbacks == ["cb-1"]
+    assert transport.sent == []
+
+
+def test_removed_command_falls_back_to_help() -> None:
+    """Un comando retirado -exploración manual- no rompe nada, avisa."""
+
+    transport = RecordingTransport()
+    bot = _bot(transport, billing=False)
+
+    bot.process_update({"message": {
+        "chat": {"id": 70, "type": "private"},
+        "from": {"id": 7}, "text": "/en_vivo",
+    }})
+
+    assert "Comando no reconocido" in transport.sent[0][1]
 
 
 # --------------------------------------------------------------------------
@@ -448,8 +490,6 @@ def test_billing_disabled_treats_everyone_as_premium() -> None:
     transport = RecordingTransport()
     bot = _bot(transport, billing=False)
 
-    assert bot._require_premium(7) is None  # noqa: SLF001
-    assert bot._quota_gate(7, "esp.1", 1) is None  # noqa: SLF001
     assert bot._entitlement(7) == Entitlement(plan="premium")  # noqa: SLF001
 
 

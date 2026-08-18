@@ -1,4 +1,15 @@
-"""Pruebas del adaptador Telegram shadow."""
+"""Pruebas del adaptador Telegram: cuenta, autorización y transporte.
+
+Hasta la Fase 125 el bot exploraba catálogo, predecía partidos y navegaba
+menús de botones. Ese excedente se retiró porque la Mini App ya lo hace
+completo: el bot quedó reducido a alta de cuenta (`/whoami`, `/start`,
+`/help`) y a lo que necesita el cobro con Stars (`/premium`, `/mi_plan`,
+`pre_checkout_query`, `successful_payment`, `refunded_payment` -cubiertos en
+`tests/test_phase_125_star_subscriptions.py`, no aquí-). Estas pruebas cubren
+lo que le queda al bot por sí mismo: autorización, límite de ráfagas,
+mensajes de servicio de pago que no llegan por `text`, botones de chats
+anteriores a este cambio, y el transporte HTTP.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -12,7 +23,6 @@ from src.telegram_bot import (
     TelegramTransport,
     _split_message,
 )
-from src.telegram_mobile_layout import mobile_layout_issues
 
 
 class FakeTransport(TelegramTransport):
@@ -24,6 +34,7 @@ class FakeTransport(TelegramTransport):
         self.updates = updates or []
         self.sent: list[tuple[int, str]] = []
         self.offsets: list[int | None] = []
+        self.answered_callbacks: list[str] = []
 
     def get_updates(
         self, offset: int | None, timeout_seconds: int,
@@ -38,67 +49,35 @@ class FakeTransport(TelegramTransport):
 
         self.sent.append((chat_id, text))
 
+    def answer_callback_query(self, callback_id: str) -> None:
+        """Conserva el id confirmado, sin enrutar nada más."""
 
-class FakeGateway(PredictionGateway):
-    """Gateway que registra payloads exactos."""
+        self.answered_callbacks.append(callback_id)
 
-    def __init__(self) -> None:
-        """Inicializa llamadas vacías."""
 
-        self.fixture_payloads: list[dict[str, Any]] = []
-        self.upcoming_payloads: list[dict[str, Any]] = []
-        self.live_payloads: list[dict[str, Any]] = []
+class StubGateway(PredictionGateway):
+    """Gateway mínimo instanciable.
+
+    El bot ya no llama a ningún método suyo -toda predicción vive en la Mini
+    App-, pero `TelegramPredictionBot.__init__` sigue exigiendo uno para no
+    romper `scripts/run_phase_97_telegram_bot.py`. Sólo implementa los tres
+    métodos que `PredictionGateway` marca abstractos.
+    """
 
     def predict_fixture(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Devuelve una predicción completa de ejemplo."""
+        """No se invoca; existe para satisfacer la ABC."""
 
-        self.fixture_payloads.append(payload)
-        return _prediction()
+        return {}
 
     def predict_upcoming(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Devuelve una predicción completa de ejemplo."""
+        """No se invoca; existe para satisfacer la ABC."""
 
-        self.upcoming_payloads.append(payload)
-        return _prediction()
+        return {}
 
     def readiness(self) -> dict[str, Any]:
-        """Simula servicio listo."""
+        """No se invoca; existe para satisfacer la ABC."""
 
-        return {"ready": True, "contract_version": "test-v1"}
-
-    def list_live(
-        self, limit: int = 12, leagues: str | None = None,
-    ) -> dict[str, Any]:
-        """Devuelve un partido activo navegable."""
-
-        return {"fixtures": [{
-            "league_slug": "esp.1", "match_id": 900001,
-            "home_team_id": 1, "away_team_id": 2,
-            "home_team_name": "Real Madrid",
-            "away_team_name": "Barcelona",
-            "home_score": 1, "away_score": 0, "display_clock": "32'",
-        }]}
-
-    def predict_live_fixture(
-        self, payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Registra selección y devuelve las tres capas live."""
-
-        self.live_payloads.append(payload)
-        return _live_prediction()
-
-    def models(self) -> dict[str, Any]:
-        """Expone inventario oficial y shadow."""
-
-        return {"models": [
-            {"name": "Dixon-Coles + Kalman", "mode": "official"},
-            {"name": "Motor probabilístico Live v1", "mode": "official"},
-            {"name": "Markov Live v1", "mode": "compatibility_fallback"},
-            {"name": "Hawkes Live v2 residual", "mode": "official_component"},
-        ], "hawkes_policy": {
-            "allowed_league_count": 17, "rho_goal": 1.0,
-            "rho_next_event": 0.0,
-        }}
+        return {"ready": True}
 
 
 class _Response:
@@ -132,83 +111,6 @@ class _Session:
         return _Response(200, {"ok": True, "result": {}})
 
 
-def _prediction() -> dict[str, Any]:
-    """Construye una respuesta mínima representativa."""
-
-    return {
-        "league_slug": "esp.1", "home_team_id": 1, "away_team_id": 2,
-        "kickoff_ts": "2030-01-10T20:00:00+00:00",
-        "probability_home": 0.5, "probability_draw": 0.25,
-        "probability_away": 0.25, "probability_over_2_5": 0.55,
-        "probability_btts": 0.52,
-        "fixture": {
-            "home_team_name": "Real Madrid", "away_team_name": "Barcelona"},
-        "experimental_team_markets": {"user_market_view": [{
-            "metric": "corners", "team_side": "home",
-            "period": "full_match", "line": 4.5, "probability": 0.6,
-            "baseline_probability": 0.5, "source_model": "phase84a",
-        }]},
-    }
-
-
-def _live_prediction() -> dict[str, Any]:
-    """Construye una inferencia live complementaria representativa."""
-
-    markets = {
-        "probability_home": 0.62, "probability_draw": 0.24,
-        "probability_away": 0.14, "probability_over_2_5": 0.51,
-        "probability_btts": 0.44,
-    }
-    next_event = {
-        "horizon_minutes": 5.0,
-        "probabilities": {"home:goal": 0.12, "away:goal": 0.06},
-        "probability_no_event": 0.82,
-    }
-    return {
-        "status": "live_predicted",
-        "official_source": "live_probability_engine_v1",
-        "fixture": {
-            "league_slug": "esp.1", "match_id": 900001,
-            "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
-            "score_home": 1, "score_away": 0,
-            "match_clock_seconds": 1920.0,
-        },
-        "prior": {"status": "reconstructed_causal_prematch_prior"},
-        "official_live_prediction": {
-            "status": "official", "markets": markets,
-            "remaining_intensities": {"home": 1.2, "away": 0.5},
-            "next_event": next_event,
-            "fallback": {"applied": False},
-        },
-        "live_probability_engine": {
-            "audit": {"passed": True},
-            "ctmc": {"dominant_regime": "home_pressure"},
-            "hazard": {"multipliers": {"home": 1.1, "away": 0.9}},
-            "dynamic_elo": {"multipliers": {"home": 1.03, "away": 0.97}},
-            "hawkes_residual": {"status": "official_component_residual"},
-            "monte_carlo_diagnostic": {"status": "scheduled", "simulations": 20000},
-        },
-        "experimental_markov_live": {
-            "status": "experimental_shadow_not_promoted",
-            "markets": markets, "next_event": next_event,
-            "state": {"dominant": "home_pressure"},
-            "lambda_remaining_home": 1.2, "lambda_remaining_away": 0.5,
-        },
-        "experimental_hawkes_residual": {
-            "status": "experimental_shadow_not_promoted",
-            "stability": {"subcritical": True},
-        },
-        "experimental_combined_live": {
-            "status": "experimental_shadow_not_promoted",
-            "markets": markets, "next_event": next_event,
-            "fallback_exact_markov_live": False,
-        },
-        "hawkes_league_admission": {
-            "admitted": True, "fallback_exact_markov_live": False,
-        },
-    }
-
-
 def _update(update_id: int, text: str, user_id: int = 7) -> dict[str, Any]:
     """Construye un mensaje privado."""
 
@@ -222,7 +124,7 @@ def _update(update_id: int, text: str, user_id: int = 7) -> dict[str, Any]:
 
 
 def _callback(update_id: int, data: str, user_id: int = 7) -> dict[str, Any]:
-    """Construye un callback privado."""
+    """Construye un callback privado -de un chat anterior a la Fase 125-."""
 
     return {
         "update_id": update_id,
@@ -234,7 +136,7 @@ def _callback(update_id: int, data: str, user_id: int = 7) -> dict[str, Any]:
 
 
 def _bot(
-    transport: FakeTransport, gateway: FakeGateway,
+    transport: FakeTransport, gateway: StubGateway | None = None,
     allowed: frozenset[int] = frozenset({7}),
     access_mode: str = "private",
     rate_limit: int = 10,
@@ -244,43 +146,40 @@ def _bot(
     config = TelegramBotConfig(
         "secret", allowed, access_mode=access_mode,
         rate_limit_requests=rate_limit)
-    return TelegramPredictionBot(config, transport, gateway)
+    return TelegramPredictionBot(config, transport, gateway or StubGateway())
 
 
 def test_whoami_does_not_require_authorization() -> None:
-    """Permite descubrir el ID sin abrir predicciones."""
+    """Permite descubrir el ID sin necesitar membresía."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway, frozenset()).process_update(
-        _update(1, "/whoami"))
+    transport = FakeTransport()
+    _bot(transport, allowed=frozenset()).process_update(_update(1, "/whoami"))
 
     assert "7" in transport.sent[0][1]
-    assert not gateway.fixture_payloads
 
 
 def test_help_is_available_and_does_not_require_authorization() -> None:
-    """Entrega ayuda completa a cualquier chat privado."""
+    """Entrega ayuda a cualquier chat privado, sin secretos filtrados."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway, frozenset()).process_update(_update(1, "/help"))
+    transport = FakeTransport()
+    _bot(transport, allowed=frozenset()).process_update(_update(1, "/help"))
 
     assert len(transport.sent) == 1
-    assert "COMANDOS PRINCIPALES" in transport.sent[0][1]
-    assert "Play-by-play" in transport.sent[0][1]
-    assert "TELEGRAM_BOT_TOKEN" not in transport.sent[0][1]
-    assert "CONFIGURACIÓN (env vars)" not in transport.sent[0][1]
-    assert not gateway.fixture_payloads
+    message = transport.sent[0][1]
+    assert "COMANDOS" in message
+    assert "/premium" in message
+    assert "TELEGRAM_BOT_TOKEN" not in message
+    assert "CONFIGURACIÓN (env vars)" not in message
 
 
 def test_start_shows_welcome_instead_of_full_help() -> None:
-    """El inicio abre el menú y deja la ayuda bajo demanda."""
+    """El inicio saluda y deja el detalle de comandos bajo demanda."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway, frozenset()).process_update(_update(1, "/start"))
+    transport = FakeTransport()
+    _bot(transport, allowed=frozenset()).process_update(_update(1, "/start"))
 
     assert "Bienvenido" in transport.sent[0][1]
-    assert "COMANDOS PRINCIPALES" not in transport.sent[0][1]
-    assert not gateway.fixture_payloads
+    assert "COMANDOS" not in transport.sent[0][1]
 
 
 def test_transport_retries_rejected_html_as_plain_text() -> None:
@@ -297,148 +196,96 @@ def test_transport_retries_rejected_html_as_plain_text() -> None:
     assert session.payloads[1]["text"] == "Ayuda & opciones"
 
 
-def test_unauthorized_user_cannot_predict() -> None:
-    """Bloquea inferencia fuera de la allowlist."""
+def test_unauthorized_user_cannot_use_account_commands() -> None:
+    """Bloquea `/mi_plan` fuera de la allowlist, igual que antes con la inferencia."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway, frozenset()).process_update(
-        _update(1, "/partido esp.1 20300110 Local | Visitante"))
+    transport = FakeTransport()
+    _bot(transport, allowed=frozenset()).process_update(_update(1, "/mi_plan"))
 
     assert "ACCESO PREMIUM REQUERIDO" in transport.sent[0][1]
-    assert not gateway.fixture_payloads
 
 
 def test_public_mode_allows_any_private_user() -> None:
     """Abre consultas privadas sin requerir una allowlist."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
+    transport = FakeTransport()
     _bot(
-        transport, gateway, frozenset(), access_mode="public",
-    ).process_update(
-        _update(1, "/partido esp.1 20300110 Real Madrid | Barcelona", 999))
+        transport, allowed=frozenset(), access_mode="public",
+    ).process_update(_update(1, "/whoami", 999))
 
-    assert len(gateway.fixture_payloads) == 1
-    assert "PRONÓSTICO DIKAMAHA" in transport.sent[0][1]
+    assert "999" in transport.sent[0][1]
 
 
 def test_public_mode_keeps_per_user_rate_limit() -> None:
     """Impide que la apertura pública retire el control de ráfagas."""
 
-    transport, gateway = FakeTransport(), FakeGateway()
+    transport = FakeTransport()
     bot = _bot(
-        transport, gateway, frozenset(), access_mode="public", rate_limit=1)
-    command = "/partido esp.1 20300110 Real Madrid | Barcelona"
-    bot.process_update(_update(1, command, 999))
-    bot.process_update(_update(2, command, 999))
+        transport, allowed=frozenset(), access_mode="public", rate_limit=1)
+    bot.process_update(_update(1, "/mi_plan", 999))
+    bot.process_update(_update(2, "/mi_plan", 999))
 
-    assert len(gateway.fixture_payloads) == 1
     assert "Demasiadas solicitudes" in transport.sent[-1][1]
 
 
-def test_public_mode_limits_callback_navigation() -> None:
-    """Aplica el mismo control a botones y no sólo a comandos escritos."""
+def test_stale_callback_query_is_only_acknowledged() -> None:
+    """Un botón de un chat de antes de la Fase 125 no puede hacer nada.
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    bot = _bot(
-        transport, gateway, frozenset(), access_mode="public", rate_limit=1)
+    El bot ya no genera ningún botón `callback_data` -sólo el `web_app` de
+    abrir la Mini App, que Telegram resuelve sin avisar-. Si igual llega una
+    pulsación vieja, sólo se confirma para apagar el reloj de arena.
+    """
+
+    transport = FakeTransport()
+    bot = _bot(transport, allowed=frozenset(), access_mode="public")
+
     bot.process_update(_callback(1, "menu:upcoming", 999))
-    bot.process_update(_callback(2, "menu:upcoming", 999))
 
-    assert "PRÓXIMOS Y PREDICCIONES" in transport.sent[0][1]
-    assert "Demasiadas solicitudes" in transport.sent[-1][1]
+    assert transport.answered_callbacks == ["cb-1"]
+    assert transport.sent == []
 
 
 def test_public_mode_ignores_group_messages() -> None:
     """Mantiene el bot público limitado a conversaciones privadas."""
 
-    update = _update(1, "/partidos", 999)
+    update = _update(1, "/whoami", 999)
     update["message"]["chat"]["type"] = "group"
-    transport, gateway = FakeTransport(), FakeGateway()
+    transport = FakeTransport()
     _bot(
-        transport, gateway, frozenset(), access_mode="public",
+        transport, allowed=frozenset(), access_mode="public",
     ).process_update(update)
 
     assert not transport.sent
 
 
-def test_fixture_command_preserves_gateway_payload() -> None:
-    """Delega nombres, liga y fecha sin reinterpretarlos."""
+def test_removed_manual_commands_fall_back_to_help() -> None:
+    """Los comandos de exploración manual retirados no rompen nada.
 
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway).process_update(
-        _update(1, "/partido esp.1 20300110 Real Madrid | Barcelona"))
+    `/partido`, `/predict`, `/estado`, `/en_vivo`, `/modelos`, `/partidos`,
+    `/menu` y `/buscar_equipo` vivían en el bot antes de la Fase 125; ahora
+    esa exploración es exclusiva de la Mini App, y cualquiera de ellos cae en
+    el mismo mensaje de comando no reconocido.
+    """
 
-    assert gateway.fixture_payloads == [{
-        "league_slug": "esp.1", "kickoff_date": "20300110",
-        "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
-    }]
-    assert "PRONÓSTICO DIKAMAHA" in transport.sent[0][1]
-    assert "MERCADOS DISPONIBLES" in transport.sent[1][1]
-    assert "experimental" not in transport.sent[0][1].lower()
-    assert "Real Madrid" in transport.sent[0][1]
-    assert "Barcelona" in transport.sent[0][1]
-    assert "local" not in transport.sent[0][1].casefold()
-    assert "visitante" not in transport.sent[0][1].casefold()
-    assert "antes del inicio" in transport.sent[0][1]
-
-
-def test_upcoming_command_preserves_ids_and_kickoff() -> None:
-    """Delega el contrato avanzado por IDs."""
-
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway).process_update(
-        _update(1, "/predict esp.1 94 86 2030-01-10T20:00:00+00:00 99"))
-
-    assert gateway.upcoming_payloads[0] == {
-        "league_slug": "esp.1", "home_team_id": 94,
-        "away_team_id": 86, "kickoff_ts": "2030-01-10T20:00:00+00:00",
-        "match_id": 99,
-    }
-
-
-def test_live_command_exposes_official_composed_engine() -> None:
-    """Hace visible el motor oficial y mantiene transparentes sus capas."""
-
-    transport, gateway = FakeTransport(), FakeGateway()
-    bot = _bot(transport, gateway)
-    bot.process_update(_update(1, "/en_vivo"))
-    bot.process_update(_callback(2, "live:l0"))
-
-    assert gateway.live_payloads == [{
-        "league_slug": "esp.1", "match_id": 900001,
-    }]
-    message = transport.sent[-1][1]
-    assert "Motor probabilístico Live v1" in message
-    assert "Poisson dinámico" in message
-    assert "CTMC" in message
-    assert "Hawkes" in message
-    assert "OFICIAL" in message
-    assert "Auditoría matemática" in message
-    assert not mobile_layout_issues(message)
-    assert len(message) <= 3900
-
-
-def test_models_command_exposes_official_and_shadow_models() -> None:
-    """No oculta modelos operativos por conservar estado shadow."""
-
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway).process_update(_update(1, "/modelos"))
-
-    message = transport.sent[-1][1]
-    assert "Dixon-Coles + Kalman" in message
-    assert "Motor probabilístico Live v1" in message
-    assert "Markov Live v1" in message
-    assert "Hawkes Live v2 residual" in message
-    assert "Shadow" in message
-    assert not mobile_layout_issues(message)
+    transport = FakeTransport()
+    bot = _bot(transport)
+    for command in (
+        "/partido esp.1 20300110 Real Madrid | Barcelona",
+        "/predict esp.1 94 86 2030-01-10T20:00:00+00:00",
+        "/estado", "/en_vivo", "/modelos", "/partidos", "/menu",
+        "/buscar_equipo esp.1 Real Madrid",
+    ):
+        transport.sent.clear()
+        bot.process_update(_update(1, command))
+        assert "Comando no reconocido" in transport.sent[0][1], command
 
 
 def test_long_polling_ignores_duplicate_update() -> None:
     """Confirma cada update mediante offset monotónico."""
 
-    updates = [_update(4, "/estado"), _update(4, "/estado")]
-    transport, gateway = FakeTransport(updates), FakeGateway()
-    runner = LongPollingRunner(_bot(transport, gateway), transport, 1)
+    updates = [_update(4, "/whoami"), _update(4, "/whoami")]
+    transport = FakeTransport(updates)
+    runner = LongPollingRunner(_bot(transport), transport, 1)
 
     assert runner.poll_once() == 1
     assert len(transport.sent) == 1
@@ -456,9 +303,9 @@ def test_long_polling_advances_past_a_poison_update() -> None:
     que viene después sí se procese en la misma pasada.
     """
 
-    poison, healthy = _update(5, "/estado"), _update(6, "/estado")
-    transport, gateway = FakeTransport([poison, healthy]), FakeGateway()
-    bot = _bot(transport, gateway)
+    poison, healthy = _update(5, "/whoami"), _update(6, "/whoami")
+    transport = FakeTransport([poison, healthy])
+    bot = _bot(transport)
     original = bot.process_update
 
     def flaky(update: dict[str, Any]) -> None:
@@ -487,5 +334,5 @@ def test_messages_are_split_below_telegram_limit() -> None:
     assert all(len(part) <= 3900 for part in parts)
 
 
-# Version: 1.1.0
+# Version: 2.0.0
 # Created: 2026-07-29

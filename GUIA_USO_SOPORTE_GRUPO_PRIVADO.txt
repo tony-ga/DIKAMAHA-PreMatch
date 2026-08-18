@@ -31,10 +31,12 @@ privada al grupo.
 2. BOT DE TELEGRAM
 ------------------
 
-Comandos principales:
+El bot gestiona tu cuenta y tu plan de pago. Próximos partidos,
+predicciones, en vivo, mercados, equipos, jugadores y estadísticas se
+consultan en la Mini App, no con comandos del bot.
 
 /start
-    Abre el menú principal.
+    Da la bienvenida y muestra el botón para abrir la Mini App.
 
 /help
     Muestra la ayuda completa y las opciones disponibles.
@@ -42,44 +44,29 @@ Comandos principales:
 /whoami
     Muestra tu ID de Telegram para solicitar o verificar acceso.
 
-/partidos
-    Abre el catálogo de próximos partidos.
+/premium
+    Activa el plan de pago, o muestra tu estado si ya lo tienes.
 
-/menu
-    Abre nuevamente el menú de navegación.
-
-/en_vivo
-    Lista los partidos que están activos y permite consultar las
-    probabilidades del motor live oficial.
-
-/modelos
-    Muestra los modelos operativos, su función y su estado.
-
-/estado
-    Comprueba la disponibilidad general del servicio DIKAMAHA.
-
-/buscar_equipo liga consulta
-    Busca un equipo por nombre dentro de una liga.
-    Ejemplo: /buscar_equipo la_liga Real Madrid
-
-/partido liga YYYYMMDD Equipo A | Equipo B
-    Busca un partido por nombres y genera su predicción pre-match.
-    Ejemplo: /partido la_liga 20260815 Real Madrid | Barcelona
-
-/predict liga home_id away_id kickoff_iso [match_id]
-    Consulta avanzada usando los identificadores exactos del partido.
+/mi_plan
+    Consulta tu plan actual y, en el plan gratuito, cuántas
+    predicciones te quedan hoy.
 
 
 3. PREDICCIONES PRE-MATCH
 -------------------------
 
-Desde el menú:
+Desde la Mini App:
 
-1) Pulsa "Próximos y predicciones".
-2) Elige "Todos los próximos", una liga o una fecha.
+1) Abre "Próximos" o "Explorar".
+2) Filtra por liga o por fecha si lo necesitas.
 3) Selecciona el partido.
-4) Pulsa "Ver predicción".
+4) Consulta la predicción.
 5) Consulta los periodos 1T, 2T y tiempo completo.
+
+Con el plan gratuito, cada predicción que abres cuenta contra tu cupo de
+3 al día -a tu elección, sobre el partido que quieras-. Reabrir un partido
+ya consultado el mismo día no cuesta una unidad nueva. Con Premium no hay
+límite.
 
 La vista puede incluir:
 • Probabilidades 1X2.
@@ -97,7 +84,9 @@ No se recalcula usando el resultado final del partido.
 4. PARTIDOS EN VIVO
 -------------------
 
-Desde el menú pulsa "Partidos en vivo" o utiliza /en_vivo.
+Desde la Mini App abre "En vivo". Es una función Premium: el plan gratuito
+ve el marcador y el reloj en el listado, pero el detalle -probabilidades,
+intensidades, próximo evento- requiere el plan de pago.
 
 Al abrir un partido se muestran:
 • Equipos, escudos, marcador y reloj.
@@ -114,9 +103,8 @@ El motor live oficial combina Poisson dinámico, CTMC, Hazard/Cox, Elo
 dinámico y Hawkes como residual. Markov queda como fallback automático si
 el motor principal no puede calcular una actualización válida.
 
-La Mini App refresca automáticamente aproximadamente cada 15–25 segundos.
-En el bot puede utilizarse "Actualizar" o "Actualizar partido" para forzar
-una nueva consulta.
+La Mini App refresca automáticamente aproximadamente cada 15–25 segundos, y
+el botón de actualizar fuerza una nueva consulta cuando hace falta.
 
 ESPN Predictor y Pickcenter se muestran como referencias externas separadas;
 no sustituyen ni modifican las probabilidades DIKAMAHA.
@@ -125,7 +113,7 @@ no sustituyen ni modifican las probabilidades DIKAMAHA.
 5. MINI APP / DASHBOARD
 -----------------------
 
-La Mini App se abre desde el botón "Abrir dashboard" del bot o desde el
+La Mini App se abre desde el botón "Abrir DIKAMAHA" del bot o desde el
 botón de menú de Telegram.
 
 Dirección actual:
@@ -146,7 +134,27 @@ La Mini App conserva la sesión de Telegram y requiere que el usuario esté
 en la lista privada de acceso.
 
 
-6. ALERTAS Y SUSCRIPCIONES
+6. PLAN GRATUITO Y PREMIUM
+--------------------------
+
+DIKAMAHA tiene dos niveles:
+
+Gratuito
+    Aciertos del día, catálogo, equipos, estadísticas, historial y
+    3 predicciones al día, a tu elección.
+
+Premium (250 estrellas de Telegram al mes)
+    Todo lo anterior, más predicciones sin límite, en vivo y el menú de
+    mayor probabilidad, sin tope de favoritos ni alertas.
+
+Se activa con /premium en el bot o desde "Ajustes" en la Mini App. Se paga
+con Estrellas de Telegram y se renueva automáticamente cada 30 días; se
+cancela en cualquier momento desde Ajustes de Telegram (Estrellas >
+Suscripciones) o desde la Mini App, y el acceso se conserva hasta el final
+del periodo ya pagado. /mi_plan consulta el estado en cualquier momento.
+
+
+7. ALERTAS Y SUSCRIPCIONES
 --------------------------
 
 Cuando la función esté habilitada, se pueden configurar alertas para:
@@ -162,11 +170,11 @@ Las alertas shadow siempre se identifican como experimentales. Las reglas
 tienen límites, cooldown y deduplicación para evitar mensajes repetidos.
 
 
-7. PROBLEMAS FRECUENTES
+8. PROBLEMAS FRECUENTES
 -----------------------
 
 No aparecen próximos partidos
-    Pulsa "Actualizar", vuelve a /start y revisa la liga o la fecha.
+    Pulsa "Actualizar" en la Mini App y revisa la liga o la fecha elegida.
     Si continúa, reporta la liga, fecha y hora de consulta.
 
 No aparece una predicción
@@ -179,7 +187,7 @@ No aparece un partido en vivo
     segundos.
 
 La Mini App queda cargando
-    Cierra y vuelve a abrirla desde "Abrir dashboard". Comprueba que
+    Cierra y vuelve a abrirla desde "Abrir DIKAMAHA". Comprueba que
     Telegram tenga conexión y que tu usuario esté autorizado.
 
 El buscador no encuentra un equipo
@@ -195,7 +203,7 @@ Se muestran datos no publicados
     "no publicado" o "no disponible" cuando no existe una fuente válida.
 
 
-8. COMO REPORTAR UNA INCIDENCIA
+9. COMO REPORTAR UNA INCIDENCIA
 -------------------------------
 
 Envía al administrador un mensaje con esta información:
@@ -223,20 +231,19 @@ Resultado observado:
 Captura o mensaje:
 
 
-9. ESTADO DEL SERVICIO
+10. ESTADO DEL SERVICIO
 ----------------------
 
 Para una comprobación rápida:
-• Usa /estado en el bot.
-• Revisa si el menú responde.
-• En la Mini App, recarga la sección afectada.
+• Envía /whoami o /mi_plan al bot y verifica que responde.
+• En la Mini App, revisa la sección "Estado" y recarga la sección afectada.
 
 Si varios usuarios tienen el mismo problema, no abras múltiples reportes.
 Indica que es una incidencia general para que el administrador revise los
 logs y el despliegue de Railway.
 
 
-10. REGLAS DEL GRUPO
+11. REGLAS DEL GRUPO
 --------------------
 
 • No compartas enlaces privados fuera del grupo autorizado.

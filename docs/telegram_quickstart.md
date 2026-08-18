@@ -36,60 +36,40 @@ TELEGRAM_ALLOWED_USER_IDS=123456789
 ```
 
 Reiniciar el bot. Mientras la allowlist esté vacía, `/whoami`, `/start` y
-`/help` funcionan, pero las predicciones permanecen bloqueadas.
+`/help` funcionan, pero `/premium` y `/mi_plan` permanecen bloqueados.
 
 ## Uso recomendado
 
-Después de `/start`, pulsa `📅 Próximos y predicciones`. El bot permite:
+Desde la Fase 125 el bot quedó reducido a cuenta y cobro: catálogo,
+predicciones pre-match y en vivo, mercados, play-by-play, estadísticas,
+plantillas, jugadores, favoritos, alertas e historial de aciertos viven
+exclusivamente en la Mini App. `/start` y `/help` muestran el botón
+`📊 Abrir DIKAMAHA` -un botón `web_app`, sin ida y vuelta al bot- para
+abrirla; ahí está todo lo que antes navegaban los menús de botones del chat.
 
-- `🌍 Todos los próximos`: agrega las 18 ligas y ordena por kickoff;
-- `🏆 Buscar por liga`: abre el selector de competición;
-- `📅 Buscar por fecha`: muestra ocho fechas futuras seleccionables.
-
-Después se selecciona el partido y `🔮 Ver predicción`. No es necesario
-conocer IDs, ligas ni nombres de equipos. `✅ Estado del servicio` comprueba
-la disponibilidad local.
-
-El menú principal también permite:
-
-- navegar liga→fecha→partido para play-by-play;
-- consultar estadísticas separadas en 1T, 2T y total;
-- navegar liga→equipo→jugador para perfiles y acumulados;
-- buscar equipos enviando una parte del nombre después de pulsar
-  `🔎 Buscar equipo`;
-- abrir mercados de predicción en submenús de 1T, 2T y total.
-
-Telegram no ofrece autocompletado dinámico dentro de un chat normal. La
-alternativa implementada devuelve coincidencias como botones después de
-enviar dos o más caracteres.
-
-Todas las pantallas comparten el mismo formato visual:
-
-- encabezado e icono para identificar el módulo;
-- contexto del partido o jugador debajo del encabezado;
-- tablas monoespaciadas para probabilidades y comparaciones;
-- tarjetas compactas para eventos play-by-play;
-- botones para periodo, página o siguiente nivel;
-- mensajes largos divididos y descripciones recortadas con elipsis.
-
-## Comandos de respaldo
+## Comandos
 
 ```text
-/estado
-/buscar_equipo mex.1 Cruz A
-/partido esp.1 20300110 Barcelona | Real Madrid
-/predict esp.1 94 86 2030-01-10T20:00:00+00:00
+/whoami
+/start
+/help
+/premium
+/mi_plan
 ```
 
-`/partido` resuelve nombres mediante ESPN. `/predict` utiliza IDs ESPN
-explícitos. Ambos delegan en la API DIKAMAHA y muestran baseline oficial más
-mercados shadow experimentales.
+`/whoami`, `/start` y `/help` no requieren membresía. `/premium` activa el
+plan de pago -o muestra el enlace para hacerlo, o el estado si ya se tiene- y
+`/mi_plan` consulta el plan vigente y, en el plan gratuito, cuántas
+predicciones quedan hoy. Ver `docs/runbooks/telegram_stars_subscriptions.md`
+para la operación del cobro con Telegram Stars.
 
 ## Alcance
 
 - sólo chats privados autorizados;
 - máximo diez solicitudes por usuario/minuto por defecto;
-- sin cuotas, stakes, ROI, Kelly, pagos o ejecución de apuestas;
+- suscripción mensual con Telegram Stars (Fase 125); sin stakes, ROI, Kelly ni
+  ejecución de apuestas -ver la restricción de comunicación en
+  `docs/phases/phase_125_star_subscription_tiers.md`-;
 - long polling para pruebas internas;
 - un despliegue público posterior debe usar token rotado, proceso supervisado
   y, si se migra a webhook, HTTPS y `secret_token`.

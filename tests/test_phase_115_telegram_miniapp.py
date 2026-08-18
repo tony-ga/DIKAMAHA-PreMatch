@@ -39,15 +39,28 @@ class _RecordingSession:
 def test_bot_menu_exposes_https_web_app(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """El menú nativo conserva fallback y antepone el dashboard seguro."""
+    """El único botón del bot abre la Mini App por HTTPS.
+
+    Desde la Fase 125 el bot no genera botones `callback_data`: toda
+    exploración -incluido lo que antes era `menu:live`- vive sólo en la Mini
+    App, y el teclado principal se redujo a este botón `web_app`.
+    """
 
     monkeypatch.setenv("DIKAMAHA_MINIAPP_URL", "https://mini.example.test")
-    rows = _main_keyboard()["inline_keyboard"]
-    assert rows[0][0] == {
-        "text": "📊 Abrir dashboard",
+    keyboard = _main_keyboard()
+    assert keyboard == {"inline_keyboard": [[{
+        "text": "📊 Abrir DIKAMAHA",
         "web_app": {"url": "https://mini.example.test"},
-    }
-    assert any(row[0].get("callback_data") == "menu:live" for row in rows)
+    }]]}
+
+
+def test_bot_menu_is_absent_without_a_configured_miniapp_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sin URL configurada no hay botón alguno que ofrecer."""
+
+    monkeypatch.delenv("DIKAMAHA_MINIAPP_URL", raising=False)
+    assert _main_keyboard() is None
 
 
 def test_menu_button_uses_set_chat_menu_button() -> None:

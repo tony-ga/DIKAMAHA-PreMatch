@@ -7,9 +7,6 @@ import pytest
 
 from scripts.run_phase_97_telegram_bot import _validate_premium_config
 from src.telegram_bot import TelegramBotConfig, telegram_config_from_env
-from src.telegram_channel_publisher import channel_prediction_messages
-
-from tests.test_telegram_bot import FakeGateway, FakeTransport, _bot, _prediction, _update
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,24 +67,6 @@ def test_access_mode_defaults_private_and_reads_public_env(
     assert telegram_config_from_env().access_mode == "private"
     monkeypatch.setenv("TELEGRAM_ACCESS_MODE", "PUBLIC")
     assert telegram_config_from_env().access_mode == "public"
-
-
-def test_bot_uses_exact_channel_prediction_messages() -> None:
-    """Comprueba paridad textual entre selección privada y canal."""
-
-    transport, gateway = FakeTransport(), FakeGateway()
-    _bot(transport, gateway).process_update(
-        _update(1, "/partido esp.1 20300110 Real Madrid | Barcelona"))
-    prediction = _prediction()
-    fixture = {
-        "league_slug": "esp.1", "match_id": 0, "competition_id": 0,
-        "kickoff_ts": prediction["kickoff_ts"],
-        "home_team_name": "Real Madrid", "away_team_name": "Barcelona",
-    }
-
-    expected = channel_prediction_messages(fixture, prediction)
-    assert [text for _, text in transport.sent] == expected
-    assert all(len(text) <= 3900 for text in expected)
 
 
 def test_premium_image_is_minimal_and_non_root() -> None:
