@@ -66,6 +66,9 @@ artifacts/phase_116a_score_pressure_calibration/*
 !artifacts/phase_116b_save_attribution_audit/
 artifacts/phase_116b_save_attribution_audit/*
 !artifacts/phase_116b_save_attribution_audit/audit.json
+!artifacts/phase_116c_score_pressure_gate/
+artifacts/phase_116c_score_pressure_gate/*
+!artifacts/phase_116c_score_pressure_gate/gate.json
 !artifacts/phase_122_confidence_reliability/
 artifacts/phase_122_confidence_reliability/*
 !artifacts/phase_122_confidence_reliability/eligibility.json

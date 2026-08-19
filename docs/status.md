@@ -2,6 +2,69 @@
 
 **Actualizado:** 2026-08-18
 
+## Las tres decisiones abiertas, llevadas a código y medidas (DEC-216 a DEC-218)
+
+Se implementaron y desplegaron las tres decisiones que quedaban en estado
+`propuesta`. **Una se activa, dos quedan implementadas pero desactivadas por
+evidencia.** El código de las tres está en producción; ninguna cambia todavía
+las probabilidades servidas.
+
+**DEC-218 — activada.** El guardarraíl deja de ser prosa:
+`src/confounding_check_v1.py` ejecuta bootstrap por grupo,
+leave-one-group-out, control estratificado por fuerza y fragilidad del
+intervalo. Su prueba principal reproduce con los 12 datos reales el caso de
+formaciones que motivó la decisión -efecto `+2.4286`, IC95% que no cruza
+cero, pero `influence_ratio 0.506` al excluir un solo grupo- y lo etiqueta
+`"confundido"` de forma automática. Ya tuvo su primer uso real dentro de la
+calibración de DEC-216.
+
+**DEC-216 — capacidad desplegada, activación rechazada por el gate.** La
+forma temporal de `_score_factors` es ahora configurable con salida byte a
+byte idéntica por defecto (verificado sobre 120 combinaciones y por hash de
+`predict()`). La calibración offline sobre 68,148 filas `fit` ajustó una
+rampa con `curvature=1.986` que reproduce los ratios observados **25 veces
+mejor** que la forma lineal vigente. Pero el gate histórico contra PostgreSQL
+de producción -7,400 partidos, 34 ligas, lectura verificada sin escrituras-
+la **rechaza**: todos los gates técnicos de DEC-155 pasan, pero el 1X2
+log-loss **degrada de forma confirmada** en validation (`-0.000943`, IC95%
+`[-0.001860, -0.000046]`) y es indistinguible en confirmation.
+
+La explicación importa más que el número: la calibración ajustó la forma para
+reproducir el ratio de *eventos de presión*, pero `_score_factors` no modula
+presión, modula **intensidad de gol**, y de ahí salen 1X2, over/under y BTTS.
+Además las demás capas -hazard, CTMC, Elo- se calibraron con la forma lineal
+en su sitio. Es el patrón de `DEC-197`: un óptimo real sobre una métrica
+proxy que no se traslada a la que importa. El diagnóstico descriptivo sobre
+9,465 partidos sigue siendo correcto; lo que no funciona es traducirlo así.
+
+**DEC-217 — capacidad desplegada, activación bloqueada por datos.** Primero
+hubo que **corregir la premisa, que era falsa**: los tipos que la decisión
+nombraba no existen en el feed de ESPN, y el `CHECK` de `events_timeline` no
+era el bloqueador -el motor live no lee esa tabla-. Reenfocada a `save`, la
+auditoría encontró señal real: ESPN emite 7.3 saves/partido contra 2.9
+`shot_on_target`, así que el motor venía subcontando tiros a puerta. La
+proyección exige invertir el equipo (ESPN atribuye el save al portero) y
+deduplicar (43% coexisten con un tiro ya reportado; ventana ±5s por meseta).
+
+Bloqueo descubierto al ejecutar el gate: **la base histórica no contiene
+ningún `save`** -el CHECK los filtró en la ingesta-, así que el candidato es
+inmedible contra el replay. Y los pesos del motor se calibraron sobre ese
+mismo corpus sin saves; activarlo elevaría `shot_on_target` de 2.9 a ~7.6 por
+partido sin recalibrar. Precondición para desbloquear, en orden: persistir
+los auxiliares, recalibrar `EVENT_WEIGHTS`/hazard/CTMC, y sólo entonces
+gatear.
+
+**Un defecto silencioso corregido antes de desplegar.** La proyección de
+`save` comprobaba `event_type == "save"`, pero el follower emite
+`event_type="auxiliary"` con `event_type_raw="save"`. Habría quedado activa
+sin hacer nada, sin excepción ni registro -el peor modo de fallo posible-.
+Hay una prueba con la forma exacta que construye el follower.
+
+Gates: 946 pruebas en verde contra una línea base de 911, con los mismos 18
+fallos conocidos de contención de CPU antes y después -cero regresiones-. El
+gate contra producción verificó `read_only: True`, `counts_identical: True`
+y `postgresql_writes: 0`.
+
 ## De una investigación externa (hudl/open-data) a tres decisiones sobre el propio proyecto (DEC-216 a DEC-218)
 
 El usuario pidió investigar `github.com/hudl/open-data` (datos StatsBomb)

@@ -6098,6 +6098,50 @@ no persistido en el repo).
 Continuación permitida: abrir Fase 133 con protocolo propio de
 selección/confirmación antes de tocar `_score_factors`. No promover desde
 este diagnóstico solo.
+Evidencia obtenida (2026-08-18): el trabajo se ejecutó como Fases 116A/116C
+-extensiones del propio componente- en vez de una Fase 133 nueva, porque lo
+que se modifica es una pieza de Fase 116, no un modelo aparte.
+**Fase 116A, calibración offline** (`scripts/run_phase_116a_score_pressure_
+calibration.py`, 68,148 filas `fit` / 22,692 `selection`, `confirmation`
+nunca leída -`load_windows` falla cerrado si se pide-): los ratios empíricos
+presión(perdiendo)/presión(ganando) por ventana son `1.029, 1.042, 1.116,
+1.092, 1.232`. La rampa ajustada da `curvature=1.986`, `gain=0.133`,
+`onset≈0`; su error ponderado en `selection` es `0.86` contra `21.48` de la
+forma lineal vigente -25 veces mejor ajuste a los ratios observados-. El
+chequeo de confusión de `DEC-218` agrupando por liga devuelve "mejora
+confirmada" con liga más influyente `usa.1` a ratio `0.17`, muy por debajo
+del umbral: el efecto no vive en unas pocas ligas. Hallazgo lateral: el
+umbral no hizo falta, el optimizador eligió `onset≈0` y logró el retardo con
+curvatura ~2.
+**Fase 116C, gate histórico** (`scripts/run_phase_116c_score_pressure_
+gate.py`, PostgreSQL de producción en modo lectura -`read_only: True`,
+`counts_identical: True`, `postgresql_writes: 0`-, 7,400 partidos elegibles
+de 34 ligas, por encima de los mínimos de 5,000/20): **el candidato queda
+rechazado para activación**. Todos los gates técnicos de `DEC-155` pasan
+-auditorías, normalización de mercados, causalidad, priors estrictamente
+anteriores-, pero la métrica diagnóstica va en contra:
+- `validation` (1,586 partidos): 1X2 log-loss `-0.000943` IC95%
+  `[-0.001860, -0.000046]`, **degradación confirmada**; objetivo compuesto
+  `-0.000205` IC95% `[-0.000644, +0.000259]`, indistinguible.
+- `confirmation` (1,397 partidos, mirado una sola vez): 1X2 log-loss
+  `-0.000705` IC95% `[-0.001674, +0.000190]`, indistinguible; objetivo
+  `-0.000356` IC95% `[-0.000804, +0.000084]`, indistinguible.
+Artefacto: `artifacts/phase_116c_score_pressure_gate/gate.json`.
+**Por qué falla pese a que el diagnóstico descriptivo es correcto.** La
+calibración ajustó la forma para reproducir el ratio de *eventos de presión*,
+pero `_score_factors` no modula presión: modula **intensidad de gol**, y de
+ahí salen 1X2, over/under y BTTS. Son cantidades distintas y su relación no
+es uno a uno. Además, el resto de capas del motor -hazard, CTMC, Elo- se
+calibraron con la forma lineal en su sitio, así que cambiarla desplaza la
+composición respecto de aquello contra lo que se ajustaron. Es el mismo
+patrón de `DEC-197`: un óptimo real sobre una métrica proxy que no se
+traslada a la métrica que importa.
+Estado final: la **capacidad** queda implementada y desplegada
+-`score_pressure_profile` configurable, `linear_v1` por defecto y salida byte
+a byte idéntica, verificado sobre 120 combinaciones y por hash de `predict()`-
+pero la **activación queda rechazada**. No reutilizar `validation`/
+`confirmation` para ajustar una variante nueva: `confirmation` ya se miró.
+Reabrir exige una hipótesis distinta y evidencia nueva, no más tuning.
 
 
 DEC-217
@@ -6140,6 +6184,56 @@ candidato natural es enriquecer `EVENT_WEIGHTS` de la capa de hazard/CTMC
 del motor en vivo (`src/live_probability_engine_v1.py`), que hoy sólo pesa
 `foul` (`EVENT_WEIGHTS["foul"]=0.08`) entre los eventos puntuales -nunca
 como feature pre-match, sería estrictamente live-only-.
+Corrección de hechos (2026-08-18): **la premisa de esta entrada era falsa** y
+se corrige aquí en vez de dejarla en pie. Verificado sobre el feed crudo real
+(`artifacts/phase_59_raw_timeline_audit_v1/cache/`, 75 archivos, 15 partidos):
+(1) los tipos que esta decisión nombraba -`tackle`, `interception`,
+`dispossessed`, `aerial`, `take_on`- **no aparecen en ningún feed capturado**;
+sólo existen como alias defensivos en `src/espn_event_taxonomy.py`. (2) El
+`CHECK` de `events_timeline` **no es el bloqueador**: el motor live no lee esa
+tabla. Los eventos llegan in-memory por `src/espn_live_follower.py` →
+`MarkovLiveInput.events`, y los auxiliares se descartan en
+`src/markov_live_v1.py` dentro de `_canonical_events`. **No hace falta
+ninguna migración SQL**; `sql/migrations/` se queda en 015.
+Reenfoque a `save`: es el auxiliar con señal real. ESPN emite `save` 7.3
+veces por partido contra `shot_on_target` 2.9, y un save implica
+necesariamente un tiro a puerta, así que el motor live venía **subcontando
+tiros a puerta de forma sistemática**.
+Evidencia obtenida — **Fase 116B, auditoría de atribución**
+(`scripts/run_phase_116b_save_attribution_audit.py`, artefacto
+`artifacts/phase_116b_save_attribution_audit/audit.json`): atribución 100%
+resoluble y confirmada al **equipo del portero** -el texto es
+`"<portero> (<equipo>) Save at <min>"`-, de modo que proyectar exige
+**invertir el equipo**: el tirador es el rival. El 43% de los `save`
+coexisten con un `shot_on_target` del proveedor para la misma acción; la
+curva de solapamiento se estabiliza en `±5s` (47 duplicados, sin cambio
+hasta 15s), que es la ventana elegida por detección de meseta y no a ojo.
+Proyección ingenua: `13.7` tiros a puerta por partido, fuera del rango
+realista 7-11; con deduplicación a ±5s cae a `10.5`, dentro de rango.
+Defecto encontrado y corregido antes de desplegar: la proyección comprobaba
+`event_type == "save"`, pero el follower emite `event_type="auxiliary"` con
+`event_type_raw="save"`. Habría quedado activa sin hacer absolutamente nada,
+sin excepción ni registro. `_is_save` mira el tipo crudo como señal primaria
+y una prueba usa la forma exacta que construye el follower.
+**Bloqueo para la activación, descubierto al ejecutar el gate.** La base
+histórica de `prospective_staging_v2.events` **no contiene ningún evento
+`save`**: sólo los 9 tipos modelables (`corner`, `substitution`,
+`shot_off_target`, `shot_blocked`, `yellow`, `shot_on_target`, `goal`,
+`foul`, `red`), porque el `CHECK` los filtró en la ingesta. Consecuencia: el
+candidato **no se puede medir contra el replay histórico** -no hay datos con
+los que evaluarlo-. Y hay un segundo motivo, independiente y más fuerte: los
+pesos del motor (`EVENT_WEIGHTS`, hazard, CTMC) se calibraron sobre ese mismo
+corpus sin saves, con `shot_on_target` a 2.9/partido. Activar la proyección
+elevaría esa entrada a ~7.6/partido sin recalibrar, desplazando la señal de
+presión muy lejos de aquello contra lo que se ajustaron los pesos.
+Estado final: la **capacidad** queda implementada y desplegada
+-`enable_derived_save_projection`, por defecto `False`, con paridad de hash
+verificada por prueba cuando está apagada- y la **activación queda
+bloqueada**, no rechazada: el candidato es mecánicamente correcto pero
+inmedible con los datos actuales. Precondición para desbloquearlo, en este
+orden: (1) persistir los auxiliares en staging para que existan
+históricamente, (2) recalibrar `EVENT_WEIGHTS`/hazard/CTMC sobre el corpus
+con saves, (3) sólo entonces correr el gate de Fase 116C.
 
 
 DEC-218
@@ -6161,8 +6255,31 @@ guardarraíl explícito junto a Fase 84B en el roadmap.
 Decisión: (b).
 Motivo: es una lección metodológica barata de documentar ahora y costosa de
 redescubrir después con datos reales y presión de producto.
-Estado: congelada para investigación
-Impacto en contratos/fases: ninguno -nota de documentación, sin código-.
+Estado: implementada
+Impacto en contratos/fases: ninguno en runtime -módulo nuevo sin consumidores
+en el camino servido-.
+Evidencia obtenida (2026-08-18): el guardarraíl deja de ser prosa. Nuevo
+módulo `src/confounding_check_v1.py` con `check_confounding()`, que ejecuta
+cuatro comprobaciones sobre un efecto medido: intervalo bootstrap
+remuestreando **grupos** (no observaciones, misma unidad IID que el resto del
+proyecto), influencia por leave-one-group-out, control estratificado por
+fuerza relativa, y fragilidad del intervalo. Emite los veredictos del
+vocabulario del proyecto más dos nuevos: `"confundido"` y `"frágil"`.
+Vive en `src/` y lo consumen los scripts, siguiendo el precedente de
+`src/ladder_audit.py` ← `scripts/run_ladder_audit.py`, en vez de añadir otra
+copia del `_bootstrap` que el proyecto duplica en ~40 sitios.
+La prueba principal no es sintética: reproduce el caso real que motivó la
+decisión con las 12 observaciones verdaderas. Efecto crudo `+2.4286` con
+IC95% `[+0.190, +5.167]` que **no cruza cero**; grupo más influyente
+`Spain`, cuya exclusión lo deja en `+1.20` (`influence_ratio 0.506`);
+fragilidad `0.333` -3 de 9 grupos hacen que el intervalo pase a cruzar cero-.
+Veredicto emitido: `"confundido"`. Es decir, la utilidad detecta de forma
+automática lo que en su momento costó investigación manual.
+Primer uso real: Fase 116A (`DEC-216`) pasa por él los ratios de presión
+agrupando por liga antes de proponer cualquier parámetro, y el resultado
+-"mejora confirmada", liga más influyente a ratio 0.17- es parte de la
+evidencia de esa fase.
+9 pruebas en `tests/test_confounding_check_v1.py`, todas en verde.
 
 
 ```text

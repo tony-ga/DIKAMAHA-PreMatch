@@ -1,0 +1,249 @@
+{
+  "calibrated_parameters": {
+    "score_pressure_chasing_gain": 0.1325515070268305,
+    "score_pressure_curvature": 1.9860795558612938,
+    "score_pressure_onset_fraction": 2.453431699815224e-15,
+    "score_pressure_profile": "ramp_v2",
+    "score_pressure_protecting_drop": 0.1,
+    "score_pressure_protecting_floor": 0.78
+  },
+  "classification": "rejected",
+  "coverage": {
+    "eligible_matches": 7400,
+    "minimum_leagues": 20,
+    "minimum_matches": 5000,
+    "represented_leagues": 34
+  },
+  "database_audit": {
+    "counts_after": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_before": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_identical": true,
+    "event_source_hash": "5b6de4089e4c743531cedf4dc8223d923ef0d3621180e925c90256ba81137333",
+    "match_source_hash": "21abe3f79635778c0c4fa804c3216791c792b7932f2b14e7aeea6febbc492e1d",
+    "model_events": 402631,
+    "postgresql_writes": 0,
+    "read_only": true,
+    "reconciled_regulation_matches": 9649,
+    "represented_leagues": 42
+  },
+  "gates": {
+    "coverage_leagues": true,
+    "coverage_matches": true,
+    "database_read_only": true,
+    "database_unchanged": true,
+    "no_confirmed_degradation": false,
+    "priors_strictly_prior": true,
+    "promotable": false,
+    "technical_audits_passed": true
+  },
+  "partition": {
+    "development_end": "2025-09-26T18:30:00+00:00",
+    "kickoff_counts": {
+      "confirmation": 645,
+      "development": 1935,
+      "validation": 645
+    },
+    "kickoff_overlap": 0,
+    "match_counts": {
+      "confirmation": 1397,
+      "development": 4417,
+      "validation": 1586
+    },
+    "match_overlap": 0,
+    "validation_end": "2025-11-20T21:00:00+00:00"
+  },
+  "prior_audit": {
+    "atomic_same_kickoff_updates": true,
+    "cold_start_matches_excluded": 2249,
+    "prior_count": 7400,
+    "strictly_prior": true
+  },
+  "protocol": "validation_selects_confirmation_reports_once",
+  "splits": {
+    "confirmation": {
+      "aggregate": {
+        "linear_v1": {
+          "league_count": 32,
+          "match_count": 1397,
+          "models": {
+            "engine": {
+              "btts_brier": 0.1741897734424893,
+              "btts_log_loss": 0.4988419638135438,
+              "goal_market_brier": 0.19084995992189127,
+              "goal_market_log_loss": 0.5916670489033098,
+              "next_event_brier": 0.4533866635500951,
+              "next_event_log_loss": 2.370421253590898,
+              "objective": 1.036355600075207,
+              "one_x_two_brier": 0.23325482239166023,
+              "one_x_two_log_loss": 0.7934006444052695,
+              "over_2_5_brier": 0.16510528393152432,
+              "over_2_5_log_loss": 0.4827585384911162
+            }
+          }
+        },
+        "ramp_v2": {
+          "league_count": 32,
+          "match_count": 1397,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17441954609201227,
+              "btts_log_loss": 0.49934350876568306,
+              "goal_market_brier": 0.1910093983575722,
+              "goal_market_log_loss": 0.5921549065972014,
+              "next_event_brier": 0.4533788985762427,
+              "next_event_log_loss": 2.370381307000474,
+              "objective": 1.0367115066980195,
+              "one_x_two_brier": 0.2333931355130954,
+              "one_x_two_log_loss": 0.7941056338136615,
+              "over_2_5_brier": 0.16521551346760885,
+              "over_2_5_log_loss": 0.4830155772122595
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline": {
+        "goal_market_log_loss": {
+          "ci_high": 6.805927756833243e-05,
+          "ci_low": -0.0010524270562735588,
+          "crosses_zero": true,
+          "mean": -0.0004878576938915122,
+          "verdict": "indistinguible"
+        },
+        "matches": 1397,
+        "next_event_log_loss": {
+          "ci_high": 0.0002189623753259546,
+          "ci_low": -0.00014404952944826237,
+          "crosses_zero": true,
+          "mean": 3.9946590423947424e-05,
+          "verdict": "indistinguible"
+        },
+        "objective": {
+          "ci_high": 8.391966445643868e-05,
+          "ci_low": -0.0008043458448185868,
+          "crosses_zero": true,
+          "mean": -0.0003559066228126453,
+          "verdict": "indistinguible"
+        },
+        "one_x_two_log_loss": {
+          "ci_high": 0.00018975736777922898,
+          "ci_low": -0.0016735143036210704,
+          "crosses_zero": true,
+          "mean": -0.0007049894083920068,
+          "verdict": "indistinguible"
+        }
+      },
+      "snapshots": {
+        "linear_v1": 6985,
+        "ramp_v2": 6985
+      },
+      "technical": {
+        "linear_v1": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "f9c625682dda7272e1b6dbdc1071847abfcde5aae67c20cf84260629d5f857d6"
+        },
+        "ramp_v2": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "980239e02b948d2b7e98005330299e5e1abc7117e897ce669db64dd6e83aa61f"
+        }
+      }
+    },
+    "validation": {
+      "aggregate": {
+        "linear_v1": {
+          "league_count": 31,
+          "match_count": 1586,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17230323742213638,
+              "btts_log_loss": 0.4961450962728235,
+              "goal_market_brier": 0.18844760323925566,
+              "goal_market_log_loss": 0.585532742750167,
+              "next_event_brier": 0.4537035277411931,
+              "next_event_log_loss": 2.3720491053893458,
+              "objective": 1.0321618334099616,
+              "one_x_two_brier": 0.22946753936459197,
+              "one_x_two_log_loss": 0.7811728798659512,
+              "over_2_5_brier": 0.16357203293103867,
+              "over_2_5_log_loss": 0.4792802521117263
+            }
+          }
+        },
+        "ramp_v2": {
+          "league_count": 31,
+          "match_count": 1586,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17222282576659892,
+              "btts_log_loss": 0.4960464032823944,
+              "goal_market_brier": 0.1885327333364575,
+              "goal_market_log_loss": 0.5858812087698132,
+              "next_event_brier": 0.4536895883775998,
+              "next_event_log_loss": 2.3718246414071555,
+              "objective": 1.032367066929149,
+              "one_x_two_brier": 0.22972331773849705,
+              "one_x_two_log_loss": 0.7821157772781452,
+              "over_2_5_brier": 0.16365205650427656,
+              "over_2_5_log_loss": 0.47948144574890017
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline": {
+        "goal_market_log_loss": {
+          "ci_high": 0.0002591455508760797,
+          "ci_low": -0.0009205599870095603,
+          "crosses_zero": true,
+          "mean": -0.000348466019646282,
+          "verdict": "indistinguible"
+        },
+        "matches": 1586,
+        "next_event_log_loss": {
+          "ci_high": 0.0003785589419410922,
+          "ci_low": 6.778210955294813e-05,
+          "crosses_zero": false,
+          "mean": 0.00022446398219013946,
+          "verdict": "mejora confirmada"
+        },
+        "objective": {
+          "ci_high": 0.000258514151715863,
+          "ci_low": -0.0006444316257153415,
+          "crosses_zero": true,
+          "mean": -0.00020523351918717684,
+          "verdict": "indistinguible"
+        },
+        "one_x_two_log_loss": {
+          "ci_high": -4.626229759979645e-05,
+          "ci_low": -0.001859631437216866,
+          "crosses_zero": false,
+          "mean": -0.0009428974121939213,
+          "verdict": "degradaci\u00f3n confirmada"
+        }
+      },
+      "snapshots": {
+        "linear_v1": 7930,
+        "ramp_v2": 7930
+      },
+      "technical": {
+        "linear_v1": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "17024201ce3a3056541bc6873c50de34b669e73fd0c11350d22cddab55e3930d"
+        },
+        "ramp_v2": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "ca8562123484595937ecb176b5402dc235429836a98df87a583bdad526f86cd9"
+        }
+      }
+    }
+  },
+  "unit": "complete_match"
+}
