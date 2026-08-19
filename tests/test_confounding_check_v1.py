@@ -199,3 +199,22 @@ def test_the_result_is_reproducible_under_a_fixed_seed() -> None:
 
     assert first["ci_low"] == second["ci_low"]
     assert first["ci_high"] == second["ci_high"]
+
+
+def test_too_many_groups_fails_loudly_instead_of_hanging() -> None:
+    """El análisis de fragilidad es cuadrático; colgarse sería el peor fallo.
+
+    Se descubrió usando la herramienta de verdad: con ~2,600 equipos como
+    grupo la llamada no terminaba en 10 minutos y no decía por qué. Ahora
+    rechaza la entrada explicando cómo arreglarla.
+    """
+
+    observations = [
+        ConfoundingObservation(
+            group_id=f"group_{index}", effect=float(index % 3),
+            exposure=1.0 if index % 2 else -1.0, strength=float(index % 5))
+        for index in range(1200)
+    ]
+
+    with pytest.raises(ValueError, match="too_many_groups"):
+        check_confounding(observations, replicates=100)

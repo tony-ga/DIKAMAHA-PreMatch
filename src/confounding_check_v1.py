@@ -59,6 +59,18 @@ DEFAULT_INFLUENCE_THRESHOLD = 0.5
 # signifiquen algo: con dos grupos, excluir uno siempre es catastrófico.
 MINIMUM_GROUPS = 4
 
+# Máximo de grupos admitido. El análisis de fragilidad corre un bootstrap
+# completo por cada grupo, así que el coste crece como grupos x réplicas x
+# observaciones. Medido: con ~2,600 grupos y 28,000 observaciones la llamada
+# no termina en 10 minutos.
+#
+# Falla ruidosamente en vez de colgarse. Una función que tarda para siempre
+# sin decir por qué es peor que una que rechaza la entrada explicando cómo
+# arreglarla: agrupar por una unidad más gruesa -liga en vez de equipo- suele
+# ser además lo correcto estadísticamente, porque la confusión que interesa
+# vive al nivel del grupo grande.
+MAXIMUM_GROUPS = 500
+
 VERDICT_INDISTINGUISHABLE = "indistinguible"
 VERDICT_POSITIVE = "mejora confirmada"
 VERDICT_NEGATIVE = "degradación confirmada"
@@ -131,6 +143,10 @@ def check_confounding(
         return _insufficient(
             f"se requieren al menos {MINIMUM_GROUPS} grupos", len(rows),
             len(groups))
+    if len(groups) > MAXIMUM_GROUPS:
+        raise ValueError(
+            f"confounding_check_too_many_groups:{len(groups)}>"
+            f"{MAXIMUM_GROUPS}; agrupa por una unidad más gruesa")
 
     baseline = _contrast(rows)
     interval = _bootstrap_contrast(rows, groups, replicates, seed)
