@@ -6260,14 +6260,39 @@ pesos del motor (`EVENT_WEIGHTS`, hazard, CTMC) se calibraron sobre ese mismo
 corpus sin saves, con `shot_on_target` a 2.9/partido. Activar la proyección
 elevaría esa entrada a ~7.6/partido sin recalibrar, desplazando la señal de
 presión muy lejos de aquello contra lo que se ajustaron los pesos.
-Estado final: la **capacidad** queda implementada y desplegada
--`enable_derived_save_projection`, por defecto `False`, con paridad de hash
-verificada por prueba cuando está apagada- y la **activación queda
-bloqueada**, no rechazada: el candidato es mecánicamente correcto pero
-inmedible con los datos actuales. Precondición para desbloquearlo, en este
-orden: (1) persistir los auxiliares en staging para que existan
-históricamente, (2) recalibrar `EVENT_WEIGHTS`/hazard/CTMC sobre el corpus
-con saves, (3) sólo entonces correr el gate de Fase 116C.
+**Fase 116E, validación de extremo a extremo contra datos reales.** La
+auditoría de 116B fue estática sobre el JSON crudo y las pruebas unitarias
+usan eventos construidos a mano; ninguna de las dos demuestra que la cadena
+completa funcione. 116E recorre la cadena real -play crudo de ESPN →
+`classify_play` → payload del follower → `MarkovLiveInput` → `MarkovLiveV1`
+con la proyección activa- sobre los 15 partidos del cache de Fase 59, y las
+seis comprobaciones pasan:
+- los 110 `save` sobreviven a `classify_play` conservando `event_type_raw`;
+  su tipo canónico es `auxiliary`, lo que confirma que el defecto detectado
+  en 116B era real y que la corrección de `_is_save` es necesaria, no
+  defensiva;
+- 76 proyectados y 33 deduplicados, con **cero errores de atribución**: la
+  inversión de equipo asigna el tiro al rival del portero en todos los casos;
+- tiros a puerta por partido: `2.93` sin proyección -confirmando el
+  subconteo- y `8.00` con ella, dentro del rango realista 7-11;
+- `penalty---saved` **no** se proyecta, porque ya lo cubre `penalty_awarded`;
+  la normalización del tipo crudo lo distingue de `save` correctamente.
+Artefacto: `artifacts/phase_116e_save_projection_e2e/e2e.json`.
+Estado final: la **capacidad** queda implementada, desplegada y **verificada
+de extremo a extremo contra datos reales** -no sólo sintéticos-, con
+`enable_derived_save_projection` en `False` y paridad de hash comprobada por
+prueba cuando está apagada. La **activación sigue bloqueada**, no rechazada,
+por dos razones independientes y ambas de datos, no de mecanismo: la base
+histórica no contiene `save` -así que el candidato no puede medirse contra el
+replay- y los pesos del motor se calibraron sobre ese mismo corpus sin ellos,
+de modo que activar elevaría `shot_on_target` de `2.9` a `~8.0` por partido
+contra una calibración que no lo espera.
+Precondición para desbloquear, en este orden, y todo ello exige autorización
+explícita para escribir en la base de producción: (1) persistir los
+auxiliares en staging para que existan históricamente, (2) recalibrar
+`EVENT_WEIGHTS`/hazard/CTMC sobre el corpus con saves, (3) sólo entonces
+correr el gate de Fase 116C. El mecanismo ya no es parte del riesgo: está
+verificado.
 
 
 DEC-218

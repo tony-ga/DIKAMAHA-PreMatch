@@ -1,0 +1,29 @@
+{
+  "activation_blocked_because": "la base hist\u00f3rica no contiene eventos `save`, as\u00ed que el candidato no puede medirse contra el replay; y los pesos del motor se calibraron sobre ese corpus sin saves",
+  "attribution_errors": 0,
+  "canonical_type_of_save": {
+    "auxiliary": 110
+  },
+  "checks": {
+    "attribution_inverts_to_the_shooter": true,
+    "baseline_undercounts": true,
+    "deduplication_fires": true,
+    "projected_shots_land_in_plausible_range": true,
+    "raw_type_preserved": true,
+    "save_survives_follower_classification": true
+  },
+  "classification": "mechanism_verified_activation_still_blocked",
+  "derived_duplicates": 33,
+  "derived_projected": 76,
+  "matches_evaluated": 15,
+  "matches_in_cache": 15,
+  "saves_after_classification": 110,
+  "shots_on_target_per_match": {
+    "plausible_range": [
+      7.0,
+      11.0
+    ],
+    "with_projection": 8.0,
+    "without_projection": 2.933333333333333
+  }
+}
