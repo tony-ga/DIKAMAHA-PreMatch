@@ -6136,12 +6136,46 @@ calibraron con la forma lineal en su sitio, así que cambiarla desplaza la
 composición respecto de aquello contra lo que se ajustaron. Es el mismo
 patrón de `DEC-197`: un óptimo real sobre una métrica proxy que no se
 traslada a la métrica que importa.
-Estado final: la **capacidad** queda implementada y desplegada
--`score_pressure_profile` configurable, `linear_v1` por defecto y salida byte
-a byte idéntica, verificado sobre 120 combinaciones y por hash de `predict()`-
-pero la **activación queda rechazada**. No reutilizar `validation`/
-`confirmation` para ajustar una variante nueva: `confirmation` ya se miró.
-Reabrir exige una hipótesis distinta y evidencia nueva, no más tuning.
+**Fase 116D, recalibración contra la cantidad correcta.** El rechazo de 116C
+identificó una mis-especificación concreta, así que en vez de dejarla como
+hipótesis se midió. `_score_factors` multiplica **intensidad de gol**, de modo
+que el objetivo correcto es el ratio de tasa de gol entre quien pierde y quien
+gana, no el de eventos de presión. Al medirlo aparece un segundo defecto, más
+grave: el ratio crudo de gol es `0.913` -quien pierde marca **menos**-, pero
+eso es selección, no comportamiento: quien va ganando suele ser el equipo
+mejor. **Controlando por fuerza propia y del rival en 16 estratos, el ratio
+pasa a `1.097` e invierte el signo.** Es exactamente el caso que `DEC-218`
+existe para detectar, aplicado a la calibración que lo motivó.
+Ratios controlados por ventana sobre `split=fit` (IC95% remuestreando
+partidos completos), contra lo que afirma la forma lineal vigente:
+| minuto | crudo | controlado | IC95% | lineal |
+| --- | --- | --- | --- | --- |
+| 22.5 | 0.823 | 1.056 | `[0.850, 1.307]` | 1.072 |
+| 37.5 | 0.812 | 0.981 | `[0.873, 1.258]` | 1.122 |
+| 52.5 | 0.891 | 1.005 | `[0.923, 1.194]` | 1.174 |
+| 67.5 | 0.977 | **1.231** | `[1.121, 1.560]` | 1.227 |
+| 82.5 | 0.967 | **1.157** | `[1.069, 1.298]` | 1.283 |
+Dos lecturas, y la segunda es la que cierra la decisión. Primera: la forma
+del efecto **sí** es la que sospechaba `DEC-216` -indistinguible de 1.0 hasta
+el minuto ~52, confirmado sólo desde el 60, donde el IC excluye 1.0-.
+Segunda, decisiva: **la forma lineal vigente cae dentro del IC95% en las
+cinco ventanas**, y en el minuto 67.5 es prácticamente exacta (1.227 contra
+1.231 medido). La rampa ajustada a este objetivo degenera -`curvature≈0`, es
+decir el optimizador colapsa a una función escalón contra el borde del
+dominio- y en `selection` **pierde contra la lineal**: error ponderado `2.67`
+frente a `1.14`. Artefacto:
+`artifacts/phase_116d_goal_rate_calibration/calibration.json`.
+Estado final: **la forma lineal vigente no está mal calibrada**. La hipótesis
+que abrió `DEC-216` era un artefacto de dos errores compuestos -medir eventos
+de presión en vez de intensidad de gol, y no controlar la confusión por
+fuerza en ninguno de los dos-. El gate de 116C rechazó el candidato por la
+razón correcta. La **capacidad** queda implementada y desplegada
+-`score_pressure_profile` configurable, salida byte a byte idéntica con el
+valor por defecto, verificado sobre 120 combinaciones y por hash de
+`predict()`- y la configuración servida, `linear_v1`, es **la que la
+evidencia respalda**. Decisión cerrada con determinación, no por agotamiento.
+No reabrir sin datos nuevos: `confirmation` del gate ya se miró una vez y
+`fit`/`selection` de Fase 74 sostienen esta conclusión.
 
 
 DEC-217

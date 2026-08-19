@@ -18,24 +18,35 @@ cero, pero `influence_ratio 0.506` al excluir un solo grupo- y lo etiqueta
 `"confundido"` de forma automática. Ya tuvo su primer uso real dentro de la
 calibración de DEC-216.
 
-**DEC-216 — capacidad desplegada, activación rechazada por el gate.** La
+**DEC-216 — cerrada con determinación: la forma vigente es la correcta.** La
 forma temporal de `_score_factors` es ahora configurable con salida byte a
-byte idéntica por defecto (verificado sobre 120 combinaciones y por hash de
-`predict()`). La calibración offline sobre 68,148 filas `fit` ajustó una
-rampa con `curvature=1.986` que reproduce los ratios observados **25 veces
-mejor** que la forma lineal vigente. Pero el gate histórico contra PostgreSQL
-de producción -7,400 partidos, 34 ligas, lectura verificada sin escrituras-
-la **rechaza**: todos los gates técnicos de DEC-155 pasan, pero el 1X2
-log-loss **degrada de forma confirmada** en validation (`-0.000943`, IC95%
-`[-0.001860, -0.000046]`) y es indistinguible en confirmation.
+byte idéntica por defecto. El primer candidato (`ramp_v2` ajustado a ratios
+de presión) fue **rechazado por el gate** contra PostgreSQL de producción
+-7,400 partidos, 34 ligas, lectura verificada sin escrituras-: todos los
+gates técnicos de DEC-155 pasan, pero el 1X2 log-loss degrada de forma
+confirmada en validation (`-0.000943`, IC95% `[-0.001860, -0.000046]`).
 
-La explicación importa más que el número: la calibración ajustó la forma para
-reproducir el ratio de *eventos de presión*, pero `_score_factors` no modula
-presión, modula **intensidad de gol**, y de ahí salen 1X2, over/under y BTTS.
-Además las demás capas -hazard, CTMC, Elo- se calibraron con la forma lineal
-en su sitio. Es el patrón de `DEC-197`: un óptimo real sobre una métrica
-proxy que no se traslada a la que importa. El diagnóstico descriptivo sobre
-9,465 partidos sigue siendo correcto; lo que no funciona es traducirlo así.
+En vez de dejar la causa como hipótesis, se midió (Fase 116D), y el
+resultado **cierra la decisión**. `_score_factors` multiplica intensidad de
+gol, no de presión, así que el objetivo correcto es el ratio de tasa de gol.
+Al medirlo aparece un segundo defecto más grave: el ratio crudo es `0.913`
+-quien pierde marca menos- pero eso es **selección, no comportamiento**,
+porque quien va ganando suele ser el equipo mejor. Controlando por fuerza
+propia y del rival, el ratio pasa a `1.097` e **invierte el signo**. Es
+justamente el caso que DEC-218 existe para detectar, aplicado a la
+calibración que lo motivó.
+
+Con la cantidad correcta y sin la confusión, **la forma lineal vigente cae
+dentro del IC95% en las cinco ventanas**, y en el minuto 67.5 es casi exacta
+(1.227 declarado contra 1.231 medido). La rampa ajustada a ese objetivo
+degenera (`curvature≈0`, el optimizador colapsa contra el borde) y pierde en
+`selection` frente a la lineal (error `2.67` vs `1.14`).
+
+Conclusión: **la hipótesis que abrió DEC-216 era un artefacto de dos errores
+compuestos** -medir presión en vez de gol, y no controlar la confusión por
+fuerza en ninguno de los dos-. El gate la rechazó por la razón correcta, y la
+configuración servida (`linear_v1`) es la que la evidencia respalda. Es un
+cierre por determinación, no por agotamiento.
 
 **DEC-217 — capacidad desplegada, activación bloqueada por datos.** Primero
 hubo que **corregir la premisa, que era falsa**: los tipos que la decisión

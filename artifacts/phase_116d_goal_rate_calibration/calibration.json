@@ -1,0 +1,141 @@
+{
+  "classification": "rejected_for_revision",
+  "controlled_ratios": {
+    "fit": {
+      "1": {
+        "ci_high": 1.3068595659765605,
+        "ci_low": 0.8497207541992047,
+        "excludes_one": false,
+        "matches": 1420,
+        "midpoint": 22.5,
+        "observations": 2840,
+        "ratio": 1.0564154635939005,
+        "raw_ratio": 0.8233333333333333,
+        "variance": 0.014127022983740765
+      },
+      "2": {
+        "ci_high": 1.258047585540122,
+        "ci_low": 0.8732238906992216,
+        "excludes_one": false,
+        "matches": 2367,
+        "midpoint": 37.5,
+        "observations": 4734,
+        "ratio": 0.9805129023594671,
+        "raw_ratio": 0.812121212121212,
+        "variance": 0.010952338888577736
+      },
+      "3": {
+        "ci_high": 1.1937166381211752,
+        "ci_low": 0.923417898668362,
+        "excludes_one": false,
+        "matches": 2994,
+        "midpoint": 52.5,
+        "observations": 5988,
+        "ratio": 1.004821930932382,
+        "raw_ratio": 0.8908872901678657,
+        "variance": 0.00446032354731225
+      },
+      "4": {
+        "ci_high": 1.5600307867113359,
+        "ci_low": 1.1212453069022894,
+        "excludes_one": true,
+        "matches": 3475,
+        "midpoint": 67.5,
+        "observations": 6950,
+        "ratio": 1.2310911856541533,
+        "raw_ratio": 0.9765319426336374,
+        "variance": 0.012702770956079622
+      },
+      "5": {
+        "ci_high": 1.2981215563690522,
+        "ci_low": 1.0692151247899975,
+        "excludes_one": true,
+        "matches": 3693,
+        "midpoint": 82.5,
+        "observations": 7386,
+        "ratio": 1.1566681787612467,
+        "raw_ratio": 0.9667221297836939,
+        "variance": 0.003195872429651247
+      }
+    },
+    "selection": {
+      "1": {
+        "ci_high": 2.39652728305683,
+        "ci_low": 0.5994327822560581,
+        "excludes_one": false,
+        "matches": 455,
+        "midpoint": 22.5,
+        "observations": 910,
+        "ratio": 0.9722698945681162,
+        "raw_ratio": 0.9285714285714285,
+        "variance": 0.2008478886179963
+      },
+      "2": {
+        "ci_high": 1.7891978358725575,
+        "ci_low": 0.6937175489445676,
+        "excludes_one": false,
+        "matches": 722,
+        "midpoint": 37.5,
+        "observations": 1444,
+        "ratio": 1.1017148446331118,
+        "raw_ratio": 0.6764705882352942,
+        "variance": 0.11276785362732919
+      },
+      "3": {
+        "ci_high": 2.5716181930496194,
+        "ci_low": 1.23191607739477,
+        "excludes_one": true,
+        "matches": 931,
+        "midpoint": 52.5,
+        "observations": 1862,
+        "ratio": 1.4674254806210814,
+        "raw_ratio": 0.9652509652509653,
+        "variance": 0.10621984512367849
+      },
+      "4": {
+        "ci_high": 1.723068931574024,
+        "ci_low": 0.9233029231765623,
+        "excludes_one": false,
+        "matches": 1060,
+        "midpoint": 67.5,
+        "observations": 2120,
+        "ratio": 1.1192207287546672,
+        "raw_ratio": 0.7983193277310924,
+        "variance": 0.04283436002153893
+      },
+      "5": {
+        "ci_high": 1.7305304424228607,
+        "ci_low": 1.1108325698779793,
+        "excludes_one": true,
+        "matches": 1121,
+        "midpoint": 82.5,
+        "observations": 2242,
+        "ratio": 1.2772706172920132,
+        "raw_ratio": 1.0056022408963585,
+        "variance": 0.024830457106232492
+      }
+    }
+  },
+  "coverage": {
+    "confirmation_rows_read": 0,
+    "fit_rows": 68148,
+    "selection_rows": 22692
+  },
+  "fitted_parameters": {
+    "score_pressure_chasing_gain": 0.05446551540927904,
+    "score_pressure_curvature": 1e-06,
+    "score_pressure_onset_fraction": 0.6717656008895905,
+    "score_pressure_profile": "ramp_v2",
+    "score_pressure_protecting_drop": 0.1,
+    "score_pressure_protecting_floor": 0.78
+  },
+  "model_comparison": {
+    "linear_weighted_error_selection": 1.1389352853579762,
+    "ramp_weighted_error_selection": 2.6660817394905214,
+    "ramp_wins": false
+  },
+  "protocol": "fit_estimates_selection_chooses_confirmation_untouched",
+  "source_sha256": "64a6ae3d64b0e7e8b61954614417b650cdff9b512233d58c1f9e844ed92ade90",
+  "target_quantity": "goal_rate_ratio_controlled_for_own_and_rival_strength",
+  "why_this_target": "_score_factors multiplica intensidad de gol, no de presi\u00f3n; y el ratio crudo de gol est\u00e1 confundido por fuerza -quien gana suele ser el equipo mejor-, de modo que controlarlo invierte el signo"
+}
