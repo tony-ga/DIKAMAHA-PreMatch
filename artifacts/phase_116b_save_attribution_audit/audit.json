@@ -1,0 +1,73 @@
+{
+  "attribution": {
+    "note": "el texto nombra al portero y a su equipo, de modo que la proyecci\u00f3n debe invertir el equipo: el tirador es el rival",
+    "rate": 1.0,
+    "resolvable": 109,
+    "team_is_the_goalkeeper_side": true,
+    "threshold": 0.95,
+    "unresolvable": 0
+  },
+  "classification": "ready_for_gate",
+  "dedup_windows": {
+    "0.0": {
+      "duplicate_rate": 0.3577981651376147,
+      "duplicated": 39,
+      "implied_shots_on_target_per_match": 11.066666666666666,
+      "plausible": false,
+      "saves_kept": 70
+    },
+    "10.0": {
+      "duplicate_rate": 0.43119266055045874,
+      "duplicated": 47,
+      "implied_shots_on_target_per_match": 10.533333333333333,
+      "plausible": true,
+      "saves_kept": 62
+    },
+    "15.0": {
+      "duplicate_rate": 0.43119266055045874,
+      "duplicated": 47,
+      "implied_shots_on_target_per_match": 10.533333333333333,
+      "plausible": true,
+      "saves_kept": 62
+    },
+    "2.0": {
+      "duplicate_rate": 0.41284403669724773,
+      "duplicated": 45,
+      "implied_shots_on_target_per_match": 10.666666666666666,
+      "plausible": true,
+      "saves_kept": 64
+    },
+    "30.0": {
+      "duplicate_rate": 0.44036697247706424,
+      "duplicated": 48,
+      "implied_shots_on_target_per_match": 10.466666666666667,
+      "plausible": true,
+      "saves_kept": 61
+    },
+    "5.0": {
+      "duplicate_rate": 0.43119266055045874,
+      "duplicated": 47,
+      "implied_shots_on_target_per_match": 10.533333333333333,
+      "plausible": true,
+      "saves_kept": 62
+    },
+    "60.0": {
+      "duplicate_rate": 0.47706422018348627,
+      "duplicated": 52,
+      "implied_shots_on_target_per_match": 10.2,
+      "plausible": true,
+      "saves_kept": 57
+    }
+  },
+  "gates": {
+    "attribution_consistent": true,
+    "projection_lands_in_plausible_range": true,
+    "promotable": true
+  },
+  "goals_total": 52,
+  "matches": 15,
+  "naive_implied_shots_on_target_per_match": 13.666666666666666,
+  "recommended_dedup_window_seconds": 5.0,
+  "saves_total": 109,
+  "shots_on_target_total": 44
+}
