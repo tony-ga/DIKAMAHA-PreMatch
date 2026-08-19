@@ -247,6 +247,11 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | 114 | `live_markov_hawkes_v1` | validada históricamente e integrada en producto shadow | 7,400 partidos/34 ligas; API+Telegram muestran Markov, Hawkes residual y combinado; 17 ligas admitidas y fallback exacto |
 | 115 | `telegram_mini_app` | paridad visual y analítica desplegada; DEC-154 en producción | Catálogo de 49 ligas/torneos, detalle live automático, predictor externo tolerante a ausencia, cinta open/close/live aislada, curva de presión, logos, acciones y Markov/Hawkes/combinado separados |
 | 116 | `live_probability_engine_v1` | desplegado y oficial en producción | Poisson dinámico + CTMC + Hazard/Cox + Elo live + residual Hawkes; 7,400 partidos/34 ligas, gates causales completos, MC diagnóstico asincrónico y fallback Markov; confirmado en vivo vía `/v1/health` el 2026-08-12 |
+| 133 | `score_state_temporal_shape_reestimation` | propuesta, no ejecutada | Diagnóstico sobre 9,465 partidos propios (Fase 74) muestra que el diferencial de presión ganando-vs-perdiendo es indistinguible de cero en 1ª mitad (IC95% `[-0.1535,+0.0185]`) y fuertemente confirmado en 2ª (`-0.3586` IC95% `[-0.4377,-0.2797]`, n=7,782) -inspirado por un hallazgo similar pero no confirmado en hudl/open-data (31 partidos)-; sugiere que la forma lineal-desde-el-kickoff de `_score_factors` en `live_probability_engine_v1.py` (motor oficial desplegado) podría estar mal calibrada en FORMA, no sólo en magnitud (DEC-216). No promocionable desde este diagnóstico: exige split selección/confirmación propio y el runner histórico oficial contra Postgres antes de tocar el motor servido |
+| 131 | `fault_conditioned_corner_candidate` | evaluado, no promocionado | Faltas propias esperadas como covariable nueva del target `corners` (FULL_MATCH) de Fase 84A (DEC-213); el conteo bruto mejora marginalmente (deviance 3.0291→3.0231, MAE 3.1082→3.0868, estabilidad por liga 72%→76%) pero no se traduce en mejor probabilidad de línea: `home_corners_over_4_5` indistinguible y `away_corners_over_4_5` degrada de forma confirmada (IC95% `[-0.002943, -0.000046]`); `_gate()` no pasa, `team_count_market_runtime.py`/`APPROVED_MARKETS` sin tocar |
+| 130 | `live_engine_venue_asymmetry_term` | cerrada sin evidencia motivadora | Diseño condicional a que Fase 129 confirmara asimetría real de localía en la reacción in-play del motor; Fase 129 no la confirmó, así que esta fase se cierra sin diseñarse ni requerir acceso a Postgres (DEC-214) |
+| 129 | `favorite_venue_inplay_swing_analysis` | validada, negativa | El swing empírico real de "quién anota primero" y "estado al descanso" es igual de grande para favorito local y favorito visitante -IC95% de la asimetría cruza cero en ambos casos (DEC-214)-; la simetría de `LiveProbabilityEngineV1` no es un defecto |
+| 127-128 | `favorite_venue_temperature_and_blend_candidates` | evaluados, no promocionados | Temperatura y peso de mezcla de 1X2 segmentados por localía del favorito, con contracción jerárquica hacia los valores globales adoptados (DEC-200/201); ambos candidatos quedan indistinguibles de la composición ya servida (DEC-212); la fragilidad del favorito visitante medida en DEC-211 no vive en la capa de recalibración |
 | 126 | `pick_builder_v1` | implementada, sin liquidación | Menú `/constructor` que combina mercados ya publicados -de uno o de varios partidos- en una sola probabilidad conjunta (DEC-208): exacta sobre la matriz de marcadores para los mercados de gol, exacta sobre la propia escalera para dos líneas de la misma variable, y producto declarado entre variables y entre partidos; una selección única reproduce la probabilidad publicada, verificado con 42 pruebas nuevas contra valores de referencia calculados aparte; no congela ni liquida picks, así que no entra en el historial de aciertos |
 | 125 | `star_subscription_tiers` | implementada, cobro apagado | Niveles Free/Premium con suscripción mensual Telegram Stars a 250 ⭐ (~4.90 USD); equilibrio en 15 suscriptores contra un piso medido de ~46 USD/mes (Railway ~26 + Claude Pro 20), del que el 87% del gasto variable es PreMatch y escala con el catálogo, no con los usuarios; `plan` deja de ser un no-op y la titularidad se lee por petición con caché de 60 s en vez de confiar en la cookie de 30 días; cuota gratuita de 3 predicciones diarias por partido -no por petición- atómica en una sentencia y compartida entre bot, Mini App y tarjeta; caducidad calculada al leer, sin barrido; pagos escritos por un único proceso vía endpoint interno y reconciliados contra `getStarTransactions`; tres bloqueadores silenciosos corregidos (`allowed_updates` sin `pre_checkout_query`, la guarda de `text` que descartaba los cobros, y `/api/share` prediciendo sin medir); 133 Vitest/1 omitida, 21 pytest nuevas; nada gatea hasta `MINIAPP_BILLING_ENABLED=true` |
 | 123 | `high_probability_prospective_confirmation` | implementada, pendiente de primer despliegue | `src/high_probability_settlement.py` congela picks de `/v1/high-probability` con hash antes del kickoff y liquida contra `prediction_settlements` ya sellado; mercados de equipo liquidados por línea fija vía `explorer_statistics`, no por la rejilla dinámica de Fase 102; 12 pruebas nuevas, 702 Python/8 omitidas sin regresiones; cero cohorte real todavía |
@@ -268,6 +273,43 @@ los gates completos están en `docs/plan_markov_prematch_v4.md`.
 | `markov_live_v1` | validado históricamente, shadow | Baseline causal in-play; gate 7,400 partidos/34 ligas aprobado |
 | Hawkes v1 | legado shadow | No ampliar; reemplazado para la investigación live |
 | `hawkes_live_v2` | residual selectivo validado, shadow | `rho_goal=1` sólo en 17 ligas admitidas; próximo evento y demás ligas usan fallback Markov exacto |
+
+## Candidatos futuros bloqueados por datos
+
+- **BTTS / calidad de tiro (xG).** La investigación de fallos de predicción
+  sobre 1,000 partidos (`DEC-211`) encontró que el 86.5% de los fallos de
+  "ambos marcan" ocurren con el equipo que no anotó generando al menos un
+  tiro a puerta -no por ausencia total de juego ofensivo-, lo que sugiere que
+  falta una señal de calidad de tiro (xG) para distinguir "sin ocasiones" de
+  "ocasiones sin convertir". El corpus de Fase 74/ESPN no contiene ese campo
+  hoy. Mismo criterio que Fase 84B (`blocked_by_data`): no se mide hasta que
+  exista una ingesta de xG con snapshot pre-cutoff, clasificada primero según
+  `references/espn-bot-data-enrichment.md`.
+
+- **Tipos de evento auxiliares de ESPN (duelo/intercepción/desposesión) como
+  señal `live-only`.** El análisis de hudl/open-data (`DEC-217`) encontró que
+  un duelo ganado o una recuperación de balón preceden un tiro con 4.3-4.5x
+  más frecuencia de lo esperado, con una mediana de 1 segundo entre
+  recuperar el balón y rematar. `src/espn_event_taxonomy.py` ya clasifica
+  estos tipos en el feed crudo como `auxiliary` (`tackle`, `interception`,
+  `dispossessed`, `aerial`, `take_on`, entre otros), pero la tabla de
+  producción `events_timeline` sólo persiste 8 tipos por restricción `CHECK`
+  -los auxiliares nunca llegan a guardarse-. Candidato futuro concreto para
+  enriquecer la capa de hazard/CTMC del motor en vivo (hoy sólo pesa `foul`,
+  `EVENT_WEIGHTS["foul"]=0.08`), estrictamente `live-only`, nunca feature
+  pre-match. Bloqueado hasta confirmar con una muestra real que ESPN entrega
+  estos tipos con timestamp por evento en la práctica, y clasificar el campo
+  formalmente por `references/espn-bot-data-enrichment.md` antes de escribir
+  código o ampliar el esquema.
+
+- **Guardarraíl para Fase 84B: confusión de fuerza en features de
+  alineación.** El análisis de alineaciones de hudl (`DEC-218`) mostró que
+  "más defensores que el rival predice ganar por más goles" parecía real
+  (IC95% no cruzaba cero) pero era un artefacto -los equipos más débiles del
+  torneo eligen líneas de 3 defensores contra favoritos, y por eso pierden
+  por más, no al revés-. Cuando Fase 84B se desbloquee, cualquier feature de
+  formación/alineación debe pasar el mismo chequeo de confusión por fuerza
+  relativa esperada antes de tratarse como señal causal.
 
 ## Reglas no negociables
 

@@ -2,6 +2,181 @@
 
 **Actualizado:** 2026-08-18
 
+## De una investigación externa (hudl/open-data) a tres decisiones sobre el propio proyecto (DEC-216 a DEC-218)
+
+El usuario pidió investigar `github.com/hudl/open-data` (datos StatsBomb)
+exclusivamente 2025+, sin tocar producción, y luego convertir los hallazgos
+en decisiones de acción. Se recorrieron las 80 combinaciones competición/
+temporada del repositorio filtrando por `match_date` real: **31 partidos en
+total tienen fecha 2025+, todos la UEFA Women's Euro 2025 completa** -no una
+liga, un torneo-. Se analizaron los 31, con eventos StatsBomb de detalle
+(105,658 eventos), y por separado sus alineaciones/formaciones. Es fútbol
+femenino internacional, no las ligas de clubes masculinas que cubre
+DIKAMAHA -los hallazgos ahí no son directamente aplicables sin verificarse
+sobre datos propios-.
+
+**El hallazgo con más peso real, verificado sobre el corpus PROPIO de
+DIKAMAHA, no sobre hudl (DEC-216, Fase 133 propuesta).** hudl sugirió que
+"ir perdiendo aumenta intensidad ofensiva" tiene forma no-lineal -casi nula
+antes del minuto 60- pero con 31 partidos no se pudo confirmar. Probado
+sobre los 9,465 partidos de Fase 74: presión media ganando-vs-perdiendo es
+indistinguible de cero en primera mitad (IC95% `[-0.1535, +0.0185]`,
+n=4,586) y **fuertemente confirmada en segunda** (`-0.3586` IC95%
+`[-0.4377, -0.2797]`, n=7,782) -el IC95% más ajustado de todo este bloque
+de trabajo-. Sugiere que la forma lineal-desde-kickoff de `_score_factors`
+en `live_probability_engine_v1.py` (motor oficial desplegado) podría estar
+mal calibrada en FORMA. **No se tocó el motor**: es un diagnóstico
+motivador, no una promoción -exige su propio split selección/confirmación
+y el runner histórico oficial contra Postgres antes de cualquier cambio-.
+
+**Dos hallazgos quedaron como candidatos futuros documentados, sin código
+(DEC-217, DEC-218).** ESPN ya clasifica tipos de evento finos (duelo,
+intercepción, desposesión) en su taxonomía cruda, pero la tabla de
+producción `events_timeline` los descarta por una restricción de esquema
+-nunca se persisten-; queda como candidato `live-only` concreto para
+enriquecer el motor en vivo, bloqueado hasta confirmar con una muestra real
+y clasificar el campo por `references/espn-bot-data-enrichment.md`. Y un
+guardarraíl metodológico para Fase 84B: un análisis de formaciones que
+parecía mostrar una relación real resultó ser una confusión de fuerza
+relativa esperada -se documenta para no repetir el error cuando haya datos
+de alineación propios-.
+
+**Nada tocó producción.** Todo el análisis de hudl corrió en un directorio
+de trabajo temporal fuera del repositorio; el diagnóstico sobre el corpus
+propio de DIKAMAHA (Fase 133) es de solo lectura sobre un artefacto ya
+materializado. Tres entradas de `decision_log.md`, dos filas de roadmap
+-una fase nueva propuesta (133) y dos notas de candidatos futuros-, sin
+cambios de código servido ni pruebas nuevas que correr.
+
+## Por qué el favorito visitante falla más: la forma exacta del sesgo, y por qué la corrección todavía no confirma (DEC-215)
+
+Continuación directa de `DEC-212`, a pedido explícito del usuario de seguir
+investigando hasta encontrar algo concluyente. `DEC-212` había medido que ni
+la temperatura ni el peso de mezcla segmentados por localía del favorito
+distinguen del baseline -pero eso no explicaba *por qué*-.
+
+**El hallazgo.** Sobre un corpus independiente y más grande (3,538 partidos
+con favorito, `artifacts/walkforward_predictions/baseline.jsonl`, distinto
+del corpus de 1,000 partidos de `DEC-211`), se descompuso la fiabilidad de
+1X2 por clase en vez de mirar solo el log-loss agregado. El favorito
+visitante tiene un sesgo real y confirmado -IC95% no cruza cero- en dos de
+tres clases: declara `48.28%` de ganar y gana `44.37%` (+3.91pp de exceso);
+declara `26.25%` de perder y pierde `31.26%` (-5.00pp de defecto). La tasa de
+empate es *idéntica* entre favorito local y visitante (24.4% ambos) -la
+fragilidad extra no es "empata más", es "pierde en lugar de ganar"-. El
+favorito local no tiene ningún sesgo detectable en ninguna de las tres
+clases. Robusto a excluir la liga que más contribuye (`mex.1`, sólo 9% del
+subgrupo): el sesgo de "pierde" se mantiene casi igual.
+
+**Por qué la temperatura no podía encontrarlo.** Un solo parámetro simétrico
+no puede achicar específicamente "gana" y agrandar específicamente "pierde"
+dejando "empata" fijo -eso exige mover clases en direcciones distintas, no
+escalar las tres igual-. El resultado indistinguible de `DEC-212` queda
+explicado, no contradicho.
+
+**El candidato con la forma correcta, y por qué tampoco confirma todavía.**
+Dos sesgos aditivos en log-espacio, ajustados solo para el subgrupo
+favorito-visitante. Sin regularizar: dirección correcta pero inestable -24%
+de los partidos de confirmación voltean quién es favorito, IC95% cruza
+cero-, la firma clásica de sobreajuste con muestra chica (477 partidos en
+selección). Regularizado con penalización L2 elegida por validación cruzada
+-nunca toca confirmación-: para favorito local la CV elige la penalización
+máxima del grid, contrayendo el sesgo casi a cero -confirma que ahí no hay
+nada que corregir, coherente con `DEC-212`-; para favorito visitante elige
+una penalización moderada, los volteos de argmax bajan a 3.95%, pero el
+log-loss sigue indistinguible con esta muestra.
+
+**Conclusión honesta.** El sesgo es real, robusto y tiene forma identificada
+-no ausencia de señal-, pero la muestra de favoritos visitantes (477-582
+partidos según el corte) no alcanza para confirmar una corrección con el
+mismo rigor que el resto del proyecto exige. Es `insufficient_coverage`, no
+"rechazado" -misma distinción que ya usa Fase 92-. Repetir cuando el corpus
+de favoritos visitantes crezca -por ejemplo extendiendo el walk-forward al
+corpus de 9,465 partidos que hoy no se usa para esto-. Aviso de seguridad
+pendiente si algún día se confirma: a diferencia de la temperatura, esta
+corrección no garantiza preservar el argmax.
+
+Gates: sin cambios de código servido; dos scripts nuevos de evaluación de
+candidatos (`scripts/evaluate_favorite_venue_bias_correction.py`,
+`scripts/evaluate_favorite_venue_bias_correction_regularized.py`), ambos de
+solo lectura sobre artefactos ya materializados.
+
+## De una investigación de fallos de predicción a cuatro candidatos medidos, ninguno promocionado (DEC-211 a DEC-214)
+
+El usuario pidió transformar en decisiones de acción puntuales una
+investigación previa de fallos de predicción sobre 1,000 partidos reales
+(split `confirmation`, 21 ligas, bootstrap por partido). Cada hallazgo
+accionable se convirtió en un candidato medible con su propio gate, siguiendo
+exactamente los patrones ya validados por `DEC-200/201/202`: parámetro
+elegido en selección, medido en confirmación, partido completo como unidad
+IID. **Los cuatro candidatos quedaron medidos y ninguno se conecta** -el
+resultado en sí es la entrega, no una promoción-.
+
+**Temperatura y peso de mezcla de 1X2 por localía del favorito (DEC-212,
+Fases 127-128).** El favorito visitante falla más que el local (57.7% vs
+46.9%, IC95% `[-17.04, -4.30]`, `DEC-211`). `scripts/evaluate_favorite_venue_
+temperature.py` y `scripts/evaluate_favorite_venue_blend_weight.py`
+segmentaron T y el peso por {favorito local, favorito visitante} con
+contracción jerárquica hacia los valores globales adoptados (T=1.198935,
+peso=0.642848). Ambos quedan indistinguibles de la composición ya servida
+-log-loss `-0.000014` IC95% `[-0.000085, +0.000054]` para T; `-0.000210`
+IC95% `[-0.000428, +0.000001]` para el peso-. Lectura: la ventaja de localía
+ya está capturada por el prior estructural (Dixon-Coles); no queda un sesgo
+de calibración residual por localía del favorito que la recalibración pueda
+corregir. El problema medido en `DEC-211` es real, pero no vive en ninguna de
+las dos piezas de recalibración actuales.
+
+**¿Es real la asimetría de localía en la reacción in-play, o solo ausente en
+el motor? (DEC-214, Fase 129).** Un diagnóstico previo de solo lectura contra
+`LiveProbabilityEngineV1` había mostrado que el motor es perfectamente
+simétrico -diferencia = 0.0 exacta- entre gol de favorito local vs visitante
+primero, con inputs sintéticos. `scripts/analyze_favorite_venue_inplay_
+swing.py` midió el swing empírico real sobre el corpus de 1,000 partidos: es
+igual de grande para favorito local (n=654, swing primer gol `+0.5486`) y
+favorito visitante (n=338, swing `+0.5619`); la asimetría entre ambos cruza
+cero tanto para "quién anota primero" (`[-0.1295, +0.1081]`) como para
+"estado al descanso" (`[-0.1701, +0.1288]`). **La simetría del motor no es un
+defecto.** Fase 130 (término de reacción asimétrico en el motor) queda
+cerrada sin diseñarse -esta evidencia quita el motivo, no sólo el acceso a
+Postgres que habría hecho falta para confirmarla-.
+
+**Córners condicionados por faltas propias esperadas (DEC-213, Fase 131).**
+El fallo de córners correlaciona con exceso de faltas propias (`home_corners_
+over_4_5`: +1.17, IC95% `[0.57, 1.77]`; `away_corners_over_4_5`: +0.95, IC95%
+`[0.39, 1.50]`), pero el modelo de córners de Fase 84A nunca usó faltas como
+covariable. `scripts/build_fault_conditioned_corner_candidate.py` añadió un
+bloque de perfil causal de faltas -mismo suavizado que las 11 métricas ya
+declaradas- sólo al target `corners`, reconstruyendo el modelo servido con el
+mismo código para una comparación exacta. El conteo bruto mejora
+marginalmente (deviance `3.0291→3.0231`, MAE `3.1082→3.0868`, estabilidad por
+liga `72%→76%`), pero no se traduce en mejor probabilidad de línea:
+`home_corners_over_4_5` queda indistinguible y `away_corners_over_4_5`
+**degrada de forma confirmada** en log-loss (IC95% `[-0.002943, -0.000046]`).
+El `_gate()` de Fase 84A no pasa; Fase 132 (sincronización runtime) no se
+abre.
+
+**Documentación sin fase activa.** Tres hipótesis adicionales -roja no
+explica fallos de Over/Under 2.5, estado al descanso no explica fallos de
+córners, "cambio de régimen tras un gol" en Markov v4 Fase 80V- ya contaban
+con bootstrap por partido e IC95% que cruza cero o pertenecen a una familia
+ya archivada (`DEC-170`); se registraron en `DEC-211` como evidencia negativa
+sellada, sin abrir fase, para que no se reintenten sin datos nuevos. BTTS/xG
+-86.5% de los fallos de "ambos marcan" ocurren con el equipo fallido
+generando tiros a puerta, no por ausencia de juego ofensivo- queda anotado en
+`docs/00_roadmap_actual.md` como candidato futuro `blocked_by_data`, mismo
+criterio que Fase 84B: falta un campo de calidad de tiro (xG) que el corpus
+no tiene hoy.
+
+**Ningún artefacto servido cambió.** T global 1.198935, peso 0.642848 y el
+modelo de córners de Fase 84A siguen siendo exactamente los mismos; ningún
+router, `APPROVED_MARKETS` ni `LiveProbabilityEngineV1` se modificó.
+
+**Gates.** 51 pruebas existentes de `test_temperature_calibration.py`,
+`test_team_count_markets.py`, `test_team_count_market_runtime.py` y
+`test_repair_team_count_coverage_bias.py` sin regresiones -ningún archivo
+servido se tocó, sólo se añadieron scripts nuevos de evaluación de
+candidatos-.
+
 ## Más gráficas de volumen en "Mayor probabilidad" y refresco periódico (DEC-210)
 
 Ver `DEC-210`. Tras DEC-209 el usuario no veía el diagrama de fiabilidad y
