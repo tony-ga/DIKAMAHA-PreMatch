@@ -1,0 +1,39 @@
+{
+  "conclusion": "aporte incremental medido: existe un candidato que construir",
+  "incremental": {
+    "ci_high": 0.001278260773569909,
+    "ci_low": 0.0006791582919230806,
+    "crosses_zero": false,
+    "mean_delta_deviance": 0.0009865914582988685,
+    "verdict": "save aporta informaci\u00f3n"
+  },
+  "matches": 9405,
+  "mean_saves_per_observation": 0.9138392471725805,
+  "models": {
+    "baseline": {
+      "coefficients": {
+        "corner": 0.016724516180167372,
+        "shot_blocked": 0.012537066142444233,
+        "shot_off_target": 0.014804348807491076,
+        "shot_on_target": 0.010126836592864395,
+        "window": 0.006177869334612992
+      },
+      "mean_deviance": 0.7325501311489485
+    },
+    "con_save": {
+      "coefficients": {
+        "corner": 0.01746416131330323,
+        "save": -0.02034121971335095,
+        "shot_blocked": 0.012351449969699795,
+        "shot_off_target": 0.014403410700456655,
+        "shot_on_target": 0.00999579072478403,
+        "window": 0.0064805302089561345
+      },
+      "mean_deviance": 0.7315635396906497
+    }
+  },
+  "observations": 69498,
+  "protocol": "poisson_regression_out_of_sample_split_by_match",
+  "question": "\u00bfel volumen de `save` predice goles futuros por encima de los eventos que el motor ya consume?",
+  "unit": "complete_match"
+}

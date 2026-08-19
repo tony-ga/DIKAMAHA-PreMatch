@@ -6,7 +6,11 @@ import math
 
 import pytest
 
-from src.markov_live_v1 import MarkovLiveInput, MarkovLiveV1
+from src.markov_live_v1 import (
+    MarkovLiveConfig,
+    MarkovLiveInput,
+    MarkovLiveV1,
+)
 
 
 def _request(**changes: object) -> MarkovLiveInput:
@@ -150,3 +154,72 @@ def test_transition_count_is_invariant_to_event_fragmentation() -> None:
     fragmented = model.predict(_request(events=auxiliary))
     assert fragmented["state"] == baseline["state"]
     assert fragmented["lambda_remaining_home"] == baseline["lambda_remaining_home"]
+
+
+# --- Señal defensiva `save` (`DEC-217`, Fases 116G/116H) -------------------
+#
+# `save` no es una parada de portero -7.06 jugadores distintos por partido lo
+# registran, incluidos delanteros- así que proyectarlo a `shot_on_target` fue
+# rechazado en 116F. Pero sí aporta información incremental sobre los goles de
+# la ventana siguiente, con coeficiente NEGATIVO: quien acumula paradas está
+# defendiendo, no atacando. Entra como tipo propio con peso negativo.
+
+
+def test_a_save_is_accepted_as_its_own_defensive_signal() -> None:
+    """Llega como `auxiliary` + `event_type_raw`, la forma real del follower."""
+
+    events = ({
+        "event_id": "s1",
+        "event_type": "auxiliary",
+        "event_type_raw": "save",
+        "team_id": 2,
+        "match_clock_seconds": 300.0,
+    },)
+
+    result = MarkovLiveV1().predict(_request(events=events))
+
+    assert result["events_audit"]["defensive_signals"] == 1
+    used = result["events_used"]
+    assert len(used) == 1
+    assert used[0]["event_type"] == "save"
+    # No se reasigna al rival: la señal describe a quien defiende.
+    assert used[0]["team_id"] == 2
+
+
+def test_the_defensive_weight_is_negative() -> None:
+    """El signo lo fijó la medición, no el criterio: defender no es atacar."""
+
+    assert MarkovLiveV1.EVENT_WEIGHTS["save"] < 0.0
+
+
+def test_disabling_the_signal_restores_the_previous_behaviour() -> None:
+    events = (
+        {"event_id": "a", "event_type": "shot_on_target", "team_id": 1,
+         "match_clock_seconds": 120.0},
+        {"event_id": "s", "event_type": "auxiliary", "event_type_raw": "save",
+         "team_id": 2, "match_clock_seconds": 300.0},
+    )
+    request = _request(events=events)
+
+    disabled = MarkovLiveV1(
+        MarkovLiveConfig(enable_defensive_save_signal=False)).predict(request)
+
+    assert disabled["events_audit"]["unmodelled"] == 1
+    assert disabled["events_audit"]["accepted"] == 1
+    assert disabled["events_audit"].get("defensive_signals", 0) == 0
+
+
+def test_other_auxiliaries_are_still_discarded_with_the_signal_on() -> None:
+    """Sólo `save` entra; el resto de auxiliares siguen fuera del modelo."""
+
+    events = (
+        {"event_id": "t", "event_type": "auxiliary", "event_type_raw": "throw_in",
+         "team_id": 1, "match_clock_seconds": 200.0},
+        {"event_id": "f", "event_type": "auxiliary", "event_type_raw": "free_kick",
+         "team_id": 2, "match_clock_seconds": 250.0},
+    )
+
+    result = MarkovLiveV1().predict(_request(events=events))
+
+    assert result["events_used"] == []
+    assert result["events_audit"]["unmodelled"] == 2

@@ -1,0 +1,242 @@
+{
+  "classification": "ready_for_activation",
+  "coverage": {
+    "eligible_matches": 7400,
+    "minimum_leagues": 20,
+    "minimum_matches": 5000,
+    "represented_leagues": 34
+  },
+  "database_audit": {
+    "counts_after": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_before": {
+      "events": 1349977,
+      "matches": 10251
+    },
+    "counts_identical": true,
+    "event_source_hash": "5b6de4089e4c743531cedf4dc8223d923ef0d3621180e925c90256ba81137333",
+    "match_source_hash": "21abe3f79635778c0c4fa804c3216791c792b7932f2b14e7aeea6febbc492e1d",
+    "model_events": 402631,
+    "postgresql_writes": 0,
+    "read_only": true,
+    "reconciled_regulation_matches": 9649,
+    "represented_leagues": 42
+  },
+  "gates": {
+    "coverage_leagues": true,
+    "coverage_matches": true,
+    "database_read_only": true,
+    "database_unchanged": true,
+    "no_confirmed_degradation": true,
+    "priors_strictly_prior": true,
+    "promotable": true,
+    "technical_audits_passed": true
+  },
+  "partition": {
+    "development_end": "2025-09-26T18:30:00+00:00",
+    "kickoff_counts": {
+      "confirmation": 645,
+      "development": 1935,
+      "validation": 645
+    },
+    "kickoff_overlap": 0,
+    "match_counts": {
+      "confirmation": 1397,
+      "development": 4417,
+      "validation": 1586
+    },
+    "match_overlap": 0,
+    "validation_end": "2025-11-20T21:00:00+00:00"
+  },
+  "prior_audit": {
+    "atomic_same_kickoff_updates": true,
+    "cold_start_matches_excluded": 2249,
+    "prior_count": 7400,
+    "strictly_prior": true
+  },
+  "protocol": "validation_selects_confirmation_reports_once",
+  "signal": "defensive_save_v1",
+  "splits": {
+    "confirmation": {
+      "aggregate": {
+        "con_save": {
+          "league_count": 32,
+          "match_count": 1397,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17419591020154887,
+              "btts_log_loss": 0.49885827384600107,
+              "goal_market_brier": 0.1908383771947693,
+              "goal_market_log_loss": 0.591605834813928,
+              "next_event_brier": 0.4533372313109655,
+              "next_event_log_loss": 2.3701960771660135,
+              "objective": 1.0362533954019493,
+              "one_x_two_brier": 0.233164026766349,
+              "one_x_two_log_loss": 0.7930544318111227,
+              "over_2_5_brier": 0.1651551946164099,
+              "over_2_5_log_loss": 0.4829047987846601
+            }
+          }
+        },
+        "sin_save": {
+          "league_count": 32,
+          "match_count": 1397,
+          "models": {
+            "engine": {
+              "btts_brier": 0.1741897734424893,
+              "btts_log_loss": 0.4988419638135438,
+              "goal_market_brier": 0.19084995992189127,
+              "goal_market_log_loss": 0.5916670489033098,
+              "next_event_brier": 0.4533866635500951,
+              "next_event_log_loss": 2.370421253590898,
+              "objective": 1.036355600075207,
+              "one_x_two_brier": 0.23325482239166023,
+              "one_x_two_log_loss": 0.7934006444052695,
+              "over_2_5_brier": 0.16510528393152432,
+              "over_2_5_log_loss": 0.4827585384911162
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline": {
+        "goal_market_log_loss": {
+          "ci_high": 0.00023247432082547956,
+          "ci_low": -0.00010331907181859251,
+          "crosses_zero": true,
+          "mean": 6.121408938186782e-05,
+          "verdict": "indistinguible"
+        },
+        "matches": 1397,
+        "next_event_log_loss": {
+          "ci_high": 0.0010323491985304752,
+          "ci_low": -0.00053962932520546,
+          "crosses_zero": true,
+          "mean": 0.00022517642488465128,
+          "verdict": "indistinguible"
+        },
+        "objective": {
+          "ci_high": 0.00033466196170869525,
+          "ci_low": -0.00013210280735528762,
+          "crosses_zero": true,
+          "mean": 0.00010220467325756486,
+          "verdict": "indistinguible"
+        },
+        "one_x_two_log_loss": {
+          "ci_high": 0.0007469776403692055,
+          "ci_low": -4.937056205142368e-05,
+          "crosses_zero": true,
+          "mean": 0.0003462125941467366,
+          "verdict": "indistinguible"
+        }
+      },
+      "snapshots": {
+        "con_save": 6985,
+        "sin_save": 6985
+      },
+      "technical": {
+        "con_save": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "70b75273dc8155192b5e8481f35873ba5745dacc240c5a95156e34e8e8cee256"
+        },
+        "sin_save": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "f702968c447d9d623296c047bc740ac461b77ce5fcf7ac83256096f109faa85c"
+        }
+      }
+    },
+    "validation": {
+      "aggregate": {
+        "con_save": {
+          "league_count": 31,
+          "match_count": 1586,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17230779803774762,
+              "btts_log_loss": 0.49614129053604655,
+              "goal_market_brier": 0.18841319963309833,
+              "goal_market_log_loss": 0.585441201635835,
+              "next_event_brier": 0.45358985886685965,
+              "next_event_log_loss": 2.3713470874042892,
+              "objective": 1.0319176730779485,
+              "one_x_two_brier": 0.2293737405695323,
+              "one_x_two_log_loss": 0.7809320183158853,
+              "over_2_5_brier": 0.16355806029201503,
+              "over_2_5_log_loss": 0.4792502960555732
+            }
+          }
+        },
+        "sin_save": {
+          "league_count": 31,
+          "match_count": 1586,
+          "models": {
+            "engine": {
+              "btts_brier": 0.17230323742213638,
+              "btts_log_loss": 0.4961450962728235,
+              "goal_market_brier": 0.18844760323925566,
+              "goal_market_log_loss": 0.585532742750167,
+              "next_event_brier": 0.4537035277411931,
+              "next_event_log_loss": 2.3720491053893458,
+              "objective": 1.0321618334099616,
+              "one_x_two_brier": 0.22946753936459197,
+              "one_x_two_log_loss": 0.7811728798659512,
+              "over_2_5_brier": 0.16357203293103867,
+              "over_2_5_log_loss": 0.4792802521117263
+            }
+          }
+        }
+      },
+      "candidate_minus_baseline": {
+        "goal_market_log_loss": {
+          "ci_high": 0.0002352972825235623,
+          "ci_low": -7.06937413183476e-05,
+          "crosses_zero": true,
+          "mean": 9.154111433198406e-05,
+          "verdict": "indistinguible"
+        },
+        "matches": 1586,
+        "next_event_log_loss": {
+          "ci_high": 0.001410886059175179,
+          "ci_low": -6.637489099069779e-06,
+          "crosses_zero": true,
+          "mean": 0.0007020179850564067,
+          "verdict": "indistinguible"
+        },
+        "objective": {
+          "ci_high": 0.0004540546601917887,
+          "ci_low": 1.7594553522205482e-05,
+          "crosses_zero": false,
+          "mean": 0.0002441603320130902,
+          "verdict": "mejora confirmada"
+        },
+        "one_x_two_log_loss": {
+          "ci_high": 0.000572524090977422,
+          "ci_low": -0.00011612179805959703,
+          "crosses_zero": true,
+          "mean": 0.000240861550065964,
+          "verdict": "indistinguible"
+        }
+      },
+      "snapshots": {
+        "con_save": 7930,
+        "sin_save": 7930
+      },
+      "technical": {
+        "con_save": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "e3dff5c9765bd4fa16799608abba77783453ece5424f10e68a4d3277b144be8c"
+        },
+        "sin_save": {
+          "audits_passed": true,
+          "markets_normalized": true,
+          "replay_hash": "912cb2d24059ed8457df034ba5ca642898eebeaa916d7e3d28e1d7c22c58d1e8"
+        }
+      }
+    }
+  },
+  "unit": "complete_match"
+}

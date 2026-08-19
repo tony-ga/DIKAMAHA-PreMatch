@@ -48,7 +48,39 @@ fuerza en ninguno de los dos-. El gate la rechazó por la razón correcta, y la
 configuración servida (`linear_v1`) es la que la evidencia respalda. Es un
 cierre por determinación, no por agotamiento.
 
-**DEC-217 — RECHAZADA tras autorizar el desbloqueo.** El usuario autorizó
+**DEC-217 — ACTIVADA, tras rechazar el mapeo equivocado y encontrar el bueno.**
+El recorrido tuvo dos fases y la segunda cambia el resultado.
+
+Primero se rechazó proyectar `save` a `shot_on_target`: no es una parada de
+portero -12.72 por partido contra 5.31 tiros a puerta, **7.06 jugadores
+distintos por partido** lo registran, los textos crudos incluyen centrales y
+a Rashford, delantero, y el 53.3% coincide con un `shot_blocked` ya contado-.
+Ese mapeo se retiró. Al cerrarlo quedó apuntada una continuación: el
+candidato defendible no era proyectarlo sino **darle peso propio**.
+
+Esa continuación se construyó y se midió. La pregunta previa -¿aporta `save`
+información que el motor no tenga ya?- se respondió con dos regresiones de
+Poisson fuera de muestra sobre 69,498 observaciones de 9,405 partidos:
+**delta de deviance `+0.000987`, IC95% `[+0.000679, +0.001278]`, no cruza
+cero**. Y con un coeficiente **negativo** frente a los positivos del resto:
+quien acumula paradas está defendiendo. Es presión **recibida**, algo que el
+motor no tenía en ninguna forma porque todos sus pesos describen presión
+ejercida.
+
+El gate histórico sobre 7,400 partidos y 34 ligas da las cuatro medidas
+positivas, **ninguna degradando**, con mejora confirmada del objetivo
+compuesto en validation (`+0.000244`, IC95% `[+0.000018, +0.000454]`).
+Materialmente distinto del caso de DEC-216, cuya rampa sí degradaba. Bajo el
+gate vinculante de DEC-155 queda `ready_for_activation`, y se activó:
+`enable_defensive_save_signal=True`, `save` como tipo propio con peso `-0.60`
+en la cadena y `-0.45` en el motor, fijados a priori desde la magnitud del
+coeficiente para no gastar los bloques en tuning.
+
+El efecto es pequeño y así se reporta: confirmado en validation, no
+confirmado en confirmation, positivo en las cuatro medidas. Poner el flag en
+`False` reproduce el comportamiento anterior, y una prueba lo exige.
+
+**DEC-217 (registro anterior del mapeo rechazado) —** El usuario autorizó
 migración, backfill y recalibración. El primer paso -localizar la tabla a
 migrar- reveló que **nada de eso hacía falta**: los `save` ya están en
 `prospective_staging_v2.events` (81,872 eventos en 6,434 de 9,786 partidos,

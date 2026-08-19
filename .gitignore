@@ -75,6 +75,12 @@ artifacts/phase_116d_goal_rate_calibration/*
 !artifacts/phase_116e_save_projection_e2e/
 artifacts/phase_116e_save_projection_e2e/*
 !artifacts/phase_116e_save_projection_e2e/e2e.json
+!artifacts/phase_116g_save_incremental_information/
+artifacts/phase_116g_save_incremental_information/*
+!artifacts/phase_116g_save_incremental_information/incremental.json
+!artifacts/phase_116h_defensive_save_gate/
+artifacts/phase_116h_defensive_save_gate/*
+!artifacts/phase_116h_defensive_save_gate/gate.json
 !artifacts/phase_122_confidence_reliability/
 artifacts/phase_122_confidence_reliability/*
 !artifacts/phase_122_confidence_reliability/eligibility.json

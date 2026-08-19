@@ -23,6 +23,15 @@ MODEL_EVENT_TYPES = frozenset({
     "foul", "yellow", "red", "substitution", "penalty_awarded",
     "penalty_scored",
 })
+# `save` no es una parada de portero: 7.06 jugadores distintos por partido lo
+# registran y el 53.3% coincide con un `shot_blocked` ya contado (`DEC-217`,
+# Fase 116F). Pero sí aporta información incremental sobre los goles de la
+# ventana siguiente -Fase 116G, delta de deviance `+0.000987`, IC95%
+# `[+0.000679, +0.001278]` sobre 9,405 partidos fuera de muestra- y su
+# coeficiente es **negativo**: quien acumula paradas está defendiendo, no
+# atacando. Entra como tipo propio con peso negativo, nunca proyectado a otro
+# tipo, y sólo cuando la configuración lo habilita.
+DEFENSIVE_EVENT_TYPE = "save"
 
 
 def _stable_hash(value: Any) -> str:
@@ -151,6 +160,12 @@ class MarkovLiveConfig:
     )
     state_goal_multipliers_home: tuple[float, ...] = (1.0, 1.24, 0.86, 1.15)
     state_goal_multipliers_away: tuple[float, ...] = (1.0, 0.86, 1.24, 1.15)
+    # `save` como señal de presión RECIBIDA (`DEC-217`, Fases 116G/116H).
+    # Activada: el gate histórico sobre 7,400 partidos y 34 ligas no encontró
+    # degradación en ninguna métrica y sí una mejora confirmada del objetivo
+    # compuesto en validation (`+0.000244`, IC95% `[+0.000018, +0.000454]`).
+    # Ponerla en `False` reproduce exactamente el comportamiento anterior.
+    enable_defensive_save_signal: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,6 +203,9 @@ class MarkovLiveV1:
         "yellow": 0.25,
         "foul": 0.15,
         "substitution": 0.10,
+        # Negativo por medición, no por criterio: quien acumula paradas está
+        # bajo asedio. Sólo se aplica si `enable_defensive_save_signal`.
+        "save": -0.60,
     }
 
     BASE_EVENT_RATES = {
@@ -348,9 +366,22 @@ class MarkovLiveV1:
             if bool(event.get("annulled", False)):
                 audit["annulled"] += 1
                 continue
-            if event_type not in MODEL_EVENT_TYPES:
+            if event_type == "auxiliary":
+                # El follower colapsa los auxiliares en una sola etiqueta y
+                # deja el tipo real en `event_type_raw`; mirar sólo el
+                # canónico dejaría la señal inalcanzable sin dar ningún error.
+                raw = str(event.get("event_type_raw") or "").strip().lower()
+                if (self.config.enable_defensive_save_signal
+                        and raw.replace("-", "_") == DEFENSIVE_EVENT_TYPE):
+                    event_type = DEFENSIVE_EVENT_TYPE
+            allowed = MODEL_EVENT_TYPES | (
+                {DEFENSIVE_EVENT_TYPE} if self.config.enable_defensive_save_signal
+                else frozenset())
+            if event_type not in allowed:
                 audit["unmodelled"] += 1
                 continue
+            if event_type == DEFENSIVE_EVENT_TYPE:
+                audit["defensive_signals"] = audit.get("defensive_signals", 0) + 1
             team_id = event.get("team_id")
             if team_id not in {request.home_team_id, request.away_team_id}:
                 audit["missing_team"] += 1

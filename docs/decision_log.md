@@ -6327,11 +6327,44 @@ sus pruebas con él. Dejar un mapeo factualmente falso detrás de un flag es una
 trampa: invita a que alguien lo active más adelante apoyándose en el texto
 anterior de esta decisión. Se conservan los scripts de auditoría (116B, 116E)
 como evidencia del recorrido.
-Continuación permitida: ninguna sobre `save`. Si en el futuro se quisiera
-aprovechar los auxiliares, el candidato defendible no es proyectarlos a un
-tipo existente sino **darles su propio peso** en `EVENT_WEIGHTS` como
-categoría propia, y sólo tras comprobar que aportan algo que `shot_blocked` y
-`shot_on_target` no cubren ya.
+**Fases 116G/116H: ese candidato se construyó, se midió y SE ACTIVÓ.** La
+continuación que 116F dejó apuntada -dar a `save` peso propio en vez de
+proyectarlo- no se quedó en sugerencia.
+116G responde primero la pregunta previa: ¿aporta `save` información que el
+motor no tenga ya? Dos regresiones de Poisson sobre los goles de la ventana
+siguiente, una con los eventos que el motor consume (`shot_on_target`,
+`shot_blocked`, `shot_off_target`, `corner`) y otra que añade `save`, medidas
+fuera de muestra con partición y remuestreo **por partido**: 69,498
+observaciones de 9,405 partidos. Delta de deviance `+0.000987`, IC95%
+`[+0.000679, +0.001278]`, **no cruza cero**. Y el coeficiente de `save` es
+**negativo** (`-0.02034`) mientras los cuatro eventos del motor son positivos:
+quien acumula paradas está **defendiendo**, no atacando. Es una señal de
+presión recibida que el motor no tenía en ninguna forma, porque todos sus
+pesos describen presión ejercida. Artefacto:
+`artifacts/phase_116g_save_incremental_information/incremental.json`.
+116H lo lleva al gate histórico con la consulta extendida para incluir los
+81,872 `save` que el query oficial excluía. Sobre 7,400 partidos y 34 ligas,
+lectura verificada sin escrituras:
+- `validation` (1,586 partidos): objetivo compuesto `+0.000244` IC95%
+  `[+0.000018, +0.000454]`, **mejora confirmada**; 1X2 log-loss `+0.000241`,
+  indistinguible;
+- `confirmation` (1,397 partidos): 1X2 `+0.000346` y objetivo `+0.000102`,
+  ambos indistinguibles.
+**Las cuatro medidas son positivas y ninguna degrada**, con una mejora
+confirmada. Es materialmente distinto del caso de `DEC-216`, cuya rampa sí
+degradaba de forma confirmada. Bajo el gate vinculante de `DEC-155` -técnico,
+con las métricas OOS como diagnóstico- el candidato queda `ready_for_
+activation`. Artefacto:
+`artifacts/phase_116h_defensive_save_gate/gate.json`.
+Estado final: **activada**. `enable_defensive_save_signal` pasa a `True` por
+defecto; `save` entra como tipo propio con peso `-0.60` en la cadena Markov y
+`-0.45` en el motor. Los pesos se fijaron **a priori** desde la magnitud
+relativa del coeficiente de 116G, no barriendo sobre validation, para no
+gastar los bloques en tuning. Poner el flag en `False` reproduce exactamente
+el comportamiento anterior, y hay una prueba que lo exige.
+El efecto es pequeño y honesto: confirmado en el objetivo compuesto de
+validation, no confirmado en confirmation, positivo en las cuatro medidas.
+No se reclama ventaja económica ni superioridad general.
 
 
 DEC-218

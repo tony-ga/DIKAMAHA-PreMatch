@@ -286,6 +286,10 @@ class LiveProbabilityEngineV1:
         "yellow": 0.12,
         "red": -0.75,
         "substitution": 0.04,
+        # Señal de presión RECIBIDA (`DEC-217`, Fase 116G): quien acumula
+        # paradas está defendiendo. Sólo llega aquí si `markov_live_v1` la
+        # admite, es decir con `enable_defensive_save_signal` activo.
+        "save": -0.45,
     }
 
     def __init__(self, config: LiveProbabilityEngineConfig | None = None) -> None:
