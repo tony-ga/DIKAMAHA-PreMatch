@@ -34,6 +34,10 @@ except ModuleNotFoundError:  # pragma: no cover - ejecución directa
 
 CONTRACT_VERSION = "live_probability_engine_contract_v1"
 MODEL_VERSION = "live_probability_engine_v1"
+# Perfiles de forma temporal para la presión de marcador (`DEC-216`).
+PRESSURE_PROFILE_LINEAR = "linear_v1"
+PRESSURE_PROFILE_RAMP = "ramp_v2"
+PRESSURE_PROFILES = frozenset({PRESSURE_PROFILE_LINEAR, PRESSURE_PROFILE_RAMP})
 REGIME_NAMES = ("home_pressure", "balanced", "away_pressure")
 GOAL_TYPES = frozenset({"goal", "penalty_scored"})
 # Espejo de VISIBLE_LINE_MIN/MAX/GRID_SIZE en team_count_market_runtime.
@@ -250,6 +254,21 @@ class LiveProbabilityEngineConfig:
     elo_points_per_goal: float = 82.0
     elo_points_per_pressure: float = 26.0
     elo_points_per_red_card: float = 95.0
+    # Forma temporal de la presión de marcador (`DEC-216`). `linear_v1` es la
+    # forma histórica: el efecto crece proporcional al minuto desde el saque
+    # inicial. `ramp_v2` no hace nada hasta `onset_fraction` y crece después,
+    # que es lo que muestra el corpus de Fase 74 -en las ventanas de primera
+    # mitad la diferencia de presión entre ir ganando e ir perdiendo cruza
+    # cero, y sólo se confirma a partir del minuto 45-.
+    #
+    # Los valores por defecto reproducen `linear_v1` exactamente, de modo que
+    # el motor servido no cambia mientras no se activen desde configuración.
+    score_pressure_profile: str = "linear_v1"
+    score_pressure_onset_fraction: float = 0.0
+    score_pressure_curvature: float = 1.0
+    score_pressure_chasing_gain: float = 0.18
+    score_pressure_protecting_drop: float = 0.10
+    score_pressure_protecting_floor: float = 0.78
 
 
 class LiveProbabilityEngineV1:
@@ -299,6 +318,33 @@ class LiveProbabilityEngineV1:
             raise ValueError("live_ctmc_rows_must_sum_zero")
         if self.config.segment_minutes <= 0.0:
             raise ValueError("invalid_live_segment_minutes")
+        self._validate_score_pressure()
+
+    def _validate_score_pressure(self) -> None:
+        """Rechaza una forma temporal que no produciría multiplicadores útiles."""
+
+        config = self.config
+        if config.score_pressure_profile not in PRESSURE_PROFILES:
+            raise ValueError("invalid_live_score_pressure_profile")
+        values = (
+            config.score_pressure_onset_fraction,
+            config.score_pressure_curvature,
+            config.score_pressure_chasing_gain,
+            config.score_pressure_protecting_drop,
+            config.score_pressure_protecting_floor,
+        )
+        if any(not math.isfinite(float(value)) for value in values):
+            raise ValueError("invalid_live_score_pressure_non_finite")
+        if not 0.0 <= config.score_pressure_onset_fraction < 1.0:
+            raise ValueError("invalid_live_score_pressure_onset")
+        if config.score_pressure_curvature <= 0.0:
+            raise ValueError("invalid_live_score_pressure_curvature")
+        if config.score_pressure_chasing_gain < 0.0:
+            raise ValueError("invalid_live_score_pressure_chasing_gain")
+        if config.score_pressure_protecting_drop < 0.0:
+            raise ValueError("invalid_live_score_pressure_protecting_drop")
+        if not 0.0 < config.score_pressure_protecting_floor <= 1.0:
+            raise ValueError("invalid_live_score_pressure_protecting_floor")
 
     def predict(
         self,
@@ -875,19 +921,46 @@ class LiveProbabilityEngineV1:
         )
         return [row for row in rows if row["lines"]]
 
-    @staticmethod
     def _score_factors(
-        request: MarkovLiveInput, midpoint: float, duration: float,
+        self, request: MarkovLiveInput, midpoint: float, duration: float,
     ) -> tuple[float, float]:
+        """Multiplicadores de intensidad de quien persigue y quien protege.
+
+        Un empate devuelve `(1.0, 1.0)` bajo cualquier perfil: sin diferencia
+        de marcador no hay resultado que perseguir ni que proteger.
+        """
+
         difference = request.score_home - request.score_away
-        late = min(1.0, midpoint / max(duration, 1.0))
-        chasing = 1.0 + 0.18 * late
-        protecting = max(0.78, 1.0 - 0.10 * late)
+        if difference == 0:
+            return 1.0, 1.0
+        late = self._pressure_progress(midpoint, duration)
+        chasing = 1.0 + self.config.score_pressure_chasing_gain * late
+        protecting = max(
+            self.config.score_pressure_protecting_floor,
+            1.0 - self.config.score_pressure_protecting_drop * late,
+        )
         if difference < 0:
             return chasing, protecting
-        if difference > 0:
-            return protecting, chasing
-        return 1.0, 1.0
+        return protecting, chasing
+
+    def _pressure_progress(self, midpoint: float, duration: float) -> float:
+        """Fracción de presión de marcador ya acumulada en este instante.
+
+        `linear_v1` conserva la rama histórica de forma literal en vez de
+        delegarla en la rampa con `onset=0`/`curvature=1`. Algebraicamente son
+        la misma expresión, pero mantenerla aparte garantiza que la salida
+        oficial es idéntica bit a bit y no depende de que `x ** 1.0` devuelva
+        exactamente `x` en coma flotante.
+        """
+
+        raw = min(1.0, midpoint / max(duration, 1.0))
+        if self.config.score_pressure_profile == PRESSURE_PROFILE_LINEAR:
+            return raw
+        onset = self.config.score_pressure_onset_fraction
+        if raw <= onset:
+            return 0.0
+        return ((raw - onset) / (1.0 - onset)) ** (
+            self.config.score_pressure_curvature)
 
     def _period_markets(
         self, request: MarkovLiveInput, segments: list[dict[str, Any]],

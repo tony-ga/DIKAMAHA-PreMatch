@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from src.hawkes_live_v2 import HawkesLiveConfig
 from src.live_probability_engine_v1 import (
+    LiveProbabilityEngineConfig,
     LiveProbabilityEngineV1,
     MonteCarloDiagnosticRunner,
 )
@@ -343,6 +346,170 @@ def test_official_live_prediction_is_unchanged_by_the_new_block() -> None:
     assert set(official["remaining_intensities"]) == {"home", "away"}
 
 
-# Version: 1.1.0
+# --- Forma temporal de la presión de marcador (`DEC-216`) -------------------
+#
+# El corpus causal de Fase 74 (9,465 partidos) muestra que la diferencia de
+# presión entre ir ganando e ir perdiendo cruza cero en las ventanas de
+# primera mitad y sólo se confirma a partir del minuto 45. La forma histórica
+# `linear_v1` reparte ese efecto desde el saque inicial. `ramp_v2` permite
+# representar el retardo, y estas pruebas fijan que activarlo es una decisión
+# explícita: mientras no se cambie la configuración, el motor servido responde
+# exactamente igual que antes.
+
+
+def _legacy_score_factors(
+    score_home: int, score_away: int, midpoint: float, duration: float,
+) -> tuple[float, float]:
+    """Reproduce literalmente la fórmula previa a `DEC-216`."""
+
+    difference = score_home - score_away
+    late = min(1.0, midpoint / max(duration, 1.0))
+    chasing = 1.0 + 0.18 * late
+    protecting = max(0.78, 1.0 - 0.10 * late)
+    if difference < 0:
+        return chasing, protecting
+    if difference > 0:
+        return protecting, chasing
+    return 1.0, 1.0
+
+
+def test_default_score_profile_reproduces_the_legacy_linear_factors() -> None:
+    engine = LiveProbabilityEngineV1()
+
+    for score_home, score_away in ((0, 0), (1, 0), (0, 1), (2, 1), (1, 3)):
+        request = _request(score_home=score_home, score_away=score_away)
+        for midpoint in (0.0, 7.5, 22.5, 44.9, 45.0, 67.5, 90.0, 120.0):
+            for duration in (90.0, 120.0):
+                assert engine._score_factors(request, midpoint, duration) == (
+                    _legacy_score_factors(
+                        score_home, score_away, midpoint, duration))
+
+
+def test_ramp_profile_is_neutral_before_the_configured_onset() -> None:
+    engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+        score_pressure_profile="ramp_v2",
+        score_pressure_onset_fraction=0.5,
+    ))
+    request = _request(score_home=1, score_away=0)
+
+    for midpoint in (0.0, 10.0, 30.0, 44.0, 45.0):
+        assert engine._score_factors(request, midpoint, 90.0) == (1.0, 1.0)
+
+
+def test_ramp_profile_is_continuous_at_the_onset() -> None:
+    engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+        score_pressure_profile="ramp_v2",
+        score_pressure_onset_fraction=0.5,
+    ))
+    request = _request(score_home=0, score_away=1)
+
+    before = engine._score_factors(request, 45.0 - 1e-9, 90.0)
+    after = engine._score_factors(request, 45.0 + 1e-9, 90.0)
+
+    assert before[0] == pytest.approx(after[0], abs=1e-9)
+    assert before[1] == pytest.approx(after[1], abs=1e-9)
+
+
+def test_ramp_profile_factors_are_monotone_in_the_clock() -> None:
+    engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+        score_pressure_profile="ramp_v2",
+        score_pressure_onset_fraction=0.5,
+        score_pressure_curvature=1.4,
+    ))
+    request = _request(score_home=0, score_away=1)
+
+    chasing_values, protecting_values = [], []
+    for midpoint in range(0, 91, 5):
+        chasing, protecting = engine._score_factors(
+            request, float(midpoint), 90.0)
+        chasing_values.append(chasing)
+        protecting_values.append(protecting)
+
+    assert chasing_values == sorted(chasing_values)
+    assert protecting_values == sorted(protecting_values, reverse=True)
+
+
+def test_a_draw_stays_neutral_under_every_profile() -> None:
+    request = _request(score_home=2, score_away=2)
+
+    for profile in ("linear_v1", "ramp_v2"):
+        engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+            score_pressure_profile=profile,
+            score_pressure_onset_fraction=0.5 if profile == "ramp_v2" else 0.0,
+        ))
+        for midpoint in (0.0, 45.0, 89.0):
+            assert engine._score_factors(request, midpoint, 90.0) == (1.0, 1.0)
+
+
+def test_the_protecting_factor_never_falls_below_its_floor() -> None:
+    engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+        score_pressure_profile="ramp_v2",
+        score_pressure_onset_fraction=0.4,
+        score_pressure_protecting_drop=0.9,
+        score_pressure_protecting_floor=0.7,
+    ))
+    request = _request(score_home=1, score_away=0)
+
+    protecting, _ = engine._score_factors(request, 90.0, 90.0)
+
+    assert protecting == pytest.approx(0.7)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("score_pressure_profile", "unknown", "profile"),
+        ("score_pressure_onset_fraction", 1.0, "onset"),
+        ("score_pressure_onset_fraction", -0.1, "onset"),
+        ("score_pressure_curvature", 0.0, "curvature"),
+        ("score_pressure_chasing_gain", -0.1, "chasing_gain"),
+        ("score_pressure_protecting_drop", -0.1, "protecting_drop"),
+        ("score_pressure_protecting_floor", 0.0, "protecting_floor"),
+        ("score_pressure_protecting_floor", 1.5, "protecting_floor"),
+    ],
+)
+def test_invalid_score_pressure_configuration_is_rejected(
+    field: str, value: object, message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        LiveProbabilityEngineV1(LiveProbabilityEngineConfig(**{field: value}))
+
+
+def test_the_ramp_profile_changes_the_official_output_only_when_enabled() -> None:
+    """Activar `ramp_v2` es una decisión explícita, no un efecto colateral."""
+
+    # El marcador debe reconciliar con el timeline: `MarkovLiveV1` rechaza
+    # (fail-closed) un 1-0 sin su gol correspondiente.
+    request = _request(
+        score_home=1, score_away=0, match_clock_seconds=3600.0, period=2,
+        events=({
+            "event_id": "goal_home_1",
+            "event_type": "goal",
+            "team_id": 10,
+            "period": 1,
+            "match_clock_seconds": 1800.0,
+        },),
+    )
+    markov = MarkovLiveV1().predict(request)
+    hawkes = HawkesLiveConfig(rho=0.0, rho_goal=0.0, rho_next_event=0.0)
+
+    default_engine = LiveProbabilityEngineV1()
+    ramp_engine = LiveProbabilityEngineV1(LiveProbabilityEngineConfig(
+        score_pressure_profile="ramp_v2",
+        score_pressure_onset_fraction=0.5,
+    ))
+
+    default_output = default_engine.predict(
+        request, markov, hawkes_config=hawkes)["output_hash"]
+    repeated = LiveProbabilityEngineV1().predict(
+        request, markov, hawkes_config=hawkes)["output_hash"]
+    ramp_output = ramp_engine.predict(
+        request, markov, hawkes_config=hawkes)["output_hash"]
+
+    assert default_output == repeated
+    assert ramp_output != default_output
+
+
+# Version: 1.2.0
 # Created: 2026-08-09
-# Updated: 2026-08-10 (Fase 117)
+# Updated: 2026-08-18 (DEC-216, forma temporal configurable)
