@@ -23,29 +23,6 @@ MODEL_EVENT_TYPES = frozenset({
     "foul", "yellow", "red", "substitution", "penalty_awarded",
     "penalty_scored",
 })
-# Tipo auxiliar que puede proyectarse a un tipo modelable (`DEC-217`). NO se
-# añade a `MODEL_EVENT_TYPES`: la cadena está validada sobre 7,400 partidos
-# con ese conjunto exacto, y ampliarlo cambiaría el posterior de régimen de
-# todos ellos. La proyección ocurre en el borde, antes del filtro.
-DERIVED_SAVE_TYPE = "save"
-
-
-def _is_save(event: dict[str, Any], event_type: str) -> bool:
-    """Reconoce un `save` venga como tipo canónico o como tipo crudo.
-
-    En producción el follower (`src/espn_live_follower.py`) emite el par
-    `event_type="auxiliary"` / `event_type_raw="save"`, porque la taxonomía
-    colapsa todos los auxiliares en una sola etiqueta canónica. Mirar sólo
-    `event_type` haría que la proyección jamás se disparase con datos reales
-    aunque el flag estuviera activo -un fallo silencioso, sin excepción ni
-    registro-, así que el tipo crudo es la señal primaria y el canónico sólo
-    el respaldo para llamadores que ya normalizan por su cuenta.
-    """
-
-    raw = str(event.get("event_type_raw") or "").strip().lower()
-    if raw:
-        return raw.replace("-", "_") == DERIVED_SAVE_TYPE
-    return event_type == DERIVED_SAVE_TYPE
 
 
 def _stable_hash(value: Any) -> str:
@@ -174,16 +151,6 @@ class MarkovLiveConfig:
     )
     state_goal_multipliers_home: tuple[float, ...] = (1.0, 1.24, 0.86, 1.15)
     state_goal_multipliers_away: tuple[float, ...] = (1.0, 0.86, 1.24, 1.15)
-    # Proyección de `save` a tiro a puerta (`DEC-217`). Desactivada por
-    # defecto: activarla cambia el conjunto de eventos que alimenta la cadena,
-    # y esta cadena está validada sobre 7,400 partidos/34 ligas con el
-    # conjunto histórico. Ver `artifacts/phase_116b_save_attribution_audit/`.
-    enable_derived_save_projection: bool = False
-    # Ventana para declarar que un `save` y un `shot_on_target` son la misma
-    # acción. 5 s es donde la curva de solapamiento medida sobre el feed real
-    # se estabiliza: por debajo quedan duplicados reales sin emparejar, por
-    # encima se empiezan a borrar tiros distintos.
-    derived_save_dedup_seconds: float = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,19 +348,10 @@ class MarkovLiveV1:
             if bool(event.get("annulled", False)):
                 audit["annulled"] += 1
                 continue
-            source_event_type = event_type
-            team_id = event.get("team_id")
-            if (self.config.enable_derived_save_projection
-                    and _is_save(event, event_type)):
-                source_event_type = DERIVED_SAVE_TYPE
-                projected = self._project_save(
-                    event, request, accepted, audit)
-                if projected is None:
-                    continue
-                event_type, team_id = projected
             if event_type not in MODEL_EVENT_TYPES:
                 audit["unmodelled"] += 1
                 continue
+            team_id = event.get("team_id")
             if team_id not in {request.home_team_id, request.away_team_id}:
                 audit["missing_team"] += 1
                 continue
@@ -406,67 +364,15 @@ class MarkovLiveV1:
                 audit["duplicates"] += 1
                 continue
             seen.add(key)
-            row = {
+            accepted.append({
                 "event_id": key,
                 "event_type": event_type,
                 "team_id": int(team_id),
                 "period": event_period,
                 "match_clock_seconds": clock,
-            }
-            if source_event_type != event_type:
-                # Conserva de qué evento crudo salió esta fila. Sin esto, una
-                # proyección sería indistinguible de un tiro reportado como
-                # tal por el proveedor, y la auditoría no podría separarlas.
-                row["source_event_type"] = source_event_type
-            accepted.append(row)
+            })
         audit["accepted"] = len(accepted)
         return accepted, audit
-
-    def _project_save(
-        self,
-        event: dict[str, Any],
-        request: MarkovLiveInput,
-        accepted: list[dict[str, Any]],
-        audit: dict[str, int],
-    ) -> tuple[str, int] | None:
-        """Convierte un `save` en el tiro a puerta que necesariamente lo causó.
-
-        Dos correcciones obligatorias, ambas medidas sobre el feed real en
-        `artifacts/phase_116b_save_attribution_audit/`:
-
-        1. **El equipo se invierte.** ESPN atribuye el `save` al equipo del
-           portero -el que defiende-, así que el tirador es el rival. Sin
-           invertir, la proyección sumaría tiros al lado equivocado.
-        2. **Se deduplica.** El 43% de los `save` coexisten con un
-           `shot_on_target` del proveedor para la misma acción; proyectarlos
-           todos inflaría los tiros a puerta en vez de corregir el subconteo.
-
-        Devuelve ``None`` cuando el evento debe descartarse.
-        """
-
-        team_id = event.get("team_id")
-        if team_id == request.home_team_id:
-            shooter = request.away_team_id
-        elif team_id == request.away_team_id:
-            shooter = request.home_team_id
-        else:
-            audit["missing_team"] += 1
-            return None
-
-        clock = float(event["match_clock_seconds"])
-        window = float(self.config.derived_save_dedup_seconds)
-        for previous in accepted:
-            if previous["event_type"] != "shot_on_target":
-                continue
-            if previous["team_id"] != shooter:
-                continue
-            if abs(float(previous["match_clock_seconds"]) - clock) <= window:
-                audit["derived_duplicates"] = (
-                    audit.get("derived_duplicates", 0) + 1)
-                return None
-
-        audit["derived_projected"] = audit.get("derived_projected", 0) + 1
-        return "shot_on_target", int(shooter)
 
     def _propagate_steps(self, posterior: tuple[float, ...], steps: int) -> tuple[float, ...]:
         if steps < 0:

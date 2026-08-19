@@ -48,7 +48,36 @@ fuerza en ninguno de los dos-. El gate la rechazó por la razón correcta, y la
 configuración servida (`linear_v1`) es la que la evidencia respalda. Es un
 cierre por determinación, no por agotamiento.
 
-**DEC-217 — capacidad desplegada, activación bloqueada por datos.** Primero
+**DEC-217 — RECHAZADA tras autorizar el desbloqueo.** El usuario autorizó
+migración, backfill y recalibración. El primer paso -localizar la tabla a
+migrar- reveló que **nada de eso hacía falta**: los `save` ya están en
+`prospective_staging_v2.events` (81,872 eventos en 6,434 de 9,786 partidos,
+con columna `event_type_raw`); lo que los excluía era el `WHERE` de la
+consulta del replay, no el esquema. Mi afirmación anterior de que "la base
+histórica no contiene ningún `save`" era falsa: la deduje de que el replay no
+los devolvía, sin mirar la tabla.
+
+Con los datos reales delante, el candidato no es sólo inmedible sino
+**sustantivamente incorrecto**. `save` no significa parada de portero: hay
+12.72 por partido contra 5.31 `shot_on_target` -imposible parar más tiros de
+los que se hicieron a puerta-, los registran **7.06 jugadores distintos por
+partido** (los textos crudos incluyen a Militão, Cubarsí y Huijsen, centrales,
+y a Rashford, delantero), y el **53.3%** coincide con un `shot_blocked` que el
+modelo ya cuenta. Proyectarlo habría dado 12.37 tiros a puerta por partido
+contra un rango realista de 7-11.
+
+Esto **invalida el resultado de Fase 116E**, que había dado las seis
+comprobaciones en verde: corrió sobre los 15 partidos del cache, donde los
+`save` salen a 7.3/partido, y esa muestra no era representativa. Es la lección
+que deja el episodio: verificar un mecanismo sobre 15 partidos no sustituye a
+comprobarlo sobre el corpus entero.
+
+El código de proyección se retiró; `src/markov_live_v1.py` vuelve a ser
+byte-idéntico a su estado previo. Dejar un mapeo falso detrás de un flag
+habría invitado a que alguien lo activara después apoyándose en el texto
+anterior de la decisión.
+
+**DEC-217 (registro anterior, superado) — capacidad desplegada, activación bloqueada por datos.** Primero
 hubo que **corregir la premisa, que era falsa**: los tipos que la decisión
 nombraba no existen en el feed de ESPN, y el `CHECK` de `events_timeline` no
 era el bloqueador -el motor live no lee esa tabla-. Reenfocada a `save`, la

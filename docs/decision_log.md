@@ -6287,12 +6287,51 @@ histórica no contiene `save` -así que el candidato no puede medirse contra el
 replay- y los pesos del motor se calibraron sobre ese mismo corpus sin ellos,
 de modo que activar elevaría `shot_on_target` de `2.9` a `~8.0` por partido
 contra una calibración que no lo espera.
-Precondición para desbloquear, en este orden, y todo ello exige autorización
-explícita para escribir en la base de producción: (1) persistir los
-auxiliares en staging para que existan históricamente, (2) recalibrar
-`EVENT_WEIGHTS`/hazard/CTMC sobre el corpus con saves, (3) sólo entonces
-correr el gate de Fase 116C. El mecanismo ya no es parte del riesgo: está
-verificado.
+**Fase 116F: la decisión se RECHAZA, y con ella se corrigen dos afirmaciones
+previas de esta misma entrada.** Con autorización del usuario para escribir en
+producción, el primer paso fue localizar la tabla a migrar. No hizo falta
+ninguna migración ni ningún backfill: **los `save` ya están en la base**. El
+corpus histórico vive en `prospective_staging_v2.events`, que tiene columna
+`event_type_raw` y contiene `81,872` eventos con `event_type_raw='save'` en
+`6,434` de `9,786` partidos. Lo que los excluía no era el esquema sino el
+`WHERE e.event_type IN (...)` de `_event_query()` en
+`src/evaluate_live_markov_hawkes_historical.py`. La afirmación anterior de
+esta entrada -"la base histórica no contiene ningún evento `save`"- **era
+falsa**: se dedujo de que el replay no los devolvía, sin comprobar la tabla.
+Con los datos reales a la vista, el candidato **no es sólo inmedible: es
+sustantivamente incorrecto**. `save` no significa "el portero paró un tiro a
+puerta":
+- `12.72` saves por partido contra `5.31` `shot_on_target`. Un portero no
+  puede parar más tiros de los que se hicieron a puerta;
+- **7.06 jugadores distintos por partido** registran un `Save`; si fuera sólo
+  el portero serían ~2. Los textos crudos lo confirman: `"Éder Militão (Real
+  Madrid) Save"`, `"Pau Cubarsí (Barcelona) Save"`, `"Dean Huijsen (Real
+  Madrid) Save"` -centrales- y `"Marcus Rashford (Barcelona) Save"`, un
+  delantero;
+- **53.3%** de los `save` coinciden a ≤5s con un `shot_blocked`, que el modelo
+  ya cuenta con peso `0.38`, y un `44.5%` adicional con un `shot_on_target`.
+`Save` en este feed es "alguien detuvo un intento", no una parada de portero.
+Proyectarlo a `shot_on_target` duplicaría bloqueos ya modelados e inyectaría
+tiros a puerta inexistentes: `5.31 + 12.72×(1−0.445) = 12.37` por partido,
+muy por encima del rango realista 7-11.
+Esto **invalida también el resultado de Fase 116E**, que había dado las seis
+comprobaciones en verde con `8.00` tiros a puerta por partido. Aquel análisis
+corrió sobre los 15 partidos del cache de Fase 59, donde los `save` aparecen
+a `7.3`/partido; el corpus completo da `12.72`. La muestra no era
+representativa y su veredicto verde no se sostiene. Se conserva como
+evidencia de por qué una verificación de mecanismo sobre 15 partidos no
+sustituye a una comprobación sobre el corpus entero.
+Estado final: **rechazada**. El código de proyección se retira de
+`src/markov_live_v1.py` -que vuelve a ser byte-idéntico a su estado previo- y
+sus pruebas con él. Dejar un mapeo factualmente falso detrás de un flag es una
+trampa: invita a que alguien lo active más adelante apoyándose en el texto
+anterior de esta decisión. Se conservan los scripts de auditoría (116B, 116E)
+como evidencia del recorrido.
+Continuación permitida: ninguna sobre `save`. Si en el futuro se quisiera
+aprovechar los auxiliares, el candidato defendible no es proyectarlos a un
+tipo existente sino **darles su propio peso** en `EVENT_WEIGHTS` como
+categoría propia, y sólo tras comprobar que aportan algo que `shot_blocked` y
+`shot_on_target` no cubren ya.
 
 
 DEC-218
