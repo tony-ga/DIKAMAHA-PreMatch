@@ -1,0 +1,156 @@
+{
+  "classification": "ready_for_gate",
+  "confounding_check": {
+    "baseline_effect": 0.3413233685745536,
+    "ci_high": 0.5504115393362357,
+    "ci_low": 0.11719452247332497,
+    "crosses_zero": false,
+    "exposed": 10972,
+    "fragility": {
+      "fragility_fraction": 0.0,
+      "groups_evaluated": 38,
+      "groups_flipping_the_interval": 0
+    },
+    "groups": 38,
+    "influence": {
+      "effect_without_it": 0.28322160883280745,
+      "influence_ratio": 0.1702249687280209,
+      "most_influential_group": "usa.1"
+    },
+    "influence_threshold": 0.5,
+    "observations": 21944,
+    "replicates": 2000,
+    "seed": 42,
+    "strength_controlled": {
+      "coverage": 1.0,
+      "effect": 0.3413233685745535,
+      "strata_total": 2,
+      "strata_used": 2
+    },
+    "unexposed": 10972,
+    "verdict": "mejora confirmada"
+  },
+  "coverage": {
+    "confirmation_rows_read": 0,
+    "fit_rows": 68148,
+    "selection_rows": 22692
+  },
+  "empirical_ratios": {
+    "fit": {
+      "1": {
+        "ci_high": 1.1013387138216455,
+        "ci_low": 0.9588181549391956,
+        "matches": 1524,
+        "midpoint": 22.5,
+        "observations": 3048,
+        "ratio": 1.029012118986412,
+        "variance": 0.0013631000344019974
+      },
+      "2": {
+        "ci_high": 1.0992686544580739,
+        "ci_low": 0.9843813479059174,
+        "matches": 2554,
+        "midpoint": 37.5,
+        "observations": 5108,
+        "ratio": 1.0417209908735332,
+        "variance": 0.0008376329389127465
+      },
+      "3": {
+        "ci_high": 1.1648012495241087,
+        "ci_low": 1.0647773063794244,
+        "matches": 3226,
+        "midpoint": 52.5,
+        "observations": 6452,
+        "ratio": 1.1162728249194416,
+        "variance": 0.000661904467248449
+      },
+      "4": {
+        "ci_high": 1.142793761251904,
+        "ci_low": 1.0452549983533084,
+        "matches": 3752,
+        "midpoint": 67.5,
+        "observations": 7504,
+        "ratio": 1.092155706281333,
+        "variance": 0.0006383963867372959
+      },
+      "5": {
+        "ci_high": 1.281271301475063,
+        "ci_low": 1.1826042546333093,
+        "matches": 3994,
+        "midpoint": 82.5,
+        "observations": 7988,
+        "ratio": 1.2315356959424757,
+        "variance": 0.0006497508608465476
+      }
+    },
+    "selection": {
+      "1": {
+        "ci_high": 1.1650917276758477,
+        "ci_low": 0.9213881570769223,
+        "matches": 557,
+        "midpoint": 22.5,
+        "observations": 1114,
+        "ratio": 1.0317460317460316,
+        "variance": 0.0038866887692431897
+      },
+      "2": {
+        "ci_high": 1.1321809871342965,
+        "ci_low": 0.9413970893846264,
+        "matches": 896,
+        "midpoint": 37.5,
+        "observations": 1792,
+        "ratio": 1.030248033877798,
+        "variance": 0.0024014629747153766
+      },
+      "3": {
+        "ci_high": 1.1364591382793086,
+        "ci_low": 0.9810757056149806,
+        "matches": 1137,
+        "midpoint": 52.5,
+        "observations": 2274,
+        "ratio": 1.0546657381615598,
+        "variance": 0.001652903519441995
+      },
+      "4": {
+        "ci_high": 1.2272800764312486,
+        "ci_low": 1.0609392046429977,
+        "matches": 1309,
+        "midpoint": 67.5,
+        "observations": 2618,
+        "ratio": 1.1398188263095708,
+        "variance": 0.0018121248941502617
+      },
+      "5": {
+        "ci_high": 1.275024787114623,
+        "ci_low": 1.1159063125885398,
+        "matches": 1378,
+        "midpoint": 82.5,
+        "observations": 2756,
+        "ratio": 1.192718313714755,
+        "variance": 0.0016644176770056497
+      }
+    }
+  },
+  "fitted_parameters": {
+    "score_pressure_chasing_gain": 0.1325515070268305,
+    "score_pressure_curvature": 1.9860795558612938,
+    "score_pressure_onset_fraction": 2.453431699815224e-15,
+    "score_pressure_profile": "ramp_v2",
+    "score_pressure_protecting_drop": 0.1,
+    "score_pressure_protecting_floor": 0.78
+  },
+  "gates": {
+    "confirmation_never_read": true,
+    "effect_not_confounded_by_league": true,
+    "promotable": true,
+    "ramp_beats_linear_in_selection": true
+  },
+  "model_comparison": {
+    "linear_weighted_error_selection": 21.482096066600782,
+    "ramp_weighted_error_selection": 0.8598544959356518,
+    "ramp_wins": true
+  },
+  "protocol": "fit_estimates_selection_chooses_confirmation_untouched",
+  "source_sha256": "64a6ae3d64b0e7e8b61954614417b650cdff9b512233d58c1f9e844ed92ade90",
+  "unit": "complete_match"
+}

@@ -60,6 +60,9 @@ artifacts/phase_106_probability_repair/*
 artifacts/phase_124_temperature_calibration/*
 !artifacts/phase_124_temperature_calibration/match_result_1x2.json
 !artifacts/phase_124_temperature_calibration/hashes.json
+!artifacts/phase_116a_score_pressure_calibration/
+artifacts/phase_116a_score_pressure_calibration/*
+!artifacts/phase_116a_score_pressure_calibration/calibration.json
 !artifacts/phase_122_confidence_reliability/
 artifacts/phase_122_confidence_reliability/*
 !artifacts/phase_122_confidence_reliability/eligibility.json
