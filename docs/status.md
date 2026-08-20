@@ -2,6 +2,24 @@
 
 **Actualizado:** 2026-08-19
 
+## Corrección de estado: el cobro lleva tiempo encendido (2026-08-20)
+
+`MINIAPP_BILLING_ENABLED` está en `true` en el servicio `telegram-miniapp` de
+producción, confirmado por el operador. El roadmap y este documento seguían
+describiendo la Fase 125 como "implementada, cobro apagado" y su próximo hito
+como "desplegar con el cobro apagado": **eso era memoria obsoleta**, y una
+obsoleta de la peor clase, porque afecta a si los usuarios están siendo gateados
+ahora mismo.
+
+Lo que esto significa en la práctica: los muros Premium están activos, la cuota
+de 3 predicciones diarias se aplica de verdad, y las compras con Stars son
+reales. No se ha verificado en esta sesión cuáles de las cuatro evidencias que
+la Fase 125 exigía antes de encender llegaron a obtenerse -compra real,
+reembolso real, reaplicación de migraciones y reparación del reconciliador-;
+quien encendió el interruptor sabe eso, y conviene que quede escrito antes de
+que se olvide. Sigue pendiente el aviso de vencimiento del acceso heredado
+(2026-11-01) con 14 días de antelación.
+
 ## Fase 133 — DIKAMAHA deja de vivir sólo dentro de Telegram
 
 La Mini App se sirve ahora también desde un dominio propio, con el mismo diseño

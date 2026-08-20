@@ -82,7 +82,17 @@ válido**, y el interruptor va al final.
 
    Con el interruptor en `true` y cualquiera de las tres claves ausente, el
    servicio **no arranca**. Es deliberado: es preferible a fallar en la cara del
-   primer usuario que intente pagar.
+   primer usuario que intente pagar. Ese mismo mecanismo sirve de verificación:
+   si el servicio está sano con el interruptor encendido, las tres claves están
+   puestas y no vacías.
+
+   Encendido el 2026-08-20. Comprobado desde fuera: el webhook responde
+   `400 stripe_signature_invalid` ante una firma falsa -antes devolvía
+   `503 stripe_disabled`-, `/api/health` sigue en `ready`, y la cuenta tiene un
+   único endpoint registrado, así que no hay dos secretos de firma que confundir.
+   Lo que esto **no** prueba: que la clave secreta sea válida y del mismo modo.
+   Una clave presente pero equivocada arranca igual; eso sólo lo dice un
+   checkout real.
 
 ## Rollback
 

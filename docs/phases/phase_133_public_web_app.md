@@ -168,6 +168,15 @@ Se cierra la fase sólo con todo esto:
 6. Acceso real desde el dominio propio tras `/setdomain` en BotFather.
 7. Checkout real en modo test de Stripe, con el webhook aplicando el plan.
 
+Estado al 2026-08-20: **1-4 cumplidos**. El 5 se cumplió en el despliegue -la
+migración corre en el `preDeployCommand` y `/api/health` reporta base viva-. El
+6 depende de `/setdomain`, ya hecho por el operador. El 7 es el único abierto:
+el cobro web está **armado y verificado hasta donde se puede sin gastar dinero**
+-webhook rechazando firmas falsas con 400, tres claves presentes por el hecho de
+que el servicio arranca, un solo endpoint registrado- pero **falta el checkout
+real**. Falta además configurar el Customer Portal, sin el cual quien se
+suscriba no puede cancelar por sí mismo.
+
 Los puntos 5-7 no se pueden obtener sin desplegar. El despliegue va por pasos:
 primero migración, luego secretos, luego código con `MINIAPP_STRIPE_ENABLED=false`,
 y sólo al final el interruptor —el mismo orden que el runbook de Fase 125—.
