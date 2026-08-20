@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createPortalSession } from "@/lib/billing/stripe";
-import { gatewayStatus } from "@/lib/billing/stripe-apply";
+import { gatewayStatus } from "@/lib/billing/gateways";
 import { rawDatabase } from "@/lib/db";
 import { publicWebUrl, stripeEnabled } from "@/lib/env";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";

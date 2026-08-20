@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { invalidateEntitlement } from "@/lib/auth/entitlements";
-import { getSubscription, subscriptionPeriodEnd, verifyStripeSignature } from "@/lib/billing/stripe";
+import {
+  getSubscription,
+  paymentSettled,
+  subscriptionPeriodEnd,
+  subscriptionPriceId,
+  verifyStripeSignature,
+} from "@/lib/billing/stripe";
 import {
   applyStripeSubscription,
   applyStripeTermination,
@@ -55,20 +61,38 @@ export async function POST(request: NextRequest) {
     switch (eventType) {
       case "checkout.session.completed":
       case "invoice.paid": {
+        // Una sesión puede completarse **sin** haber cobrado: con métodos de
+        // pago diferidos -OXXO o SPEI, plausibles en este mercado- el pago
+        // queda pendiente y el dinero llega después. Conceder aquí sería dar el
+        // producto antes de cobrar; el `invoice.paid` posterior lo concede
+        // cuando el pago existe de verdad.
+        if (!paymentSettled(eventType, object)) {
+          skipped(eventId, eventType, `payment_status=${String(object.payment_status)}`);
+          break;
+        }
         const subscriptionId = readSubscriptionId(object);
-        if (!subscriptionId) break;
+        if (!subscriptionId) { skipped(eventId, eventType, "sin suscripción"); break; }
         const subscription = await getSubscription(subscriptionId);
+        const priceId = subscriptionPriceId(subscription);
+        // Sólo **nuestro** precio concede el producto. Sin esto, cualquier
+        // suscripción de la cuenta -otro producto, un Payment Link más barato-
+        // valdría como pago de Premium, y el identificador de usuario de un
+        // Payment Link lo pone quien abre la URL.
+        if (priceId !== env().STRIPE_PRICE_ID) {
+          skipped(eventId, eventType, `precio ajeno: ${String(priceId)}`);
+          break;
+        }
         const periodEnd = subscriptionPeriodEnd(subscription);
-        if (!periodEnd) break;
+        if (!periodEnd) { skipped(eventId, eventType, "sin fin de periodo"); break; }
         const userId = await resolveUser(sql, object, subscription.metadata, subscription.customer);
-        if (!userId) break;
+        if (!userId) { skipped(eventId, eventType, "usuario no resuelto"); break; }
         const outcome = await applyStripeSubscription(sql, {
           userId,
           eventId,
           eventType,
           subscriptionId,
           customerId: subscription.customer,
-          priceId: subscription.items?.data?.[0]?.price?.id ?? env().STRIPE_PRICE_ID,
+          priceId,
           currentPeriodEnd: periodEnd,
           raw: object,
         });
@@ -82,7 +106,7 @@ export async function POST(request: NextRequest) {
       case "charge.refunded": {
         const customerId = typeof object.customer === "string" ? object.customer : null;
         const userId = await resolveUser(sql, object, readMetadata(object), customerId);
-        if (!userId) break;
+        if (!userId) { skipped(eventId, eventType, "usuario no resuelto"); break; }
         const outcome = await applyStripeTermination(sql, {
           userId,
           eventId,
@@ -113,6 +137,20 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
+/**
+ * Deja rastro de un evento que se acepta pero no se aplica.
+ *
+ * Los descartes de este manejador devuelven 200, así que Stripe los da por
+ * entregados y no reintenta. Sin este registro, "el usuario pagó y no recibió
+ * nada" sería indistinguible de "no pasó nada", que es el modo de fallo más
+ * caro de diagnosticar que tiene un cobro.
+ */
+function skipped(eventId: string, eventType: string, reason: string): void {
+  console.error(JSON.stringify({
+    event: "stripe_webhook_skipped", eventId, eventType, reason,
+  }));
+}
+
 function readSubscriptionId(object: Record<string, unknown>): string | null {
   if (typeof object.subscription === "string") return object.subscription;
   // Una factura de suscripción referencia la suscripción en su primera línea
@@ -135,9 +173,9 @@ function readMetadata(object: Record<string, unknown>): Record<string, string> |
  * De quién es este pago.
  *
  * Tres vías en orden de fiabilidad, porque no todos los eventos traen lo
- * mismo: el `client_reference_id` que se fijó al abrir el checkout, los
- * metadatos de la suscripción, y por último la tabla de clientes -que es la
- * única disponible en una renovación que llega meses después-.
+ * mismo: los metadatos de la suscripción -que sólo escribe nuestro checkout-,
+ * el `client_reference_id` de la sesión, y por último la tabla de clientes,
+ * que es la única disponible en una renovación que llega meses después.
  */
 async function resolveUser(
   sql: ReturnType<typeof rawDatabase>,
@@ -145,10 +183,13 @@ async function resolveUser(
   metadata: Record<string, string> | undefined,
   customerId: string | null,
 ): Promise<number | null> {
-  const reference = Number(object.client_reference_id);
-  if (Number.isSafeInteger(reference) && reference > 0) return reference;
+  // Los metadatos de la suscripción van primero: los escribe exclusivamente
+  // nuestra ruta de checkout. `client_reference_id` queda como respaldo porque
+  // en un Payment Link lo pone quien abre la URL, no nosotros.
   const fromMetadata = Number(metadata?.telegram_user_id);
   if (Number.isSafeInteger(fromMetadata) && fromMetadata > 0) return fromMetadata;
+  const reference = Number(object.client_reference_id);
+  if (Number.isSafeInteger(reference) && reference > 0) return reference;
   if (!customerId) return null;
   return await userIdForCustomer(sql, customerId);
 }

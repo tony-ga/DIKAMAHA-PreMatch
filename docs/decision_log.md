@@ -6501,7 +6501,27 @@ Evidencia requerida: reaplicar la migración `0006` sin efecto; firma de webhook
 inválida rechazada; el mismo `event_id` entregado dos veces aplica una sola vez;
 `customer.subscription.deleted` degrada el plan; un checkout real en modo test de
 Stripe; y el rechazo efectivo de un segundo checkout con una suscripción Stars
-viva. Nada de esto gatea hasta `MINIAPP_STRIPE_ENABLED=true`.
+viva.
+Corrección (2026-08-20, auditoría): **la exclusión mutua estaba escrita en una
+sola dirección**. La comprobación vivía dentro del módulo de Stripe y sólo la
+llamaba el checkout de la web; las otras dos puertas por las que se puede abrir
+una suscripción -la factura Stars de la Mini App y la que pide el bot por el
+endpoint interno- no la llamaban. La primera comprobaba únicamente si ya había
+una suscripción **Stars**, y la del bot no comprobaba nada en absoluto. Es decir:
+quien pagaba con tarjeta podía comprar Stars encima y pagar dos veces el mismo
+mes, y ambas escriben sobre el mismo `plan_expires_at`, de modo que el sistema no
+podía notarlo. El invariante se movió a `lib/billing/gateways.ts`
+-`subscriptionBlock()`- porque no es un detalle de Stripe sino la regla que une
+las dos pasarelas, y ahora lo consultan las tres puertas. Cinco pruebas fijan la
+simetría en `tests/gateway-exclusion.test.ts`.
+La misma auditoría corrigió dos huecos más del webhook: no comparaba el precio
+de la suscripción con `STRIPE_PRICE_ID` -cualquier suscripción de la cuenta
+concedía Premium, y el identificador de usuario de un Payment Link lo pone quien
+abre la URL- y no miraba `payment_status`, así que con un método de pago diferido
+-OXXO o SPEI- habría concedido el producto antes de cobrarlo. Además, los
+descartes del manejador devolvían 200 sin registrar nada: "el usuario pagó y no
+recibió nada" era indistinguible de "no pasó nada". Ahora emiten
+`stripe_webhook_skipped` con el `event_id` y el motivo.
 
 
 ```text

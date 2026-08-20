@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveEntitlement } from "@/lib/auth/entitlements";
 import { createCheckoutSession, createCustomer } from "@/lib/billing/stripe";
-import { gatewayStatus } from "@/lib/billing/stripe-apply";
+import { gatewayStatus, subscriptionBlock } from "@/lib/billing/gateways";
 import { rawDatabase } from "@/lib/db";
 import { env, publicWebUrl, stripeEnabled } from "@/lib/env";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";
@@ -19,19 +19,15 @@ export async function POST(request: NextRequest) {
   if (!stripeEnabled()) return jsonError("stripe_disabled", 503);
   try {
     const session = await authorizeRequest(request, true);
-    const entitlement = await resolveEntitlement(session.userId);
-    if (entitlement.plan === "premium" && entitlement.planSource === "stripe") {
-      return jsonError("already_subscribed", 409);
-    }
     const sql = rawDatabase();
-    const gateways = await gatewayStatus(sql, session.userId);
     // DEC-220: una suscripción viva por usuario. `plan_expires_at` es una sola
     // fecha, así que dos pasarelas activas se pisarían y el usuario pagaría dos
     // veces el mismo mes. Se comprueba aquí porque es el último momento en que
     // todavía se puede evitar.
-    if (gateways.stars) return jsonError("stars_subscription_active", 409);
-    if (gateways.stripe) return jsonError("already_subscribed", 409);
+    const blocked = await subscriptionBlock(sql, session.userId, "stripe");
+    if (blocked) return jsonError(blocked, 409);
 
+    const gateways = await gatewayStatus(sql, session.userId);
     const customerId = gateways.stripeCustomerId
       ?? await createCustomer(session.userId, session.username);
     const origin = publicWebUrl();

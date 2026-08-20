@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { subscriptionBlock } from "@/lib/billing/gateways";
 import { issueInvoice } from "@/lib/billing/invoice";
+import { rawDatabase } from "@/lib/db";
 import { TelegramApiError } from "@/lib/billing/telegram";
 import { authError, jsonError, requireInternalKey } from "@/lib/http";
 
@@ -22,6 +24,13 @@ export async function POST(request: NextRequest) {
     requireInternalKey(request);
     const parsed = schema.safeParse(await request.json());
     if (!parsed.success) return jsonError("invoice_request_invalid", 422);
+    // El invariante de DEC-220 se comprueba también aquí. Esta puerta no
+    // comprobaba **nada**: era la única por la que se podía abrir una segunda
+    // suscripción incluso sobre una Stars ya viva. El bot degrada cualquier 4xx
+    // a "no se pudo abrir el pago", que es un mensaje pobre pero infinitamente
+    // preferible a cobrar dos veces.
+    const blocked = await subscriptionBlock(rawDatabase(), parsed.data.user_id, "stars");
+    if (blocked) return jsonError(blocked, 409);
     const invoice = await issueInvoice(parsed.data.user_id, "bot");
     return NextResponse.json(invoice);
   } catch (error) {

@@ -141,7 +141,14 @@ export function SubscribeButton({ label }: { label: string }) {
         }
       });
     },
-    onError: () => setStatus("No pudimos abrir el pago. Inténtalo en un momento."),
+    onError: (error) => {
+      const code = error instanceof Error ? error.message : "";
+      setStatus(code === "stripe_subscription_active"
+        // DEC-220 en la otra dirección: ya paga con tarjeta desde la web.
+        ? "Ya tienes una suscripción activa pagada con tarjeta. Gestiónala "
+          + "desde Ajustes."
+        : "No pudimos abrir el pago. Inténtalo en un momento.");
+    },
   });
 
   /**

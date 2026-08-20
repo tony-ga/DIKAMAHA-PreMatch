@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveEntitlement } from "@/lib/auth/entitlements";
+import { subscriptionBlock } from "@/lib/billing/gateways";
 import { issueInvoice } from "@/lib/billing/invoice";
 import { TelegramApiError } from "@/lib/billing/telegram";
+import { rawDatabase } from "@/lib/db";
 import { authError, authorizeRequest, jsonError } from "@/lib/http";
 
 /**
@@ -16,13 +17,14 @@ import { authError, authorizeRequest, jsonError } from "@/lib/http";
 export async function POST(request: NextRequest) {
   try {
     const session = await authorizeRequest(request, true);
-    const entitlement = await resolveEntitlement(session.userId);
-    if (entitlement.plan === "premium" && entitlement.planSource === "stars") {
-      // Sólo bloquea a quien ya paga. Un administrador o alguien con acceso
-      // heredado sí puede suscribirse: su premium tiene fecha o procedencia
-      // distinta y querrá continuidad cuando termine.
-      return jsonError("already_subscribed", 409);
-    }
+    // Mismo guardián que el checkout de Stripe, y por la misma razón: esto
+    // comprobaba sólo si ya había una suscripción **Stars**, así que quien
+    // pagaba con tarjeta podía comprar Stars encima y pagar dos veces el mismo
+    // mes. Sólo bloquea a quien tiene un cobro recurrente vivo: un
+    // administrador o alguien con acceso heredado sí puede suscribirse, porque
+    // su premium no viene de ninguna pasarela y querrá continuidad al terminar.
+    const blocked = await subscriptionBlock(rawDatabase(), session.userId, "stars");
+    if (blocked) return jsonError(blocked, 409);
     const invoice = await issueInvoice(session.userId, "miniapp");
     return NextResponse.json(invoice);
   } catch (error) {

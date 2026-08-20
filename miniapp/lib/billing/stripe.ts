@@ -106,6 +106,32 @@ export async function getSubscription(id: string): Promise<StripeSubscription> {
   return await stripeGet<StripeSubscription>(`/subscriptions/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Si el dinero ya llegó.
+ *
+ * Una sesión de checkout puede **completarse sin haber cobrado**: con métodos
+ * de pago diferidos -OXXO o SPEI, entre otros- el pago queda pendiente y el
+ * importe llega días después. Conceder ahí sería entregar el producto antes de
+ * cobrarlo. `invoice.paid`, en cambio, sólo se emite con el pago hecho, así que
+ * no necesita comprobación.
+ *
+ * `no_payment_required` es legítimo: es lo que devuelve una suscripción que
+ * empieza con periodo de prueba.
+ */
+export function paymentSettled(
+  eventType: string,
+  object: Record<string, unknown>,
+): boolean {
+  if (eventType !== "checkout.session.completed") return true;
+  return object.payment_status === "paid"
+    || object.payment_status === "no_payment_required";
+}
+
+/** Precio de la suscripción, o `null` si el evento no trae ninguno. */
+export function subscriptionPriceId(subscription: StripeSubscription): string | null {
+  return subscription.items?.data?.[0]?.price?.id ?? null;
+}
+
 /** Fin de periodo, que según la versión de la API vive en la suscripción o en su ítem. */
 export function subscriptionPeriodEnd(subscription: StripeSubscription): number {
   const fromItem = subscription.items?.data?.[0]?.current_period_end;

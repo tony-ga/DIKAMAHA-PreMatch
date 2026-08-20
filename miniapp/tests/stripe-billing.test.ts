@@ -4,9 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   applyStripeSubscription,
   applyStripeTermination,
-  gatewayStatus,
 } from "@/lib/billing/stripe-apply";
-import { verifyStripeSignature } from "@/lib/billing/stripe";
+import { gatewayStatus } from "@/lib/billing/gateways";
+import {
+  paymentSettled,
+  subscriptionPeriodEnd,
+  subscriptionPriceId,
+  verifyStripeSignature,
+} from "@/lib/billing/stripe";
 
 /**
  * Cobro web con Stripe (Fase 133, DEC-220).
@@ -216,5 +221,51 @@ describe("firma del webhook de Stripe", () => {
 
   it("no acepta nada sin secreto configurado", () => {
     expect(verifyStripeSignature(BODY, header(NOW), "", NOW)).toBe(false);
+  });
+});
+
+describe("qué evento concede el producto", () => {
+  /**
+   * Las dos reglas que decidieron una auditoría: sólo concede lo que ya se
+   * cobró, y sólo lo que se cobró **por nuestro precio**.
+   */
+
+  it("una sesión pagada concede", () => {
+    expect(paymentSettled("checkout.session.completed", { payment_status: "paid" }))
+      .toBe(true);
+  });
+
+  it("una sesión con pago diferido pendiente NO concede", () => {
+    // OXXO y SPEI completan la sesión y cobran días después. Conceder aquí
+    // sería entregar el producto antes de tener el dinero.
+    expect(paymentSettled("checkout.session.completed", { payment_status: "unpaid" }))
+      .toBe(false);
+  });
+
+  it("una suscripción en prueba concede", () => {
+    expect(paymentSettled("checkout.session.completed",
+      { payment_status: "no_payment_required" })).toBe(true);
+  });
+
+  it("invoice.paid no necesita comprobación: sólo existe con el pago hecho", () => {
+    expect(paymentSettled("invoice.paid", {})).toBe(true);
+  });
+
+  it("lee el precio de la suscripción y distingue el ajeno", () => {
+    const nuestro = { items: { data: [{ price: { id: "price_1" } }] } } as never;
+    const ajeno = { items: { data: [{ price: { id: "price_otro" } }] } } as never;
+    const vacio = { items: { data: [] } } as never;
+    // Sin esta distinción, cualquier suscripción de la cuenta -otro producto,
+    // un Payment Link más barato- valdría como pago de Premium.
+    expect(subscriptionPriceId(nuestro)).toBe("price_1");
+    expect(subscriptionPriceId(ajeno)).not.toBe("price_1");
+    expect(subscriptionPriceId(vacio)).toBeNull();
+  });
+
+  it("acepta el fin de periodo venga donde venga según la versión de la API", () => {
+    expect(subscriptionPeriodEnd({ current_period_end: 111 } as never)).toBe(111);
+    expect(subscriptionPeriodEnd(
+      { items: { data: [{ current_period_end: 222 }] } } as never)).toBe(222);
+    expect(subscriptionPeriodEnd({ items: { data: [] } } as never)).toBe(0);
   });
 });
