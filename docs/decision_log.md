@@ -6413,6 +6413,88 @@ evidencia de esa fase.
 9 pruebas en `tests/test_confounding_check_v1.py`, todas en verde.
 
 
+DEC-219
+Fecha: 2026-08-19
+Problema: DIKAMAHA sólo se puede usar dentro de Telegram. La Mini App de Fase
+115 ya es una aplicación Next.js completa con su propio BFF -rutas `app/api/**`,
+Postgres propio, proxy a la API Python-, así que el 95% del producto -diseño,
+rutas, componentes, datos- **ya es web**. Lo único atado a la plataforma son
+cuatro puntos: la autenticación por `initData`, el cobro con `openInvoice`, el
+`BackButton`/tema del contenedor, y el `openTelegramLink` de compartir. Abrir un
+sitio web propio exige decidir cómo entra alguien que no viene por el WebView, y
+sobre todo **qué identidad tiene** esa persona: `telegram_user_id` es la clave
+primaria de `miniapp_users` y la clave foránea de todas las tablas del producto
+(`star_subscriptions`, `prediction_quota_days`, `prediction_grants`, favoritos y
+alertas).
+Opciones: (a) copiar el árbol de `miniapp/` a un proyecto web aparte; (b) añadir
+registro con email/contraseña o enlace mágico, con una tabla de identidades y un
+flujo de vinculación contra los `telegram_user_id` existentes; (c) un solo
+servicio que detecta su contexto de ejecución (`telegram` | `web`) y autentica en
+web con el Telegram Login Widget, que devuelve **el mismo `telegram_user_id`** que
+`initData`.
+Decisión: (c).
+Motivo: (a) garantiza divergencia de diseño y de funciones en la primera
+corrección que se aplique a un solo lado, que es exactamente lo que el encargo
+prohíbe. (b) obliga a inventar un modelo de identidad nuevo y a migrar o
+reconciliar cuentas, con el riesgo de partir en dos el historial, la cuota diaria
+y la suscripción de un mismo humano. (c) no toca ni una fila: el widget firma con
+el mismo bot token y entrega el mismo identificador numérico, de modo que quien
+ya usa la Mini App entra en la web con su cuenta, su plan y su historial intactos,
+y la única superficie nueva es un validador de firma y una pantalla de acceso. La
+diferencia de formato es real y hay que respetarla: el widget firma con
+`secret = SHA256(botToken)`, no con `HMAC("WebAppData", botToken)`.
+Estado: propuesta
+Impacto en contratos/fases: ninguno en modelos, router ni cadena de inferencia.
+No se toca ninguna probabilidad servida. Fase 115 conserva su comportamiento byte
+a byte en contexto Telegram; cualquier test existente que haya que modificar para
+que pase es señal de que esa invariante se rompió.
+Evidencia requerida: la suite Vitest y Playwright actual en verde **sin
+modificar**; pruebas nuevas del validador del widget (firma válida, hash
+manipulado, `auth_date` caducado y futuro); un proyecto Playwright `web` sin el
+stub de `window.Telegram`; y un acceso real desde el dominio propio tras
+`/setdomain` en BotFather.
+
+
+DEC-220
+Fecha: 2026-08-19
+Problema: el cobro de Fase 125 se apoya en `webApp.openInvoice` y en Telegram
+Stars, que **no existen fuera de Telegram**. En un navegador el botón de compra
+de `premium-gate.tsx` no tiene a quién llamar. Además, si se añade una segunda
+pasarela, dos suscripciones activas escribirían sobre el mismo `plan_expires_at`
+-una sola fecha por usuario, que es de donde `resolveEntitlement` deriva el plan
+efectivo- y el usuario podría acabar pagando dos veces por el mismo mes sin que
+el sistema lo note.
+Opciones: (a) sin pago en web: el premium sólo se compra en Telegram y la web
+respeta el entitlement ya concedido; (b) Stripe en web, con dos pasarelas
+conviviendo y precedencia declarada; (c) Stripe reemplazando a Stars en ambos
+contextos.
+Decisión: (b), con la regla de exclusión mutua: **quien tenga una suscripción
+activa en una pasarela no puede abrir otra**; la ruta de checkout la rechaza y la
+interfaz indica dónde gestionar la que ya tiene.
+Motivo: (a) deja la web sin forma de convertir, que es medio producto. (c)
+obligaría a migrar suscripciones Stars vivas y a renunciar al único método de
+pago que funciona dentro del WebView. La exclusión mutua evita el doble cobro sin
+tocar la aritmética de `effective_plan()` ni añadir una segunda fecha de
+caducidad: el invariante "una suscripción activa por usuario" se comprueba antes
+de crear la sesión de checkout, no se repara después. `plan_source` gana el valor
+`'stripe'` junto a `'stars'`, de modo que la procedencia sigue siendo auditable y
+un reembolso se puede atribuir a la pasarela correcta.
+Estado: propuesta
+Impacto en contratos/fases: amplía el CHECK `miniapp_users_plan_source_check` de
+`0004_premium_plan_and_star_billing.sql` y añade tres tablas nuevas
+(`stripe_customers`, `stripe_subscriptions`, `stripe_events`). No modifica
+`star_payments`, `star_subscriptions`, `star_invoices`, la cuota diaria ni
+`effective_plan()`. `billing_plans_period_check = 2592000` es una restricción de
+Telegram y no se impone a Stripe. El webhook aplica el plan por la misma vía que
+Stars -escribir `plan`/`plan_source`/`plan_expires_at` e invalidar la caché de
+titularidad-, así que no hay un segundo camino de concesión.
+Evidencia requerida: reaplicar la migración `0006` sin efecto; firma de webhook
+inválida rechazada; el mismo `event_id` entregado dos veces aplica una sola vez;
+`customer.subscription.deleted` degrada el plan; un checkout real en modo test de
+Stripe; y el rechazo efectivo de un segundo checkout con una suscripción Stars
+viva. Nada de esto gatea hasta `MINIAPP_STRIPE_ENABLED=true`.
+
+
 ```text
 DEC-NNN
 Fecha:

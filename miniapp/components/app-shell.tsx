@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
 import { QuotaChip, usePremium } from "@/components/premium-gate";
-import { useAuth } from "@/components/providers";
+import { useAuth, useRuntimeContext } from "@/components/providers";
 import { isPublicRoute } from "@/lib/public-routes";
 
 const navigation = [
@@ -24,9 +24,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const context = useRuntimeContext();
   const premium = usePremium();
 
   useEffect(() => {
+    // En un navegador el botón de atrás lo pone el navegador. El SDK de
+    // Telegram se carga igual fuera del WebView, así que `BackButton` existe
+    // como objeto y sus llamadas no fallan: simplemente no las ve nadie.
+    // Registrarlas de todos modos dejaría un manejador vivo que nadie puede
+    // disparar.
+    if (context !== "telegram") return;
     const back = window.Telegram?.WebApp.BackButton;
     if (!back) return;
     const onBack = () => router.back();
@@ -36,7 +43,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       back.onClick(onBack);
     }
     return () => back.offClick(onBack);
-  }, [pathname, router]);
+  }, [pathname, router, context]);
 
   // Una tarjeta compartida la abre alguien que no tiene cuenta: darle la barra
   // superior y la navegación de la aplicación le ofreceria seis destinos que

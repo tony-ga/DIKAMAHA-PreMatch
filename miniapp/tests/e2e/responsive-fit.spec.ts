@@ -33,7 +33,12 @@ async function stub(page: Page, firstName = "Marco") {
   await page.route("https://telegram.org/js/**", (route) => route.fulfill({
     status: 200,
     contentType: "application/javascript",
-    body: `window.Telegram ||= { WebApp: { initData:'', colorScheme:'dark', ready(){}, expand(){}, close(){}, onEvent(){}, offEvent(){}, BackButton:{show(){},hide(){},onClick(){},offClick(){}} } };`,
+    // `initData` no vacío desde la Fase 133: es la señal con la que
+    // `lib/runtime-context.ts` distingue el WebView de un navegador, y este
+    // archivo prueba justamente comportamiento del WebView -el bloqueo de
+    // escala existe sólo ahí-. Un cliente de Telegram real siempre lo manda:
+    // sin él la Mini App ni siquiera podría autenticarse.
+    body: `window.Telegram ||= { WebApp: { initData:'auth_date=1&hash=stub', colorScheme:'dark', ready(){}, expand(){}, close(){}, onEvent(){}, offEvent(){}, BackButton:{show(){},hide(){},onClick(){},offClick(){}} } };`,
   }));
   await page.route("**/api/session/me", (route) => route.fulfill({
     status: 200,

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveEntitlement } from "@/lib/auth/entitlements";
 import { activePlan } from "@/lib/billing/plans";
 import { quotaSnapshot } from "@/lib/billing/quota";
+import { stripeEnabled } from "@/lib/env";
 import { authError, authorizeRequest } from "@/lib/http";
 
 /**
@@ -30,6 +31,11 @@ export async function GET(request: NextRequest) {
       expiresAt: entitlement.expiresAt?.toISOString() ?? null,
       enforced: entitlement.enforced,
       starsAmount: plan.starsAmount,
+      // Si el cobro web está disponible. El cliente no puede deducirlo: sabe
+      // que corre en un navegador, pero no si este servicio tiene Stripe
+      // configurado. Sin esto, el botón de compra en la web sería un enlace a
+      // ninguna parte cada vez que el interruptor esté apagado.
+      webCheckout: stripeEnabled(),
       quota,
     });
   } catch (error) {

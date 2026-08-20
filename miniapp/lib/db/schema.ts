@@ -28,7 +28,11 @@ export type AccountPlan = "free" | "premium";
  * para que la UI pueda ser honesta con quien heredó el acceso en el corte en
  * lugar de sorprenderlo el día del vencimiento.
  */
-export type PlanSource = "default" | "stars" | "grandfathered" | "admin" | "refunded";
+// `stripe` entra en Fase 133: el mismo plan comprado desde el sitio web. La
+// procedencia se conserva por pasarela para poder atribuir un reembolso a la
+// correcta -y para que la exclusión mutua de DEC-220 sea comprobable-.
+export type PlanSource =
+  | "default" | "stars" | "stripe" | "grandfathered" | "admin" | "refunded";
 
 export const miniappUsers = pgTable("miniapp_users", {
   telegramUserId: bigint("telegram_user_id", { mode: "number" }).primaryKey(),

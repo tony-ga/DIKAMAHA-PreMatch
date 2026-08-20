@@ -1,6 +1,49 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-18
+**Actualizado:** 2026-08-19
+
+## Fase 133 — DIKAMAHA deja de vivir sólo dentro de Telegram
+
+La Mini App se sirve ahora también desde un dominio propio, con el mismo diseño
+y las mismas funciones, **sin una segunda copia del código**. El hallazgo que
+gobierna la fase es que la Mini App de la Fase 115 nunca fue un cliente ligero:
+es una aplicación Next.js completa con BFF propio, de modo que el 95% del
+producto ya era web. Sólo cuatro puntos dependían de la plataforma
+-autenticación, cobro, `BackButton`/tema y compartir- y son los únicos que
+distinguen contexto.
+
+La decisión que evita el problema difícil es la identidad (`DEC-219`): el
+Telegram Login Widget devuelve **el mismo `telegram_user_id`** que `initData`,
+que es la clave primaria de `miniapp_users` y la clave foránea de la
+suscripción, la cuota diaria, los favoritos y las alertas. Quien ya usa la Mini
+App entra en la web con su cuenta, su plan y su historial intactos: cero
+migración de datos, cero tabla de identidades, cero flujo de vinculación.
+
+El cobro web va con Stripe (`DEC-220`), apagado por `MINIAPP_STRIPE_ENABLED`.
+Su idempotencia es estructural -`stripe_events` es la puerta, igual que
+`star_payments` para Stars- y la regla de exclusión mutua impide que dos
+pasarelas escriban sobre el único `plan_expires_at` del usuario y alguien pague
+dos veces el mismo mes. Se implementó **sin añadir el SDK de Stripe**: tres
+llamadas `fetch` y una verificación HMAC con `node:crypto`, en línea con el
+runtime mínimo de la Fase 108.
+
+Estado de pruebas: 244 Vitest en verde -los 23 archivos previos **sin
+modificar**- más 21 nuevas del validador del widget, la pasarela y la detección
+de contexto. En Playwright, 62 pasan y las 5 del proyecto `web` nuevo también.
+Quedan 6 fallos E2E que **son previos a esta fase**: se comprobó forzando el
+contexto a `telegram` -es decir, con el comportamiento anterior- y fallan igual.
+Cinco muestran el muro Premium porque su stub no devuelve plan, y el sexto
+espera 6 destinos en la barra cuando hay 7 desde la Fase 126.
+
+Una fixture sí hubo que tocar: `responsive-fit.spec.ts` estubaba
+`initData: ''`, que es justo la señal con la que se distingue el WebView de un
+navegador. Su aserción no cambia -el bloqueo de escala sigue exigiéndose en
+Telegram-; lo que cambia es que el stub ahora manda un `initData` como el que
+manda un cliente real.
+
+Falta lo que no se puede obtener sin desplegar: `/setdomain` en BotFather,
+un acceso real desde el dominio, y un checkout de prueba con su webhook. El
+orden está en `docs/runbooks/railway_public_web_app.md`.
 
 ## Las tres decisiones abiertas, llevadas a código y medidas (DEC-216 a DEC-218)
 

@@ -3,16 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useState } from "react";
 
-import { useAuth } from "@/components/providers";
+import { useAuth, useRuntimeContext } from "@/components/providers";
 import { api } from "@/lib/client-api";
 
 export type EntitlementView = {
   plan: "free" | "premium";
-  planSource: "default" | "stars" | "grandfathered" | "admin" | "refunded";
+  planSource: "default" | "stars" | "stripe" | "grandfathered" | "admin" | "refunded";
   role: "user" | "admin";
   expiresAt: string | null;
   enforced: boolean;
   starsAmount: number;
+  /** Si este servicio tiene el cobro web configurado y encendido. */
+  webCheckout?: boolean;
   quota: { used: number; limit: number; remaining: number } | null;
 };
 
@@ -64,6 +66,15 @@ export function PremiumUpsell({ headline, detail }: {
 }) {
   const { data } = useEntitlement();
   const stars = data?.starsAmount ?? 250;
+  const context = useRuntimeContext();
+  // En Telegram el precio se anuncia en Stars porque es lo que se va a cobrar.
+  // En la web el importe en moneda lo fija Stripe y se ve en su checkout:
+  // escribir aquí una conversión sería una cifra que el cargo real puede no
+  // respetar -el cambio de Stars se mueve, y el precio de Stripe se ajusta por
+  // su lado-.
+  const label = context === "web"
+    ? "Activar Premium · suscripción mensual"
+    : `Activar Premium · ${stars} ⭐ al mes`;
   return (
     <article className="data-panel premium-upsell">
       <p className="eyebrow">DIKAMAHA PREMIUM</p>
@@ -76,7 +87,7 @@ export function PremiumUpsell({ headline, detail }: {
         <li>Constructor de picks con probabilidad conjunta</li>
         <li>Favoritos y alertas sin tope</li>
       </ul>
-      <SubscribeButton label={`Activar Premium · ${stars} ⭐ al mes`} />
+      <SubscribeButton label={label} />
       <p className="muted premium-disclaimer">
         DIKAMAHA publica análisis estadístico. No es asesoramiento financiero
         ni una recomendación de apuesta.
@@ -95,6 +106,8 @@ export function PremiumUpsell({ headline, detail }: {
  */
 export function SubscribeButton({ label }: { label: string }) {
   const { csrfToken } = useAuth();
+  const context = useRuntimeContext();
+  const { data } = useEntitlement();
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<string | null>(null);
 
@@ -108,7 +121,7 @@ export function SubscribeButton({ label }: { label: string }) {
     tick();
   }, [queryClient]);
 
-  const mutation = useMutation({
+  const stars = useMutation({
     mutationFn: () => api<{ link: string; starsAmount: number }>(
       "/api/billing/invoice", { method: "POST", body: "{}" }, csrfToken),
     onSuccess: ({ link }) => {
@@ -130,6 +143,44 @@ export function SubscribeButton({ label }: { label: string }) {
     },
     onError: () => setStatus("No pudimos abrir el pago. Inténtalo en un momento."),
   });
+
+  /**
+   * Compra desde el navegador.
+   *
+   * Se sale del sitio hacia el checkout alojado de Stripe en vez de pedir la
+   * tarjeta aquí: ningún dato de pago debe pasar por DIKAMAHA. La vuelta no
+   * confirma nada -el alta la escribe el webhook-, así que al regresar se
+   * reconsulta la titularidad igual que tras un `paid` de Stars.
+   */
+  const stripe = useMutation({
+    mutationFn: () => api<{ url: string }>(
+      "/api/billing/stripe/checkout", { method: "POST", body: "{}" }, csrfToken),
+    onSuccess: ({ url }) => { window.location.assign(url); },
+    onError: (error) => {
+      const code = error instanceof Error ? error.message : "";
+      setStatus(code === "stars_subscription_active"
+        // DEC-220: una suscripción viva por usuario. Decir dónde está la que ya
+        // tiene es lo único accionable; ofrecerle pagar otra vez no lo es.
+        ? "Ya tienes una suscripción activa pagada con Telegram Stars. "
+          + "Gestiónala desde Telegram."
+        : "No pudimos abrir el pago. Inténtalo en un momento.");
+    },
+  });
+
+  const web = context === "web";
+  // Con el interruptor de Stripe apagado la web no puede cobrar. Se dice, en
+  // vez de ofrecer un botón que no lleva a ninguna parte.
+  const unavailable = web && data?.webCheckout === false;
+  const mutation = web ? stripe : stars;
+
+  if (unavailable) {
+    return (
+      <p className="muted">
+        La suscripción se activa desde Telegram. Abre DIKAMAHA en la aplicación
+        para completar el pago.
+      </p>
+    );
+  }
 
   return (
     <>

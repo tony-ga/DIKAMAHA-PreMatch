@@ -15,6 +15,7 @@ import {
 
 import { api } from "@/lib/client-api";
 import { isPublicRoute } from "@/lib/public-routes";
+import { detectContext, type RuntimeContext } from "@/lib/runtime-context";
 
 type User = {
   id: number;
@@ -40,9 +41,40 @@ function accessMessage(code: string): string {
       + "que se trata de un error.";
   }
   if (code === "miniapp_disabled") {
-    return "La Mini App está temporalmente fuera de servicio.";
+    return "DIKAMAHA está temporalmente fuera de servicio.";
   }
   return code;
+}
+
+/**
+ * Dónde corre la aplicación, resuelto una vez para toda la interfaz.
+ *
+ * `null` mientras no se sabe, que es exactamente el primer render: este árbol
+ * también se renderiza en el servidor, donde no hay `window` que interrogar.
+ * Devolver "web" por defecto haría que el HTML servido y el cliente
+ * discreparan dentro de Telegram y React descartaría la hidratación entera
+ * -el mismo fallo que ya obligó a mover la sesión recordada a un efecto-.
+ */
+const RuntimeContextValue = createContext<RuntimeContext | null>(null);
+
+export function useRuntimeContext(): RuntimeContext | null {
+  return useContext(RuntimeContextValue);
+}
+
+/**
+ * Libera el bloqueo de zoom fuera de Telegram.
+ *
+ * `app/layout.tsx` fija `maximum-scale=1` por un bug real del WebView de iOS,
+ * y ese `viewport` es estático: se sirve igual a los dos contextos. En un
+ * navegador de verdad no hay WebView que proteger y sí una barrera de
+ * accesibilidad -impide el pellizco-, así que se retira en cuanto se sabe que
+ * no estamos dentro de Telegram. Después del primer pintado, que es cuando el
+ * bug de escala inicial ya no puede ocurrir.
+ */
+function unlockViewportZoom(): void {
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  meta.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
 }
 type AuthState = {
   user: User | null;
@@ -207,6 +239,9 @@ function TelegramAuth({ children }: { children: ReactNode }) {
   // componente que llame a `useAuth` siga encontrándolo.
   const isPublic = isPublicRoute(pathname);
   const [attempt, setAttempt] = useState(0);
+  // Se resuelve en un efecto, no al construir el estado, por lo mismo que la
+  // sesión recordada: en el servidor no hay `window`.
+  const [context, setContext] = useState<RuntimeContext | null>(null);
   const [state, setState] = useState<Omit<AuthState, "retry">>({
     user: null,
     csrfToken: "",
@@ -235,15 +270,34 @@ function TelegramAuth({ children }: { children: ReactNode }) {
     ));
   }, [attempt]);
 
+  // Fuera del efecto de autenticación porque también hace falta en las rutas
+  // públicas, donde ese efecto no llega a correr: una tarjeta compartida se
+  // abre casi siempre desde un navegador.
+  useEffect(() => { setContext(detectContext()); }, []);
+
   useEffect(() => {
     if (isPublic) return;
     let active = true;
+    const context = detectContext();
     const webApp = window.Telegram?.WebApp;
+    // Dentro de Telegram manda el contenedor; fuera, la preferencia del
+    // sistema. El atributo escrito es el mismo en los dos casos, así que
+    // `globals.css` no distingue contextos: su bloque `[data-tg-theme="light"]`
+    // ya servía para esto sin saberlo.
+    const media = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: light)")
+      : null;
     const applyTheme = () => {
-      document.documentElement.dataset.tgTheme = webApp?.colorScheme ?? "dark";
+      document.documentElement.dataset.tgTheme = context === "telegram"
+        ? webApp?.colorScheme ?? "dark"
+        : media?.matches ? "light" : "dark";
     };
     applyTheme();
-    webApp?.onEvent("themeChanged", applyTheme);
+    if (context === "telegram") webApp?.onEvent("themeChanged", applyTheme);
+    else {
+      media?.addEventListener("change", applyTheme);
+      unlockViewportZoom();
+    }
     async function authenticate() {
       try {
         const existing = await fetch("/api/session/me", {
@@ -260,6 +314,15 @@ function TelegramAuth({ children }: { children: ReactNode }) {
         // alta. Se vuelve a la pantalla de arranque para no dejar a la vista
         // una interfaz cuyas consultas están devolviendo 401.
         if (active) setState((current) => ({ ...current, loading: true, error: null }));
+        // Fuera de Telegram no hay nada que reintentar en silencio: el pase lo
+        // emite el Login Widget, que vive en una pantalla propia. Se manda ahí
+        // en vez de mostrar un error, porque no es un fallo sino la ausencia
+        // esperada de sesión.
+        if (context === "web") {
+          rememberUser(null);
+          router.replace("/login");
+          return;
+        }
         if (!webApp?.initData) throw new Error("Abre DIKAMAHA desde Telegram.");
         webApp.ready();
         webApp.expand();
@@ -306,16 +369,19 @@ function TelegramAuth({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       webApp?.offEvent("themeChanged", applyTheme);
+      media?.removeEventListener("change", applyTheme);
     };
   }, [attempt, router, queryClient, isPublic]);
 
   return (
-    <AuthContext.Provider value={{ ...state, retry }}>
-      {isPublic ? children
-        : state.loading ? <LaunchScreen />
-        : state.error ? <AuthError message={state.error} retry={retry} />
-        : children}
-    </AuthContext.Provider>
+    <RuntimeContextValue.Provider value={context}>
+      <AuthContext.Provider value={{ ...state, retry }}>
+        {isPublic ? children
+          : state.loading ? <LaunchScreen />
+          : state.error ? <AuthError message={state.error} retry={retry} />
+          : children}
+      </AuthContext.Provider>
+    </RuntimeContextValue.Provider>
   );
 }
 

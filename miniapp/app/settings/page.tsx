@@ -31,6 +31,14 @@ function PlanPanel() {
       "/api/billing/cancel", { method: "POST", body: "{}" }, csrfToken),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["entitlement"] }),
   });
+  // Cancelar, cambiar tarjeta y ver recibos se delegan en el portal alojado de
+  // Stripe: cancelar tiene que ser tan fácil como comprar, y el portal ya lo
+  // es sin que ningún dato de pago pase por aquí.
+  const portal = useMutation({
+    mutationFn: () => api<{ url: string }>(
+      "/api/billing/stripe/portal", { method: "POST", body: "{}" }, csrfToken),
+    onSuccess: ({ url }) => { window.location.assign(url); },
+  });
 
   if (!data || !data.enforced) return null;
 
@@ -71,6 +79,15 @@ function PlanPanel() {
           }}
         >
           {cancel.isPending ? "Cancelando…" : "Cancelar renovación"}
+        </button>
+      ) : null}
+      {data.planSource === "stripe" ? (
+        <button
+          className="secondary-button"
+          disabled={portal.isPending}
+          onClick={() => portal.mutate()}
+        >
+          {portal.isPending ? "Abriendo…" : "Gestionar suscripción"}
         </button>
       ) : null}
       {heredado ? <SubscribeButton label={`Suscribirme · ${data.starsAmount} ⭐ al mes`} /> : null}

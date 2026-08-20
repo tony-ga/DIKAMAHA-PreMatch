@@ -555,3 +555,30 @@ button { color: inherit; }
 .joint-headline small { color: var(--muted); font-size: .7rem; }
 .joint-warnings { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 6px;
   color: var(--muted); font-size: .68rem; line-height: 1.5; }
+
+/* ---------------------------------------------------------------------------
+   Superficie web (Fase 133)
+
+   El producto es el mismo y el diseño es el mismo: lo único que cambia es que
+   fuera del WebView hay ventanas mucho más anchas que un teléfono. `.content`
+   ya se centraba a 820 px, pero las dos barras están fijas al viewport y se
+   estiraban a lo ancho de la pantalla, dejando siete destinos separados medio
+   metro. Aquí se les da el mismo ancho que al contenido.
+
+   Todo va dentro de una consulta de medios que un teléfono nunca cumple, de
+   modo que la Mini App -y el E2E a 390x844- no ve ni una regla nueva.
+--------------------------------------------------------------------------- */
+
+@media (min-width: 860px) {
+  .topbar, .bottom-nav {
+    width: min(100%, 820px);
+    margin-inline: auto;
+  }
+  .topbar { border-inline: 1px solid var(--line); }
+  .bottom-nav { border-radius: 18px 18px 0 0; border-inline: 1px solid var(--line); }
+}
+
+.login-screen { gap: 0; max-width: 420px; margin-inline: auto; }
+.login-screen .muted { margin: 0 0 24px; }
+.login-actions { display: grid; justify-items: center; gap: 14px; min-height: 60px; }
+.state-error { color: var(--danger); font-size: .8rem; line-height: 1.5; }

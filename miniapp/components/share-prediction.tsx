@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { useAuth } from "@/components/providers";
+import { useAuth, useRuntimeContext } from "@/components/providers";
 import { api } from "@/lib/client-api";
 
 type Props = {
@@ -36,6 +36,7 @@ type ShareResponse = { token: string; status: string };
  */
 export function SharePrediction(props: Props) {
   const { csrfToken } = useAuth();
+  const context = useRuntimeContext();
   const [state, setState] = useState<"idle" | "working" | "copied" | "failed">("idle");
   const [url, setUrl] = useState("");
 
@@ -58,7 +59,11 @@ export function SharePrediction(props: Props) {
       }, csrfToken);
       const link = `${window.location.origin}/s/${response.token}`;
       setUrl(link);
-      const telegram = window.Telegram?.WebApp;
+      // La hoja de reenvío sólo existe dentro del cliente de Telegram. Fuera,
+      // el SDK sigue cargado y `openTelegramLink` sigue definido, pero su
+      // mensaje no tiene contenedor que lo reciba: el usuario pulsaría
+      // compartir y no pasaría nada.
+      const telegram = context === "telegram" ? window.Telegram?.WebApp : undefined;
       if (telegram?.openTelegramLink) {
         telegram.openTelegramLink(
           `https://t.me/share/url?url=${encodeURIComponent(link)}`);
