@@ -117,5 +117,7 @@ artifacts/phase_116_live_probability_engine_v1/*
 output/
 
 # Worktrees de tareas en segundo plano: son repos git propios y no pertenecen
-# a este árbol.
-.claude/worktrees/
+# a este árbol. Con `**/` a propósito: un patrón con barra en medio queda
+# anclado al directorio del .gitignore, así que `.claude/worktrees/` sólo
+# cubría la raíz y el de `miniapp/` volvió a colarse.
+**/.claude/worktrees/
