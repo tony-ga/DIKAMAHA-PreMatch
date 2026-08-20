@@ -3,6 +3,7 @@
 import { useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 
+import { PremiumHighlight, QuotaBanner } from "@/components/premium-banner";
 import { FeatureCard, FixtureCard, Metric, SectionTitle, StatePanel } from "@/components/ui";
 import { api, type Catalog } from "@/lib/client-api";
 
@@ -40,11 +41,17 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <QuotaBanner />
+
       <div className="metric-grid">
         <Metric label="En vivo ahora" value={live.data?.count ?? "—"} accent />
         <Metric label="Próximos" value={upcoming.data?.count ?? "—"} />
         <Metric label="Modelos activos" value={models.data?.models.length ?? "—"} />
       </div>
+
+      {/* Con la cifra real de partidos vivos que ya está en pantalla, no con
+          una escasez inventada. */}
+      <PremiumHighlight liveCount={live.data?.count} />
 
       <SectionTitle aside={<Link className="section-link" href="/live">Ver todos →</Link>}>Radar live</SectionTitle>
       {live.isError ? (

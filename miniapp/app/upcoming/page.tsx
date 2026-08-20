@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { QuotaBanner } from "@/components/premium-banner";
 import { CatalogWarning, FixtureCard, Metric, PageHeader, StatePanel, TruncatedCatalogNotice } from "@/components/ui";
 import { api, type Catalog, type ExplorerDate, type League, queryString } from "@/lib/client-api";
 
@@ -19,6 +20,9 @@ export default function UpcomingPage() {
   return (
     <>
       <PageHeader eyebrow="PRE-MATCH · CORTE CAUSAL" title="Próximos partidos" />
+      {/* Aquí es donde se elige qué partido gastar, así que es donde saber
+          cuántas quedan cambia la decisión. */}
+      <QuotaBanner />
       {leagues.isError || dates.isError ? (
         <CatalogWarning onRetry={() => { void leagues.refetch(); void dates.refetch(); }} />
       ) : null}

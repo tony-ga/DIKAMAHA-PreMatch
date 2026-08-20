@@ -10,6 +10,7 @@ import { FixtureContext } from "@/components/fixture-context";
 import { LoadingProgress } from "@/components/loading-progress";
 import { MarketGrid } from "@/components/market-grid";
 import { PickBuilderBar, PickToggle } from "@/components/pick-toggle";
+import { PremiumFooterCta } from "@/components/premium-banner";
 import { PremiumUpsell } from "@/components/premium-gate";
 import { useAuth } from "@/components/providers";
 import { api, percentage, queryString, record, unavailableReason, type Catalog } from "@/lib/client-api";
@@ -160,6 +161,7 @@ export function PredictionDetail(props: Props) {
         <AuditedLadder rows={auditedRows} homeName={homeName} awayName={awayName} match={match} />
         <MarketGrid rows={gridRows} homeName={homeName} awayName={awayName} match={match} />
         <div className="notice">Las probabilidades shadow son analíticas y no constituyen cuotas ni recomendación de apuesta.</div>
+        <PremiumFooterCta />
       </div>
       <PickBuilderBar />
     </>

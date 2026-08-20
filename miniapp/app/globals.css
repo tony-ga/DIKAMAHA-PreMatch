@@ -582,3 +582,36 @@ button { color: inherit; }
 .login-screen .muted { margin: 0 0 24px; }
 .login-actions { display: grid; justify-items: center; gap: 14px; min-height: 60px; }
 .state-error { color: var(--danger); font-size: .8rem; line-height: 1.5; }
+
+/* ---------------------------------------------------------------------------
+   Superficies comerciales fuera del muro (Fase 133)
+
+   Mismo lenguaje visual que `data-panel`: es una oferta, no una alarma. Nada de
+   rojos ni de bordes gruesos -el estado "sin predicciones hoy" no es un error
+   del usuario, y pintarlo como tal sólo produce ansiedad en un producto que
+   además roza un terreno sensible-.
+--------------------------------------------------------------------------- */
+
+.premium-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--mint);
+  border-radius: 16px;
+  background: rgba(176, 228, 204, .05);
+}
+.premium-banner-copy { display: grid; gap: 3px; min-width: 0; flex: 1 1 220px; }
+.premium-banner-copy strong { font-size: .95rem; line-height: 1.25; }
+.premium-banner-copy .muted { font-size: .72rem; }
+.premium-banner .primary-button, .premium-banner .secondary-button { flex: 0 0 auto; }
+/* Sin cuota disponible el acento se apaga en vez de encenderse: el mensaje ya
+   es más fuerte por sí solo. */
+.premium-banner.spent { border-left-color: var(--signal); background: rgba(64, 138, 113, .07); }
+.premium-banner.highlight { border-left-color: var(--signal); }
+.premium-banner.slim { margin: 16px 0 0; padding: 12px 14px; font-size: .74rem; }
+.premium-banner.slim .muted { font-size: .74rem; line-height: 1.5; }
