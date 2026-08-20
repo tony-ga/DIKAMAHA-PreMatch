@@ -6453,6 +6453,15 @@ modificar**; pruebas nuevas del validador del widget (firma válida, hash
 manipulado, `auth_date` caducado y futuro); un proyecto Playwright `web` sin el
 stub de `window.Telegram`; y un acceso real desde el dominio propio tras
 `/setdomain` en BotFather.
+Evidencia parcial (2026-08-20): desplegado en producción con el commit `a709bfa`.
+244 Vitest -23 archivos previos sin modificar- y 62 Playwright, con el proyecto
+`web` de 5 pruebas en verde; los 6 fallos E2E restantes se comprobaron previos
+forzando el contexto a `telegram`. En producción, `/login` sirve el widget con
+`viewtofuture_bot` y `/api/health` reporta base y upstream vivos. **Falta el
+acceso real**, que depende de `/setdomain` en BotFather -paso manual del dueño
+del bot-. La superficie web usa por ahora el dominio de Railway existente: no se
+compró dominio propio y Railway no genera un segundo subdominio mientras el
+servicio ya tiene uno. La decisión sigue `propuesta` hasta ese acceso real.
 
 
 DEC-220

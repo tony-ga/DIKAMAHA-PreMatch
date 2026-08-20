@@ -41,9 +41,23 @@ navegador. Su aserción no cambia -el bloqueo de escala sigue exigiéndose en
 Telegram-; lo que cambia es que el stub ahora manda un `initData` como el que
 manda un cliente real.
 
-Falta lo que no se puede obtener sin desplegar: `/setdomain` en BotFather,
-un acceso real desde el dominio, y un checkout de prueba con su webhook. El
-orden está en `docs/runbooks/railway_public_web_app.md`.
+**Desplegado el 2026-08-20** (commit `a709bfa`, push a `main`, auto-deploy del
+servicio `telegram-miniapp`): `/api/health` responde
+`{"status":"ready","database":true,"upstream":true}` -la migración `0006` se
+aplicó en el `preDeployCommand` sin romper nada-, `/login` sirve el widget con
+`viewtofuture_bot`, y `MINIAPP_PUBLIC_WEB_URL` apunta al dominio de Railway ya
+existente. Railway **no genera un segundo subdominio** mientras el servicio
+tiene uno, así que la web y la Mini App comparten host hasta que haya dominio
+propio; cambiarlo después es una variable y un `/setdomain`.
+
+Queda **un paso manual y uno bloqueado**. El manual es `/setdomain` en
+BotFather con `@viewtofuture_bot`: exige la cuenta de Telegram del dueño y no se
+puede verificar desde fuera -el iframe del widget es de otro origen-, así que la
+prueba es pulsar el botón en `/login`. El bloqueado es Stripe: exige cuenta,
+producto, precio y claves, y las claves no las manejo yo.
+
+`MINIAPP_STRIPE_ENABLED` sigue en `false`, que es el estado correcto: la web
+vende remitiendo a Telegram y ninguna ruta de Stripe hace nada.
 
 ## Las tres decisiones abiertas, llevadas a código y medidas (DEC-216 a DEC-218)
 

@@ -4,7 +4,7 @@ Complementa `docs/runbooks/railway_telegram_miniapp.md` y
 `docs/runbooks/telegram_stars_subscriptions.md`. **No hay servicio nuevo**: el
 sitio web lo sirve el mismo `telegram-miniapp` (`dbd1077b-…`) desde el mismo
 Dockerfile y la misma imagen. Lo único que cambia es que ese servicio pasa a
-responder también en un dominio propio y a aceptar un segundo camino de entrada.
+servir también una superficie web y a aceptar un segundo camino de entrada.
 
 ## Orden de despliegue
 
@@ -15,20 +15,36 @@ válido**, y el interruptor va al final.
    `0006_stripe_web_billing.sql` en el despliegue. Es idempotente; reaplicarla no
    tiene efecto. Sin ella, el primer pago con Stripe violaría el CHECK de
    `plan_source` y el usuario pagaría sin recibir nada.
-2. **Dominio.** Añadir el dominio propio al servicio en Railway y apuntar el DNS.
-   La URL `telegram-miniapp-production-cbab.up.railway.app` sigue funcionando y
-   es la que usa el bot: **no se toca**.
-3. **`/setdomain` en BotFather.** Con el bot seleccionado, `/setdomain` y el
-   dominio del paso 2. Sin esto el Login Widget no renderiza y no hay forma de
-   entrar desde el navegador. Es manual y no se puede verificar desde el código.
-4. **Variables de la superficie web:**
-   - `TELEGRAM_BOT_USERNAME` — nombre del bot sin `@`.
+2. **Dominio.** El servicio ya expone
+   `telegram-miniapp-production-cbab.up.railway.app`, y **esa es la superficie
+   web** (`MINIAPP_PUBLIC_WEB_URL`, aplicado el 2026-08-20). Railway **no genera
+   un segundo subdominio** mientras el servicio ya tiene uno: `generate-domain`
+   devuelve el existente en lugar de crear otro. Para separar "web" de "miniapp"
+   haría falta un dominio propio comprado, adjuntado con `generate-domain` y
+   verificado por DNS; entonces bastaría cambiar `MINIAPP_PUBLIC_WEB_URL` y
+   repetir el paso 3.
+3. **`/setdomain` en BotFather.** Con `@viewtofuture_bot` seleccionado,
+   `/setdomain` y el dominio del paso 2. Sin esto el Login Widget no autentica y
+   no hay forma de entrar desde el navegador. Es manual: exige la cuenta de
+   Telegram del dueño del bot y **no se puede hacer ni verificar desde el
+   código** -el iframe del widget es de otro origen y no se puede inspeccionar-.
+   La prueba es directa: pulsar el botón en `/login`. Si el dominio no está
+   registrado, Telegram responde con un error de dominio en vez de pedir
+   confirmación.
+4. **Variables de la superficie web** (aplicadas el 2026-08-20):
+   - `TELEGRAM_BOT_USERNAME` — `viewtofuture_bot`, sin `@`.
    - `MINIAPP_PUBLIC_WEB_URL` — el dominio del paso 2, con `https`.
 
    El esquema exige las dos juntas: con dominio y sin nombre de bot, el servicio
    se niega a arrancar antes que servir una pantalla de acceso que no funciona.
+   Ponerlas de una en una **tira el servicio**; van en la misma operación.
 5. **Código.** Desplegar con `MINIAPP_STRIPE_ENABLED=false`. En este punto la web
    ya sirve el producto completo y el pago sigue siendo sólo por Telegram.
+   Hecho el 2026-08-20 con el commit `a709bfa` (push a `main`, auto-deploy):
+   `/api/health` responde `{"status":"ready","database":true,"upstream":true}`
+   -o sea, la migración `0006` se aplicó sin romper nada-, `/login` sirve el
+   widget con el bot correcto, y `/robots.txt` publica sólo portada, acceso y
+   tarjetas compartidas.
 6. **Comprobar la Mini App.** Antes de seguir: abrirla desde Telegram y verificar
    que se comporta igual que antes -mismo arranque, botón atrás del contenedor,
    tema, y compra con Stars-.
@@ -99,9 +115,10 @@ SELECT s.user_id
 
 ## Trampas conocidas
 
-- **El widget no renderiza**: casi siempre es `/setdomain` sin hacer, o hecho
-  con otro dominio. El navegador no da un error claro; el iframe simplemente no
-  aparece.
+- **El widget renderiza pero no autentica**: es `/setdomain` sin hacer, o hecho
+  con otro dominio. El botón aparece igual -el iframe de `oauth.telegram.org` se
+  carga siempre-, y el fallo sólo se ve al pulsarlo. Por eso no basta con
+  comprobar que la pantalla de acceso "se ve bien".
 - **Firma de webhook inválida**: si alguien introduce un middleware que lea o
   reescriba el cuerpo antes del manejador, la firma deja de cuadrar. El cuerpo
   tiene que llegar crudo.
