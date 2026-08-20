@@ -115,3 +115,7 @@ artifacts/phase_116_live_probability_engine_v1/*
 !artifacts/phase_116_live_probability_engine_v1/input_manifest.json
 !artifacts/phase_116_live_probability_engine_v1/metrics.json
 output/
+
+# Worktrees de tareas en segundo plano: son repos git propios y no pertenecen
+# a este árbol.
+.claude/worktrees/
