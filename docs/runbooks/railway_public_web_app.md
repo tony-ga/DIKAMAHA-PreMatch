@@ -50,13 +50,34 @@ válido**, y el interruptor va al final.
    tema, y compra con Stars-.
 7. **Stripe.** Sólo después:
    - Crear el producto y el precio recurrente mensual en Stripe.
-   - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`.
+
+     Hecho el 2026-08-20 en modo live: producto `prod_V6aClRs2gXEtLb`
+     ("DIKAMAHA Premium") y precio `price_1U6N2aPFLfIEEg44jtZeSwdd`, 4,90 USD al
+     mes. Es paridad nominal con los 250 ⭐ de Telegram, pero Stripe no retiene
+     el ~35% que retiene Telegram: quedan ~4,60 netos por suscriptor frente a
+     ~3,25, así que el punto de equilibrio baja de 15 a ~10.
+   - `STRIPE_SECRET_KEY` (secreto, lo pega una persona) y `STRIPE_PRICE_ID`
+     (identificador público, ya aplicado).
    - Registrar el endpoint `https://<dominio>/api/billing/stripe/webhook` con los
      eventos `checkout.session.completed`, `invoice.paid`,
      `customer.subscription.deleted` y `charge.refunded`; copiar el secreto de
      firma a `STRIPE_WEBHOOK_SECRET`.
+
+     Hecho el 2026-08-20: endpoint `we_1U6N03PFLfIEEg44MTLN4uwu` en la cuenta
+     `acct_1U327iPFLfIEEg44` (Dikamaha), **en modo live**. Verificado alcanzable
+     desde fuera -devuelve `503 stripe_disabled` mientras el interruptor está
+     apagado, que es la respuesta correcta-. El secreto de firma se revela en el
+     panel del endpoint; no se copia a ningún documento.
+
+     **La clave y el endpoint tienen que ser del mismo modo.** Un `sk_test_`
+     con este endpoint live no recibe nada, y la firma de un endpoint de prueba
+     no valida contra una clave live. Es el fallo más caro de diagnosticar
+     porque no produce error visible: simplemente no llega ningún evento.
    - Habilitar el Billing Portal en el panel de Stripe (lo usa
-     `/api/billing/stripe/portal` para cancelar).
+     `/api/billing/stripe/portal` para cancelar). **No existe todavía**: la
+     cuenta no tiene configuración por defecto, y sin ella esa ruta devuelve
+     error de Stripe. Se activa en Settings → Billing → Customer portal; la API
+     de creación no está expuesta al conector, así que es un paso de panel.
    - Encender `MINIAPP_STRIPE_ENABLED=true`.
 
    Con el interruptor en `true` y cualquiera de las tres claves ausente, el
