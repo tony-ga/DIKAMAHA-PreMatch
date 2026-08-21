@@ -2,6 +2,43 @@
 
 **Actualizado:** 2026-08-21
 
+## Dos defectos que llevaban meses liquidando de menos (DEC-224)
+
+Los logs de producción mostraban `phase123_settle_failed reason=unresolved` de
+forma persistente. Detrás había **dos defectos independientes**, ninguno con más
+síntoma que un contador.
+
+**El lado `total` nunca se pudo resolver.** `_period_statistics` construye el
+diccionario sólo con `home` y `away`; su `_with_total` añade `total` como
+*periodo*, jamás como lado. Pero el vocabulario público sí admite `total`, así
+que la validación aceptaba un lado que el resolutor no sabía leer, devolviendo
+un `None` indistinguible de un dato ausente de verdad. **1,645 picks congelados
+con lado `total`, cero liquidados jamás.** Aislado sin ambigüedad en el fixture
+`401902953`: `home` 98/98, `away` 98/98, `total` **0/84** —misma llamada, mismo
+instante—. Es el fallo de DEC-190 repetido en otro eje.
+
+**Bloqueo de cabeza entre ciclos.** `unsettled()` iba en orden ascendente con
+tope por ciclo, así que un pick cuyo partido nunca se reconcilió ocupaba la
+cabeza para siempre: **481 de los 500 primeros eran muertos**, y los 3,896 de
+detrás no se examinaban nunca. Sólo 6 de 119 partidos reconciliados habían
+liquidado algo, los 6 de una sola liga. Es la continuación de DEC-191, que
+corrigió el mismo bloqueo *dentro* de un ciclo.
+
+**Impacto medido contra producción antes de desplegar:** la ventana de cada
+ciclo pasa de **19 a 440 picks liquidables de 500** (23×), y quedan **1,229
+picks desbloqueados**, 403 de ellos de lado `total`.
+
+El guard es lo que evita la tercera vez: `test_observed_team_count_sides.py`
+fija que **cada lado y periodo que el sistema valida tiene que resolverse**.
+Verificado que atrapa el fallo —contra la implementación anterior falla en 12
+combinaciones, todas de lado `total`—. Un total *parcial* devuelve `None` a
+propósito: sumar sólo un lado daría un número plausible y equivocado.
+
+Queda abierto, y es más grande que ambos: **sólo 119 partidos llegan a
+`prediction_settlements`** de los miles con picks congelados. Que la mayoría
+nunca se reconcilie es un problema de cobertura de Fase 118, anterior e
+independiente, y merece su propia investigación.
+
 ## Fase 136 — store propio del Constructor de Parlays (DEC-223)
 
 El usuario eligió un menú propio en vez de reusar el store de picks de Fase 123.

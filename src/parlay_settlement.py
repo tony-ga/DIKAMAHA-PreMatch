@@ -52,6 +52,10 @@ except ModuleNotFoundError:  # pragma: no cover - ejecución directa desde src
 LOGGER = logging.getLogger(__name__)
 STATUS = "experimental_shadow_not_promoted"
 REFERENCE_LEG_COUNTS = (2, 3, 4, 5)
+# Piernas que un ciclo intenta liquidar. Acota el trabajo por corrida y, con el
+# orden descendente de `unsettled_legs`, impide que las piernas que nunca podrán
+# liquidarse bloqueen a las que sí -el fallo que Fase 123 sufrió durante meses-.
+SETTLE_WINDOW = 500
 
 
 class ParlayBase(DeclarativeBase):
@@ -301,14 +305,27 @@ class SqlAlchemyParlayRepository(ParlayRepository):
         })
 
     def unsettled_legs(self, now: datetime) -> list[LegFreezeRecord]:
-        """Piernas cuyo partido ya arrancó y siguen sin veredicto."""
+        """Piernas cuyo partido ya arrancó y siguen sin veredicto.
+
+        Ventana acotada y **descendente**, por la lección que Fase 123 pagó
+        cara: allí la cola iba ascendente con un tope por ciclo, y las piernas
+        de partidos que nunca se reconciliaron ocupaban la cabeza para siempre
+        -481 de las 500 primeras, medido en producción-, de modo que nada de lo
+        que venía detrás llegaba a evaluarse. Descendente da prioridad a lo
+        recién jugado, que es lo que acaba de reconciliarse, y deja que lo
+        muerto sedimente sin excluirlo.
+
+        El tope existe además por sí mismo: sin él la consulta devolvía la cola
+        entera, que crece sin cota mientras haya piernas que nunca liquiden.
+        """
 
         statement = (
             select(ParlayLegFreeze)
             .where(
                 ParlayLegFreeze.kickoff_ts <= now,
                 ParlayLegFreeze.leg_key.not_in(select(ParlayLegSettlement.leg_key)))
-            .order_by(ParlayLegFreeze.kickoff_ts.asc()))
+            .order_by(ParlayLegFreeze.kickoff_ts.desc())
+            .limit(SETTLE_WINDOW))
         with self._factory() as session:
             return [_leg(row) for row in session.execute(statement).scalars()]
 

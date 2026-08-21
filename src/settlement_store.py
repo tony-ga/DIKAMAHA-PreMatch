@@ -234,6 +234,20 @@ def team_market_hit(direction: str, line: float, observed: float) -> bool:
 # DEC-190.
 _STATISTICS_PERIOD_KEYS = {"full_match": "total"}
 
+# `explorer_statistics()["periods"]` está indexado **por lado**, y
+# `_period_statistics` (`src/espn_user_explorer.py`) sólo construye `home` y
+# `away`. Su `_with_total` añade `total` como *periodo* -la suma de ambas
+# mitades-, nunca como lado, así que `periods["total"]` no existe y nunca
+# existió. El vocabulario público de lados sí admite `total` (`_LADDER_SIDES`
+# en `high_probability_settlement.py`, y `MARKET_METADATA` lo usa para líneas
+# como `shots_on_target_total_over_7_5`), de modo que la validación aceptaba un
+# lado que el resolutor no sabía resolver: 1,645 picks congelados en producción
+# con lado `total` y cero liquidados, sin más rastro que un `None`
+# indistinguible de un dato ausente de verdad. Es el mismo fallo que DEC-190
+# corrigió en el eje del periodo, repetido en el eje del lado.
+TOTAL_SIDE = "total"
+STATISTICS_SIDES = ("home", "away")
+
 
 def observed_team_count(
     periods: dict[str, Any], side: str, period: str, metric: str,
@@ -249,6 +263,23 @@ def observed_team_count(
     """
 
     key = _STATISTICS_PERIOD_KEYS.get(period, period)
+    if side == TOTAL_SIDE:
+        values = [_side_count(periods, name, key, metric)
+                  for name in STATISTICS_SIDES]
+        # Un total parcial es peor que ninguno: si sólo un lado publicó su
+        # conteo, sumar lo disponible daría un número plausible y equivocado
+        # que liquidaría la línea contra un dato que no es el total.
+        if any(value is None for value in values):
+            return None
+        return sum(values)
+    return _side_count(periods, side, key, metric)
+
+
+def _side_count(
+    periods: dict[str, Any], side: str, key: str, metric: str,
+) -> float | None:
+    """Lee el conteo de un lado concreto ya traducido el periodo."""
+
     counts = periods.get(side)
     observed = (counts or {}).get(key, {}).get(metric)
     return observed if isinstance(observed, (int, float)) else None

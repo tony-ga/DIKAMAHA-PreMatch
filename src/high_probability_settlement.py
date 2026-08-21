@@ -257,13 +257,34 @@ class SqlAlchemyHighProbabilityPickRepository(HighProbabilityPickRepository):
             return [_freeze_record(row) for row in session.execute(statement).scalars()]
 
     def unsettled(self, before: datetime) -> list[PickFreezeRecord]:
-        """Picks cuyo kickoff ya pasó y que no tienen fila en settlements."""
+        """Picks cuyo kickoff ya pasó y que no tienen fila en settlements.
+
+        Ordena por kickoff **descendente**, no ascendente. DEC-191 corrigió el
+        bloqueo de cabeza *dentro* de un ciclo -una excepción abortaba el bucle
+        y los picks de detrás no se evaluaban-, pero quedaba el mismo bloqueo
+        *entre* ciclos, causado por la ventana: con orden ascendente y
+        `limit(MAXIMUM_WINDOW)`, un pick que nunca podrá liquidarse -porque su
+        partido jamás se reconcilió en `prediction_settlements`- ocupa su sitio
+        en la cabeza de la cola para siempre.
+
+        Medido en producción el 2026-08-21: de los 500 primeros de la cola, 481
+        eran de partidos nunca reconciliados y consumían el presupuesto entero
+        de cada ciclo, de modo que los 3,896 picks de detrás no se examinaban
+        nunca. Sólo 6 de 119 partidos reconciliados habían liquidado algo.
+
+        Descendente da prioridad a los recién jugados, que son los que acaban de
+        reconciliarse, y deja que los muertos sedimenten al fondo sin excluir a
+        ninguno: un pick liquidado sale de la cola de forma permanente, así que
+        la cola drena por arriba. Se prefiere esto a una ventana de antigüedad,
+        que descartaría en firme picks legítimos si el liquidador estuviera
+        caído unos días.
+        """
 
         settled = select(HighProbabilityPickSettlement.pick_key)
         statement = select(HighProbabilityPickFreeze).where(
             HighProbabilityPickFreeze.kickoff_ts < before,
             HighProbabilityPickFreeze.pick_key.not_in(settled),
-        ).order_by(HighProbabilityPickFreeze.kickoff_ts.asc()).limit(MAXIMUM_WINDOW)
+        ).order_by(HighProbabilityPickFreeze.kickoff_ts.desc()).limit(MAXIMUM_WINDOW)
         with self._factory() as session:
             return [_freeze_record(row) for row in session.execute(statement).scalars()]
 

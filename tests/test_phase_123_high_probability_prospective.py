@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.high_probability_settlement import (
+    MAXIMUM_WINDOW,
     PickSettlementBase,
     SqlAlchemyHighProbabilityPickRepository,
     fixture_key,
@@ -607,3 +608,34 @@ def test_pick_view_never_filters_by_outcome_and_stays_chronological() -> None:
 
 # Version: 1.0.0
 # Created: 2026-08-12
+
+
+def test_unsettled_window_is_not_blocked_by_permanently_dead_picks() -> None:
+    """Un pick que nunca podrá liquidarse no puede ocupar la cola para siempre.
+
+    Continuación de DEC-191, que corrigió el bloqueo de cabeza *dentro* de un
+    ciclo. Quedaba el mismo bloqueo *entre* ciclos: con orden ascendente y
+    `limit(MAXIMUM_WINDOW)`, los picks más antiguos cuyo partido nunca se
+    reconcilió llenaban la ventana en cada corrida y los de detrás no se
+    examinaban jamás. Medido en producción: 481 de los 500 primeros eran
+    muertos, y 3,896 picks nunca llegaban a evaluarse.
+    """
+
+    repository = _repository()
+    for index in range(MAXIMUM_WINDOW):
+        repository.freeze_if_absent(freeze_from_pick(
+            _pick(market="1x2"),
+            _fixture(match_id=1000 + index, kickoff_ts=KICKOFF.isoformat()),
+            "sha", FROZEN_AT))
+    reachable = freeze_from_pick(
+        _pick(market="1x2"),
+        _fixture(match_id=1, kickoff_ts=(KICKOFF + timedelta(hours=6)).isoformat()),
+        "sha", FROZEN_AT)
+    repository.freeze_if_absent(reachable)
+
+    window = repository.unsettled(KICKOFF + timedelta(days=1))
+
+    assert len(window) == MAXIMUM_WINDOW
+    assert reachable.pick_key in {row.pick_key for row in window}, (
+        "el pick más reciente quedó fuera de la ventana: los muertos vuelven "
+        "a bloquear la cola")

@@ -296,3 +296,61 @@ def test_freeze_from_leg_accepts_zulu_suffix():
     fixture["kickoff_ts"] = "2026-08-21T18:00:00Z"
     record = freeze_from_leg(_leg_payload(), fixture, "a" * 64, NOW)
     assert record.kickoff_ts == datetime(2026, 8, 21, 18, 0, tzinfo=timezone.utc)
+
+
+# --- lecciones heredadas de Fase 123 --------------------------------------
+
+def test_every_eligible_market_of_the_gate_can_be_settled():
+    """Ninguna pierna elegible puede ser imposible de liquidar.
+
+    `shots_on_target_total_over_7_5` está en `APPROVED_MARKETS` con lado
+    `total`, y durante meses ese lado fue irresoluble: 1,645 picks de Fase 123
+    congelados y cero liquidados. Hoy falla el gate por otras razones, pero si
+    algún día lo pasara, sus piernas tienen que poder liquidarse. Esta prueba
+    ata el gate al resolutor para que no puedan divergir.
+    """
+
+    import json
+    from pathlib import Path
+
+    from src.settlement_store import observed_team_count
+    from src.team_count_market_runtime import MARKET_METADATA
+
+    root = Path(__file__).resolve().parents[1]
+    criteria = root / "artifacts/phase_135_parlay_eligibility/criteria.json"
+    if not criteria.exists():
+        pytest.skip("artefacto de Fase 135 ausente")
+    payload = json.loads(criteria.read_text(encoding="utf-8"))
+
+    def side(value: int) -> dict:
+        metrics = ("corners", "shots", "shots_on_target", "yellow_cards")
+        return {
+            "first_half": {m: value for m in metrics},
+            "second_half": {m: value for m in metrics},
+            "total": {m: value * 2 for m in metrics},
+        }
+
+    statistics = {"home": side(6), "away": side(7)}
+    unresolved = []
+    for key in payload["eligible_markets"]:
+        metric, team_side, period, _line, _source = MARKET_METADATA[key]
+        if observed_team_count(statistics, team_side, period, metric) is None:
+            unresolved.append(key)
+    assert unresolved == [], (
+        f"mercados elegibles que nunca liquidarían: {unresolved}")
+
+
+def test_settle_window_prioritises_recent_legs_over_dead_ones(repo):
+    """Una pierna muerta no puede bloquear la cola, como pasó en Fase 123."""
+
+    from src.parlay_settlement import SETTLE_WINDOW
+
+    for index in range(SETTLE_WINDOW):
+        _freeze(repo, f"dead{index}", kickoff=KICKOFF)
+    reachable = _freeze(repo, "fresh", kickoff=KICKOFF + timedelta(hours=6))
+
+    window = repo.unsettled_legs(KICKOFF + timedelta(days=1))
+
+    assert len(window) == SETTLE_WINDOW, "la ventana debe estar acotada"
+    assert reachable.leg_key in {row.leg_key for row in window}, (
+        "la pierna más reciente quedó fuera: las muertas bloquean la cola")

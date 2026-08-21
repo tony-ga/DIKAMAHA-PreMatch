@@ -6707,3 +6707,68 @@ correctamente omitido con `n=2`.
 Pendiente: desplegar el runner y dejarlo recolectar. Hasta reunir ≥30 parlays
 liquidados por tamaño no hay ratio prospectivo publicable, y hasta entonces el
 menú sigue `experimental_shadow_not_promoted`. No autoriza staking.
+
+
+DEC-224
+Fecha: 2026-08-21
+Problema: los logs de producción mostraban `phase123_settle_failed
+reason=unresolved` de forma persistente. La investigación encontró **dos
+defectos independientes** que se sumaban, y ninguno tenía síntoma visible más
+allá de un contador.
+
+(1) **El lado `total` nunca se pudo resolver.**
+`_period_statistics` (`src/espn_user_explorer.py`) construye el diccionario
+sólo con `home` y `away`; su `_with_total` añade `total` como *periodo* -suma
+de ambas mitades-, jamás como lado. Pero el vocabulario público sí admite
+`total` (`_LADDER_SIDES`, y `MARKET_METADATA` lo usa en
+`shots_on_target_total_over_7_5`), de modo que la validación aceptaba un lado
+que el resolutor no sabía leer: `periods.get("total")` devolvía `None`,
+indistinguible de un dato ausente de verdad. Es el mismo fallo que DEC-190
+corrigió en el eje del periodo, repetido en el eje del lado.
+Evidencia: 1,645 picks congelados con lado `total`, **0 liquidados jamás**.
+Aislado sin ambigüedad en el fixture `uefa.europa.conf_qual:401902953`, donde
+`home` liquidó 98/98, `away` 98/98 y `total` 0/84 -misma llamada, mismo
+instante, misma estadística-.
+
+(2) **Bloqueo de cabeza entre ciclos.** `unsettled()` ordenaba por kickoff
+ascendente con `limit(MAXIMUM_WINDOW)`. Un pick cuyo partido nunca se
+reconcilió en `prediction_settlements` ocupa la cabeza para siempre. Medido:
+de los 500 primeros de la cola, **481 eran de partidos nunca reconciliados**,
+consumían el presupuesto entero de cada ciclo y los 3,896 de detrás no se
+examinaban nunca. Sólo 6 de 119 partidos reconciliados habían liquidado algo,
+y los 6 de una sola liga. Es la continuación de DEC-191, que corrigió el mismo
+bloqueo *dentro* de un ciclo -una excepción abortaba el bucle-; quedaba el que
+causa la ventana.
+
+Decisión: corregir ambos, más un guard que impida la reincidencia.
+- `observed_team_count` suma `home + away` cuando el lado es `total`. Un total
+  **parcial** devuelve `None`: sumar lo disponible daría un número plausible y
+  equivocado que liquidaría la línea contra un dato que no es el total.
+- `unsettled()` pasa a orden **descendente**. Da prioridad a lo recién jugado
+  -que es lo que acaba de reconciliarse- y deja sedimentar lo muerto sin
+  excluir a nadie. Se descartó una ventana de antigüedad porque descartaría en
+  firme picks legítimos si el liquidador estuviera caído unos días.
+- `tests/test_observed_team_count_sides.py` fija la invariante: **cada lado y
+  periodo que el sistema valida tiene que resolverse** contra una estadística
+  completa, y cada línea de `MARKET_METADATA` también. Verificado que atrapa el
+  fallo: contra la implementación anterior falla en 12 combinaciones, todas de
+  lado `total`, más el mercado del catálogo.
+Estado: congelada
+Impacto en contratos/fases: ninguno sobre modelos, router ni probabilidad
+servida. Cambia qué picks **pueden** liquidarse, no cómo se decide un acierto:
+`team_market_hit` es idéntico.
+Evidencia de impacto, medida contra producción antes de desplegar: la ventana
+de cada ciclo pasa de **19 a 440 picks liquidables de 500** (23×), y quedan
+**1,229 picks** desbloqueados en total, de los cuales 403 son de lado `total`.
+Gates: 41 pruebas nuevas del guard de lados, 1 de regresión del bloqueo de cola
+y 2 en Fase 136; suite 1,045 aprobadas (+44) con los mismos 18 fallos conocidos
+de contención, 96/96 en aislamiento.
+Nota sobre Fase 136: su store heredaba media lección -`unsettled_legs` no tenía
+tope, así que no bloqueaba pero crecía sin cota-. Ahora usa ventana acotada y
+orden descendente, y una prueba ata su gate al resolutor para que un mercado
+elegible nunca pueda ser imposible de liquidar.
+Pendiente, no abordado aquí: **sólo 119 de los partidos con picks congelados
+llegan a `prediction_settlements`**, y 68 de esos 119 tienen picks. Que la
+mayoría de partidos nunca se reconcilie es un problema de cobertura de Fase 118,
+anterior e independiente de estos dos defectos, y merece su propia
+investigación.
