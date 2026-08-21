@@ -1,6 +1,123 @@
 # Estado operativo DIKAMAHA
 
-**Actualizado:** 2026-08-19
+**Actualizado:** 2026-08-21
+
+## Fase 136 — store propio del Constructor de Parlays (DEC-223)
+
+El usuario eligió un menú propio en vez de reusar el store de picks de Fase 123.
+La razón técnica coincide con esa elección: reusar Fase 123 alcanzaba para
+validar cada pierna por separado, pero **no para validar un parlay**. Al
+multiplicar, el error de calibración se compone en vez de sumarse, así que el
+ratio de entrega del conjunto no se puede reconstruir desde la calibración de
+las piernas. Hace falta registrar qué piernas formaron cada parlay y si el
+conjunto entero se cumplió.
+
+Cuatro tablas nuevas (migración `016`, aditiva): dos de piernas y dos de parlays
+de referencia. Lo que hace creíble la medición es **cuándo** se fijan las
+combinaciones: antes de cualquier kickoff, de forma determinista, ordenando por
+kickoff y clave -no por probabilidad, que sesgaría hacia las más altas- en
+bloques disjuntos que respetan una pierna por partido. Elegir la combinación
+después de conocer resultados haría que el ratio no midiera nada; es el mismo
+principio con el que Fase 86 materializa su baseline antes del kickoff.
+
+Un parlay queda pendiente mientras le falte una pierna -nunca se resuelve por
+mayoría, ni se cierra antes de tiempo cuando ya falló una, porque `legs_hit` es
+parte de la evidencia-. `prospective_delivery` oculta el ratio por debajo de 30
+parlays liquidados, igual que «Aciertos» oculta el porcentaje con muestra
+insuficiente.
+
+Verificado de extremo a extremo con el gate sellado real: `btts` a `0.96`
+rechazado en los cuatro partidos, dos parlays formados y liquidados con
+veredictos correctos, ratio correctamente omitido con `n=2`. 18 pruebas del
+store. **Ninguna ruta servida lee estas tablas** y el runner no está desplegado:
+falta dejarlo recolectar hasta reunir muestra.
+
+## Fase 135 — el gate del Constructor de Parlays, y por qué «el más alto» era la regla equivocada (DEC-222)
+
+Se pidió promover al menú de parlays los mercados con "los criterios más altos
+de probabilidad". Medido sobre Fase 134, esa regla es **la peor posible**, y
+falla en el modo más dañino: promete más y entrega menos. En la zona `≥0.80`,
+`btts` declara `0.8759` y entrega `0.5118`; `over_2_5` declara `0.8695` y
+entrega `0.6981`; `home_corners_over_4_5` declara `0.8641` y entrega `0.9035`.
+Los tres declaran casi lo mismo. Ordenar por probabilidad llena el parlay de
+«Ambos marcan», que es el peor mercado del sistema disfrazado del mejor.
+
+**Por qué un parlay necesita su propio gate.** Multiplica probabilidades, así
+que el error de una pierna sobreconfiada no se suma: se compone. Eso obliga a
+exigir por separado ventaja sobre la referencia **y** calibración cierta en el
+tramo de uso. El 1X2 lo ilustra: tiene ventaja confirmada de `+4.8pp` y aun así
+queda fuera, porque su sobreconfianza *crece* con la confianza declarada
+(`+0.048` desde 0.60, `+0.084` desde 0.70, `+0.120` desde 0.80). Un mercado
+puede ser buen predictor y mala pierna.
+
+**Sobreviven 2 de 11 mercados**: `away_shots_over_10_5` y
+`home_corners_over_4_5`, ambos con umbral `0.60`, más las reglas estructurales
+de `2–5` piernas y **una por partido** -la correlación intra-partido es real y
+no está modelada: `home_corners_over_4_5` × `home_corners_second_half_over_2_5`
+dan `+0.576`-. El 99.4% de los partidos aporta al menos una pierna.
+
+**La validación honesta cambió el resultado.** Medido sobre el mismo corpus que
+eligió el gate, el ratio de entrega salía `0.98–1.01`. Derivando el gate sólo
+con los 500 partidos tempranos y midiéndolo en los 500 tardíos, cae a
+`0.94–0.97`. Esa es la cifra que se publica. Sigue siendo muy superior a la
+regla ingenua (`0.77–0.87`), pero **el gate todavía sobrevende entre 3 y 6
+puntos**, y por eso el runtime publica el ratio de entrega junto a la
+probabilidad conjunta en vez de la probabilidad sola.
+
+`src/parlay_eligibility_v1.py` aplica el gate con verificación de hash y
+degradación fail-closed; 18 pruebas cubren hash alterado, versión distinta,
+umbral fuera de rango, dos piernas del mismo partido y pierna sin
+`fixture_key`. **Nada se invoca todavía desde una ruta servida**: el módulo es
+aditivo y el menú queda `experimental_shadow_not_promoted` hasta que una
+cohorte prospectiva lo confirme. No autoriza staking; ROI, CLV y Kelly siguen
+bloqueados.
+
+## Fase 134 — la calibración nunca se había medido con el modelo completo (DEC-221)
+
+Fase 105 evaluó 1,000 partidos históricos el **2026-08-07**. La calibración
+-peso de mezcla `0.642848` (DEC-200) y temperatura `1.198935` (DEC-201)- entró
+al código el **2026-08-16**, nueve días después. Además, aquel harness **nunca
+aplicó la temperatura al 1X2**: `run_phase_104._candidate` deriva los mercados
+de la matriz cruda sin pasar por `_calibrate_1x2`, así que su cifra de 49.20%
+no describe ninguna configuración que se haya servido jamás. Fase 134 mide por
+primera vez la cadena tal como sale a producción.
+
+**La calibración mejora de forma confirmada, y el acierto no se mueve.** Con la
+temperatura aislada sobre la misma matriz y bootstrap pareado por partido:
+log-loss de 1X2 `+0.007433` IC95% `[+0.001878, +0.013063]`, Brier normalizado
+`+0.001672` IC95% `[+0.000055, +0.003271]`; ninguno cruza cero. El acierto es
+idéntico (`50.5%`) con y sin calibrar, y `argmax_preserved_all` lo confirma en
+los 1,000 partidos: `x^(1/T)` es monótona creciente y no puede reordenar las
+clases. Lo que mejora es la honestidad, no la puntería —que era exactamente el
+propósito de DEC-201—.
+
+**La sobreconfianza cae de `+0.0341` a `+0.0032`**, reproduciendo de forma
+independiente el `+0.0329` que DEC-201 midió sobre otra ventana. La brecha no
+era uniforme: se concentraba en los tramos altos, donde el modelo declaraba
+`0.646` y acertaba `0.533`.
+
+**No es una promoción y no debe leerse como tal.** Los 1,000 partidos
+pertenecen al split `confirmation` que DEC-201 ya usó, así que esto confirma la
+implementación sobre la ventana completa, no aporta evidencia fresca fuera de
+muestra. Ninguna línea cambia de estado y ninguna probabilidad servida se toca.
+
+**Dos trampas que el reporte evita explícitamente.** La primera: la caché
+`official_goal_rows.json` de Fase 105 no versiona el modelo, de modo que
+re-ejecutar habría devuelto en silencio las filas pre-calibración; Fase 134 usa
+su propia versión y recomputa desde cero. La segunda: al comparar contra Fase
+105, córners y tiros muestran saltos grandes que **no son de la calibración**
+sino de la regeneración de Fase 84A del 2026-08-13 bajo DEC-110
+(`shots + goals`) y su reparación de cobertura —tiros visitante +10.5 pasa de
+52.8% a 64.6% por ese cambio de semántica—. El control que lo demuestra es que
+los cuatro mercados Markov y BTTS dan delta **exactamente cero**. Esa misma
+regeneración redujo el universo elegible a 1,216 partidos con las once líneas
+completas, de modo que la comparación se restringe a los 940 partidos presentes
+en ambas corridas.
+
+El 1X2 sigue siendo el eslabón débil del sistema: `50.5%` de acierto contra
+`45.7%` de referencia y el peor log-loss de los once mercados. Los mercados de
+conteo lo sostienen —agregados de equipo `66.4%` contra `61.7%`, temporales
+Markov `62.1%`—, y siguen etiquetados como experimentales.
 
 ## Corrección de estado: el cobro lleva tiempo encendido (2026-08-20)
 

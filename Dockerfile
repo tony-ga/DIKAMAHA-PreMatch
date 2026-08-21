@@ -50,6 +50,7 @@ COPY artifacts/phase_106_probability_repair/calibrator.json artifacts/phase_106_
 COPY artifacts/phase_124_temperature_calibration/match_result_1x2.json artifacts/phase_124_temperature_calibration/hashes.json /app/artifacts/phase_124_temperature_calibration/
 COPY artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json /app/artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 COPY artifacts/phase_122_confidence_reliability/eligibility.json artifacts/phase_122_confidence_reliability/hashes.json /app/artifacts/phase_122_confidence_reliability/
+COPY artifacts/phase_135_parlay_eligibility/criteria.json artifacts/phase_135_parlay_eligibility/hashes.json /app/artifacts/phase_135_parlay_eligibility/
 # El guard de cobertura falla abierto: si este mapa no llega a la imagen, los
 # mercados sin datos reales vuelven a publicarse en silencio. Mismo modo de
 # fallo que ya ocurrió con eligibility.json de Fase 122.

@@ -6535,3 +6535,175 @@ Estado: propuesta | congelada | reemplazada
 Impacto en contratos/fases:
 Evidencia requerida:
 ```
+
+
+DEC-221
+Fecha: 2026-08-21
+Problema: no existía ninguna medición de los 1,000 partidos históricos con la
+cadena tal como se sirve hoy. Fase 105 corrió el 2026-08-07 y la calibración
+-peso de mezcla `0.8 -> 0.642848` (DEC-200) y temperatura `1.198935` sobre 1X2
+(DEC-201)- entró al código el 2026-08-16, nueve días después. Peor: el harness
+de Fase 105 **nunca aplicó la temperatura**, porque `run_phase_104._candidate`
+deriva los mercados de la matriz cruda sin pasar por `_calibrate_1x2`, de modo
+que su 49.20% de 1X2 no describe ninguna configuración servida. Y su caché
+`official_goal_rows.json` habría devuelto en silencio las filas
+pre-calibración a cualquiera que re-ejecutara la fase.
+Opciones: (a) re-ejecutar Fase 105 en su sitio; (b) una fase nueva que
+conserve Fase 105 como evidencia sellada del estado previo y añada la
+temperatura al 1X2, publicando crudo y calibrado sobre la misma matriz.
+Decisión: (b), como Fase 134 (`scripts/run_phase_134_recalibrated_1000.py`).
+Motivo: (a) destruiría el único registro del estado pre-calibración, que es
+justamente el término de comparación, y reusaría una caché cuya versión no
+cambia al cambiar el modelo -el defecto que la fase existe para corregir-.
+(b) usa su propia versión de caché (`phase134_recalibrated_v1`) y fuerza el
+recómputo. Publicar ambas formas del 1X2 es lo que permite atribuir el efecto:
+como `x^(1/T)` es monótona creciente, el argmax no puede cambiar, así que el
+acierto es idéntico por construcción y la diferencia vive entera en log-loss y
+Brier.
+Estado: congelada
+Impacto en contratos/fases: ninguno. No cambia modelos, router, `APPROVED_MARKETS`
+ni probabilidad servida alguna. Fase 105 conserva sus artefactos intactos.
+Evidencia: 1,000 partidos, 21 ligas, 11,000 decisiones, 2025-11-16 → 2026-07-26.
+Temperatura aislada sobre la misma matriz, bootstrap pareado de 10,000
+remuestreos con el partido completo como unidad IID: log-loss `+0.007433`
+IC95% `[+0.001878, +0.013063]` y Brier normalizado `+0.001672` IC95%
+`[+0.000055, +0.003271]`, ninguno cruza cero. `argmax_preserved_all: true` en
+los 1,000. Sobreconfianza media `+0.0341 -> +0.0032`, reproducción
+independiente del `+0.0329` de DEC-201 sobre otra ventana. Gates de causalidad:
+`target_match_data_used: false`, `predictions_before_updates: true`,
+`all_context_strictly_prior: true`.
+Limitaciones registradas: (1) **no es evidencia fresca fuera de muestra** -los
+1,000 partidos pertenecen al split `confirmation` que DEC-201 ya usó para
+validar la temperatura-, así que confirma la implementación sobre la ventana
+completa y nada más; ninguna línea cambia de estado. (2) El universo elegible
+cambió respecto a Fase 105: Fase 84A se regeneró el 2026-08-13 bajo DEC-110
+(`shots + goals`) más la reparación de sesgo de cobertura, y sólo 1,216 de los
+1,895 partidos de `confirmation` traen las once líneas completas, de modo que
+940 de los 1,000 de Fase 105 sobreviven. La comparación contra Fase 105 se
+restringe a esa intersección. (3) Dentro de esa comparación, las mejoras
+grandes en córners y tiros son de DEC-110, no de la calibración; los cuatro
+mercados Markov y BTTS dan delta **exactamente cero**, y ese cero es el control
+que separa ambas causas.
+
+
+DEC-222
+Fecha: 2026-08-21
+Problema: se pidió un Constructor de Parlays que promueva al menú, "SI Y SOLO
+SI", los mercados que cumplan "los criterios más altos de probabilidad". El
+análisis de Fase 134 muestra que esa regla es la peor posible. Un parlay
+multiplica probabilidades, de modo que una pierna sobreconfiada no suma su
+error: lo compone. Y en la zona alta los mercados se separan brutalmente:
+`btts` declara `0.8759` y entrega `0.5118` (brecha `+0.364`), `over_2_5`
+declara `0.8695` y entrega `0.6981`, mientras `home_corners_over_4_5` declara
+`0.8641` y entrega `0.9035`. Los tres declaran casi lo mismo. Ordenar por
+probabilidad llena el parlay con el peor mercado del sistema disfrazado del
+mejor. Además el 1X2 empeora cuanto más confía: brecha `+0.048` desde 0.60,
+`+0.084` desde 0.70, `+0.120` desde 0.80 -ordenar por confianza selecciona
+activamente sus peores predicciones-.
+Opciones: (a) ordenar por probabilidad declarada, como se pidió; (b) ordenar
+por tasa observada histórica, como ya hace `high_probability_view` para picks
+sueltos; (c) un gate propio que exija por separado ventaja sobre la referencia
+y calibración medida **en el tramo donde la pierna se usaría**, más reglas
+estructurales sobre cómo se combinan.
+Decisión: (c), sellado como Fase 135.
+Motivo: (a) está medido como el peor comportamiento y falla en el modo más
+dañino -promete más y entrega menos-. (b) es correcto para un pick suelto pero
+insuficiente para un parlay: no distingue un mercado bien calibrado en promedio
+de uno que miente justo en su zona alta, que es la única que un constructor
+toma. (c) separa las dos preguntas que la regla ingenua confunde: un mercado
+puede ser buen predictor y mala pierna. El 1X2 lo demuestra -ventaja confirmada
+de `+4.8pp` y aun así excluido-.
+Gate congelado: ventaja con IC95% enteramente sobre cero (bootstrap pareado,
+partido completo como unidad IID); brecha declarada−observada ≤ `0.02` con
+`n ≥ 40` en el tramo, evaluando `0.60/0.70/0.80` y adoptando el más bajo que
+pase; y ≥ `70%` de ligas batiendo su referencia con rango ≤ `20pp` sobre ligas
+de ≥30 partidos. Reglas estructurales: `2 ≤ piernas ≤ 5` y **máximo una por
+partido**, porque la correlación intra-partido es real y no está modelada
+-`home_corners_over_4_5` × `home_corners_second_half_over_2_5` correlacionan
+`+0.576` y su co-ocurrencia supera al producto de marginales en `+0.1157`;
+DEC-203 ya había hallado tres autovalores fuera de la banda de
+Marchenko-Pastur con el 72.5% de la varianza-.
+Estado: congelada
+Impacto en contratos/fases: ninguno sobre modelos, router, `APPROVED_MARKETS`
+ni probabilidad servida. `src/parlay_eligibility_v1.py` es aditivo y no se
+invoca desde ninguna ruta existente todavía. No autoriza staking: ROI, CLV y
+Kelly siguen bloqueados.
+Evidencia: sobre los 1,000 partidos de Fase 134 sobreviven **2 de 11**
+mercados, `away_shots_over_10_5` y `home_corners_over_4_5`, ambos con umbral
+`0.60`; el 99.4% de los partidos aporta al menos una pierna (media 1.435).
+Validación temporal fuera de muestra -gate derivado sólo con los 500 partidos
+tempranos y medido en los 500 tardíos, que nunca participaron en la elección-:
+ratio de entrega `0.97 / 0.94 / 0.94 / 0.95` para 2/3/4/5 piernas, frente a
+`0.87 / 0.80 / 0.77` de la regla ingenua a `≥0.80`. Con cuatro piernas la regla
+ingenua declara `0.5434` y entrega `0.4173`; el gate declara `0.3432` y entrega
+`0.3238`. 18 pruebas nuevas, incluidas hash alterado, versión distinta, umbral
+fuera de rango, dos piernas del mismo partido y pierna sin `fixture_key`.
+Limitaciones registradas: (1) dentro de muestra el ratio sale `0.98–1.01` y
+fuera de muestra `0.94–0.97`; **la cifra creíble es la segunda**, y el gate
+sigue sobrevendiendo entre 3 y 6 puntos. (2) La partición temporal es desigual
+por densidad de calendario, no por diseño. (3) `away_shots_over_10_5` tiene la
+mejor ventaja (`+15.1pp`) pero su evidencia es la más joven: se mide después de
+que DEC-110 redefiniera los tiros como `shots + goals`, y antes de esa
+regeneración el mismo mercado acertaba `52.8%`. No debe ser pierna ancla hasta
+que una cohorte prospectiva lo confirme. (4) Los umbrales del gate son cortes
+elegidos, no optimizados, y **no deben optimizarse contra este corpus** o la
+medición prospectiva quedará invalidada.
+Evidencia requerida para promover: cohorte prospectiva con las piernas
+elegibles congeladas antes del kickoff y liquidadas después, usando la
+maquinaria de Fases 86/87 y 123 sin infraestructura nueva -una pierna de parlay
+tiene exactamente la forma de un pick de Fase 123-. Hasta entonces el menú es
+`experimental_shadow_not_promoted` y debe publicar el ratio de entrega junto a
+la probabilidad conjunta, nunca la probabilidad sola.
+
+
+DEC-223
+Fecha: 2026-08-21
+Problema: DEC-222 dejó el gate de Fase 135 sellado pero sin la cohorte
+prospectiva que puede confirmarlo. Congelar y liquidar es maquinaria que el
+proyecto ya tiene -Fases 86/87 y 123-, y una pierna de parlay tiene exactamente
+la forma de un pick de Fase 123 (`market`/`direction`/`metric`/`team_side`/
+`period`/`line`), así que reusar ese store no exigía ninguna tabla nueva.
+Opciones: (a) congelar las piernas en el store de picks de Fase 123, sin
+infraestructura nueva, aceptando que se mezclen con el menú de "Mayor
+probabilidad"; (b) un store propio para el Constructor de Parlays.
+Decisión: (b), elegida explícitamente por el usuario, como Fase 136.
+Motivo: (a) alcanza para validar cada pierna por separado, pero **no para
+validar un parlay**, que es lo que DEC-222 necesita confirmar. Al multiplicar
+probabilidades el error de calibración se compone en vez de sumarse, de modo que
+el ratio de entrega del conjunto -`0.94–0.97` fuera de muestra- no se puede
+reconstruir desde la calibración de las piernas por separado. Hace falta
+registrar qué piernas formaron cada parlay y si el conjunto entero se cumplió,
+y eso es una entidad que el store de picks no tiene. La separación también evita
+que el menú de "Mayor probabilidad" y el de parlays compartan identidad de pick
+y se contaminen sus muestras.
+Diseño: cuatro tablas (migración `016`, aditiva y no destructiva). Dos para las
+piernas -congelada y liquidada, misma forma que Fase 123- y dos para los parlays
+de referencia. Las combinaciones se materializan **antes de cualquier kickoff**,
+de forma determinista: se ordenan las piernas por kickoff y clave -no por
+probabilidad, que sesgaría hacia las más altas- y se toman bloques consecutivos
+disjuntos, descartando repeticiones de `fixture_key` para respetar la regla de
+una pierna por partido. Elegir la combinación después de conocer resultados
+convertiría el ratio medido en una cifra sin significado; es el mismo principio
+con el que Fase 86 materializa su baseline antes del kickoff.
+Un parlay se liquida sólo cuando **todas** sus piernas tienen veredicto: nunca
+se resuelve por mayoría, y tampoco se cierra antes de tiempo cuando ya falló una
+pierna, porque `legs_hit` forma parte de la evidencia. `prospective_delivery`
+oculta el ratio por debajo de 30 parlays liquidados, igual que
+`settlement_store.track_record` oculta el porcentaje con muestra insuficiente.
+Estado: congelada
+Impacto en contratos/fases: ninguno sobre modelos, router ni probabilidad
+servida. Las cuatro tablas son nuevas y **ninguna ruta servida las lee**. La
+liquidación reutiliza `team_market_hit` y `observed_team_count` de
+`settlement_store`, las mismas reglas que liquidan los picks de Fase 123, para
+que ambos no puedan divergir.
+Evidencia: 18 pruebas del store -identidad estable e independiente del orden,
+append-only en piernas y parlays, una pierna por partido en las combinaciones,
+determinismo y disjunción de bloques, pendiente mientras falte una pierna,
+acierto sólo con todas, kickoff sin zona interpretado como UTC, y ocultamiento
+del ratio bajo muestra mínima-. Ciclo completo verificado de extremo a extremo
+con el gate sellado real: `btts` a `0.96` rechazado en los cuatro partidos, dos
+parlays de referencia formados y liquidados con veredictos correctos, y el ratio
+correctamente omitido con `n=2`.
+Pendiente: desplegar el runner y dejarlo recolectar. Hasta reunir ≥30 parlays
+liquidados por tamaño no hay ratio prospectivo publicable, y hasta entonces el
+menú sigue `experimental_shadow_not_promoted`. No autoriza staking.

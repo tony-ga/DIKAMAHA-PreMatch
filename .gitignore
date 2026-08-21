@@ -85,6 +85,10 @@ artifacts/phase_116h_defensive_save_gate/*
 artifacts/phase_122_confidence_reliability/*
 !artifacts/phase_122_confidence_reliability/eligibility.json
 !artifacts/phase_122_confidence_reliability/hashes.json
+!artifacts/phase_135_parlay_eligibility/
+artifacts/phase_135_parlay_eligibility/*
+!artifacts/phase_135_parlay_eligibility/criteria.json
+!artifacts/phase_135_parlay_eligibility/hashes.json
 !artifacts/metric_coverage/
 artifacts/metric_coverage/*
 !artifacts/metric_coverage/coverage_map.json

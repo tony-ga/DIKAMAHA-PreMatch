@@ -16,6 +16,7 @@ const navigation = [
   { href: "/predictions", icon: "◫", label: "Predicciones" },
   { href: "/mayor-probabilidad", icon: "▲", label: "Mayor prob.", premium: true },
   { href: "/constructor", icon: "＋", label: "Constructor", premium: true },
+  { href: "/parlay", icon: "⛓", label: "Parlays", premium: true },
   { href: "/explore", icon: "⌘", label: "Explorar" },
   { href: "/historial", icon: "✓", label: "Aciertos" },
 ];

@@ -55,8 +55,11 @@ test("con sesión sirve la aplicación completa, no una versión recortada", asy
   await page.goto("/");
 
   const nav = page.getByRole("navigation", { name: "Navegación principal" });
-  // Mismas funciones: los siete destinos de la Mini App, ninguno menos.
-  await expect(nav.locator("a")).toHaveCount(7);
+  // Mismas funciones: todos los destinos de la Mini App, ninguno menos. La
+  // cuenta se afirma a propósito -si la web sirviera una versión recortada,
+  // este número sería el primero en delatarlo-, así que añadir un destino
+  // obliga a actualizarla aquí y en la prueba de anchura de la barra.
+  await expect(nav.locator("a")).toHaveCount(8);
   await expect(page.getByRole("link", { name: "Ir al inicio" })).toBeVisible();
 });
 

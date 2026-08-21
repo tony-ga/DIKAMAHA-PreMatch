@@ -43,6 +43,9 @@ artifacts/*
 !artifacts/phase_122_confidence_reliability/
 !artifacts/phase_122_confidence_reliability/eligibility.json
 !artifacts/phase_122_confidence_reliability/hashes.json
+!artifacts/phase_135_parlay_eligibility/
+!artifacts/phase_135_parlay_eligibility/criteria.json
+!artifacts/phase_135_parlay_eligibility/hashes.json
 !artifacts/phase_114_live_markov_hawkes_v1/
 !artifacts/phase_114_live_markov_hawkes_v1/hawkes_league_policy.json
 !artifacts/metric_coverage/

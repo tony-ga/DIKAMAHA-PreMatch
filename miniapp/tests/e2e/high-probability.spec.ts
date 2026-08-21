@@ -229,13 +229,14 @@ test("is reachable from the primary navigation", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Mayor probabilidad" })).toBeVisible();
 });
 
-// La sexta entrada obligó a pasar la barra inferior de cinco a seis columnas.
+// Cada entrada nueva estrecha la barra inferior. La cuenta se afirma para que
+// añadir un destino obligue a volver aquí y comprobar que sigue cabiendo.
 // 375 px es el ancho mínimo realista en Telegram y donde el texto se rompe
 // primero, así que la regresión se vigila ahí y no en el viewport por defecto.
 test.describe("bottom navigation at the narrowest realistic width", () => {
   test.use({ viewport: { width: 375, height: 812 } });
 
-  test("fits six destinations without clipping or horizontal overflow", async ({ page }) => {
+  test("fits every destination without clipping or horizontal overflow", async ({ page }) => {
     await page.route("**/api/high-probability**", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -244,7 +245,7 @@ test.describe("bottom navigation at the narrowest realistic width", () => {
 
     await page.goto("/mayor-probabilidad");
     const nav = page.getByRole("navigation", { name: "Navegación principal" });
-    await expect(nav.locator("a")).toHaveCount(6);
+    await expect(nav.locator("a")).toHaveCount(8);
 
     const layout = await nav.evaluate((element) => {
       const bar = element as HTMLElement;

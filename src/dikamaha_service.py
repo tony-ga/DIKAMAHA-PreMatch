@@ -65,6 +65,13 @@ except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from high_probability_view import HighProbabilityView
 
 try:
+    from src.parlay_eligibility_v1 import (
+        ParlayEligibilityError, ParlayEligibilityView)
+except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
+    from parlay_eligibility_v1 import (
+        ParlayEligibilityError, ParlayEligibilityView)
+
+try:
     from src.catalog_cache_store import build_store as build_catalog_cache_store
 except ModuleNotFoundError:  # pragma: no cover - ejecucion directa desde src
     from catalog_cache_store import build_store as build_catalog_cache_store
@@ -133,6 +140,13 @@ HIGH_PROBABILITY_FIXTURES = 30
 # mismo principio que `daily_partial_failure` del publicador de Fase 101.
 HIGH_PROBABILITY_CONCURRENCY = 4
 HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS = 18.0
+PARLAY_STATUS = "experimental_shadow_not_promoted"
+PARLAY_DISCLOSURE = (
+    "Menú experimental sin validación prospectiva. Cada pierna superó un gate "
+    "de ventaja, calibración y estabilidad, pero la probabilidad conjunta "
+    "declarada se cumple sólo entre el 94% y el 97% de las veces según la "
+    "medición fuera de muestra. No es un consejo de apuesta."
+)
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 PUBLIC_PATHS = frozenset({"/v1/health", "/v1/readiness"})
 SECURITY_HEADERS = {
@@ -676,6 +690,28 @@ class EventRequest(BaseModel):
     event_time_quality: str | None = None
 
 
+class ParlayLegRequest(BaseModel):
+    """Pierna que el cliente quiere combinar.
+
+    `extra="forbid"` es deliberado: si el cliente manda un campo que este
+    esquema no conoce, es señal de que está usando un contrato distinto del
+    que el gate valida, y aceptarlo en silencio combinaría piernas cuyo
+    significado no está verificado.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    key: str
+    probability: float = Field(ge=0.0, le=1.0)
+    fixture_key: str
+
+
+class ParlayQuoteRequest(BaseModel):
+    """Selección completa a combinar."""
+
+    model_config = ConfigDict(extra="forbid")
+    legs: list[ParlayLegRequest]
+
+
 class PreMatchRequest(BaseModel):
     """Esquema HTTP compatible con `PreMatchInput`."""
 
@@ -909,6 +945,61 @@ async def _high_probability_picks(
 
     await asyncio.gather(*(_one(fixture) for fixture in fixtures))
     return picks, scanned, skipped
+
+
+async def _parlay_legs(
+    app: FastAPI, engine: Any, config: ServiceConfig,
+    view: Any, fixtures: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Aplica el gate de parlays al catálogo del día.
+
+    Mismo barrido acotado que `_high_probability_picks` -concurrencia y
+    presupuesto de tiempo compartidos-, porque el costo dominante es idéntico:
+    una inferencia completa por fixture. Lo único que cambia es qué se extrae
+    de la predicción.
+    """
+
+    semaphore = asyncio.Semaphore(HIGH_PROBABILITY_CONCURRENCY)
+    deadline = time.monotonic() + HIGH_PROBABILITY_WALL_CLOCK_BUDGET_SECONDS
+    matches: list[dict[str, Any]] = []
+    scanned = 0
+    skipped = 0
+
+    async def _one(fixture: dict[str, Any]) -> None:
+        """Evalúa un fixture si el presupuesto de tiempo aún lo permite."""
+
+        nonlocal scanned, skipped
+        async with semaphore:
+            if time.monotonic() >= deadline:
+                return
+            scanned += 1
+            try:
+                payload = await _high_probability_prediction(
+                    app, engine, config, fixture)
+            except (PrematchUnavailableError, ValueError, OverflowError,
+                    FloatingPointError, HTTPException) as error:
+                LOGGER.info(
+                    "Fixture sin predicción utilizable %s: %s",
+                    fixture.get("match_id"), error)
+                skipped += 1
+                return
+            legs = view.legs(payload)
+            if not legs:
+                return
+            identity = _high_probability_fixture(fixture)
+            matches.append({
+                **identity,
+                # `fixture_key` es la misma clave que compone el publicador y
+                # que usa `prediction_settlements`, de modo que una pierna
+                # congelada aquí se pueda liquidar después sin traducciones.
+                "fixture_key": (
+                    f"{identity['league_slug']}:{identity['match_id']}"),
+                "legs": legs,
+            })
+
+    await asyncio.gather(*(_one(fixture) for fixture in fixtures))
+    matches.sort(key=lambda row: (str(row["kickoff_ts"]), int(row["match_id"])))
+    return matches, scanned, skipped
 
 
 def _high_probability_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
@@ -1360,6 +1451,7 @@ def create_app(
         ttl_seconds=25.0, stale_ttl_seconds=180.0, stamp_age=True,
         store=catalog_store, namespace="live")
     app.state.high_probability_view = HighProbabilityView()
+    app.state.parlay_view = ParlayEligibilityView()
     app.state.request_gate = RequestGate(
         effective.max_concurrent_requests,
         effective.rate_limit_requests,
@@ -1528,6 +1620,85 @@ def create_app(
             "fixtures_without_prediction": skipped,
             "provenance": provenance,
         }
+
+    @app.get("/v1/parlay/menu", tags=["inference"])
+    async def parlay_menu(
+        date: str | None = None, limit: int = 20,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Publica las piernas del día que superan el gate de Fase 135.
+
+        Un mercado sólo aparece si pasó los tres filtros -ventaja sobre su
+        propia referencia, calibración cierta en el tramo donde se usa, y
+        estabilidad entre ligas- y además su probabilidad alcanza el umbral
+        congelado de ese mercado. La regla no es "los más altos": «Ambos
+        marcan» declara 0.88 y entrega 0.51, así que ordenar por probabilidad
+        seleccionaría justamente los peores mercados (DEC-222).
+
+        `limit` acota **partidos**, no piernas: un partido incluido aporta
+        todas sus piernas elegibles.
+        """
+
+        if not effective.external_calls_enabled:
+            raise _error("external_calls_disabled")
+        view = app.state.parlay_view
+        if not view.available():
+            return {
+                "status": "unavailable",
+                "reason": "parlay_criteria_unavailable",
+                "classification": PARLAY_STATUS,
+                "matches": [], "legs": 0, "fixtures_scanned": 0,
+            }
+        config = view._load()  # noqa: SLF001 - gate ya validado por `available`
+        selected = leagues or ",".join(slug for slug, _ in LEAGUES)
+        bounded = min(max(int(limit), 1), 50)
+        try:
+            cached = await _cached_upcoming_catalog(selected, date)
+        except (ValueError, TimeoutError, OSError) as exc:
+            LOGGER.warning("Rechazo catálogo de parlays: %s", exc)
+            raise _error("upcoming_catalog_unavailable") from exc
+        fixtures = cached["fixtures"]
+        matches, scanned, skipped = await _parlay_legs(
+            app, upcoming_engine, effective, view, fixtures)
+        shown = matches[:bounded]
+        return {
+            "status": "ok",
+            "classification": PARLAY_STATUS,
+            "matches": shown,
+            "legs": sum(len(row["legs"]) for row in shown),
+            "matches_with_legs": len(matches),
+            "min_legs": config["min_legs"],
+            "max_legs": config["max_legs"],
+            "max_legs_per_match": config["max_legs_per_match"],
+            "criteria_version": config["version"],
+            "criteria_sha256": config["sha256"],
+            "delivery": {
+                legs: value["ratio"]
+                for legs, value in config["delivery"].items()},
+            "fixtures_scanned": scanned,
+            "fixtures_catalog_size": len(fixtures),
+            "fixtures_without_prediction": skipped,
+            "disclosure": PARLAY_DISCLOSURE,
+        }
+
+    @app.post("/v1/parlay/quote", tags=["inference"])
+    def parlay_quote(request: ParlayQuoteRequest) -> dict[str, Any]:
+        """Combina piernas ya elegibles en una probabilidad conjunta.
+
+        Revalida el gate sobre cada pierna en vez de confiar en lo que llega:
+        un cliente puede mandar cualquier cosa, y multiplicar un mercado
+        excluido devolvería un número con la apariencia de estar respaldado.
+        Publica el ratio de entrega junto a la probabilidad porque la conjunta
+        declarada, sola, ya se sabe optimista.
+        """
+
+        view = app.state.parlay_view
+        if not view.available():
+            raise _error("parlay_criteria_unavailable")
+        try:
+            return view.build([leg.model_dump() for leg in request.legs])
+        except ParlayEligibilityError as error:
+            raise _error(str(error)) from error
 
     def _live_catalog_selection(
         limit: int, leagues: str | None,
