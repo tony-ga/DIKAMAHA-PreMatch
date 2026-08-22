@@ -359,38 +359,71 @@ def test_settle_window_prioritises_recent_legs_over_dead_ones(repo):
 # --- ciclo prospectivo compartido -----------------------------------------
 
 class _Gateway:
-    """Gateway falso con la forma exacta que devuelve `/v1/parlay/menu`."""
+    """Gateway falso con la forma exacta que devuelve `/v1/parlay/menu`.
 
-    def __init__(self, matches, statistics=None):
+    Devolver la forma real importa: la primera versión de estas pruebas usaba
+    una vista falsa que se limitaba a devolver lo que le entraba, más permisiva
+    que `ParlayEligibilityView`, y por eso no atrapó que el ciclo aplicaba el
+    gate **dos veces** -una en el endpoint y otra en local, esta última sobre
+    partidos ya resueltos que no traen `experimental_team_markets`-. En
+    producción eso congelaba cero piernas sin ningún error.
+    """
+
+    def __init__(self, matches, statistics=None, status="ok"):
         self._matches = matches
         self._statistics = statistics or {}
+        self._status = status
 
     def parlay_menu(self, date=None, limit=30):
-        return {"status": "ok", "matches": self._matches, "legs": 99}
+        return {
+            "status": self._status,
+            "matches": self._matches,
+            "legs": sum(len(m.get("legs") or []) for m in self._matches),
+            "criteria_sha256": "a" * 64,
+            "delivery": {"2": 0.97, "3": 0.94},
+        }
 
     def explorer_statistics(self, league_slug, match_id, competition_id):
         return self._statistics
 
 
-class _View:
-    """Vista de elegibilidad falsa, ya validada."""
-
-    def __init__(self, matches):
-        self._matches = matches
-
-    def available(self):
-        return True
-
-    def menu(self, predictions):
-        return {"status": "available", "criteria_sha256": "a" * 64,
-                "matches": predictions, "legs": 99}
-
-    def _load(self):
-        return {"delivery": {"2": {"ratio": 0.97}}}
-
-
 def _menu_match(name, kickoff):
+    """Partido tal como lo publica `/v1/parlay/menu`, con sus piernas ya filtradas."""
+
     return {**_fixture(name, kickoff), "legs": [_leg_payload()]}
+
+
+def test_cycle_freezes_from_the_endpoint_payload(repo):
+    """El ciclo consume la salida del endpoint tal cual, sin re-filtrarla.
+
+    Regresión directa: aplicar el gate por segunda vez sobre partidos ya
+    resueltos daba `candidates: 0` y congelaba nada, sin error visible.
+    """
+
+    from src.parlay_settlement import run_prospective_cycle
+
+    future = datetime.now(timezone.utc) + timedelta(hours=5)
+    matches = [_menu_match(f"f{i}", future + timedelta(minutes=i))
+               for i in range(2)]
+
+    counts = run_prospective_cycle(_Gateway(matches), repo, None)
+
+    assert counts["freeze"]["candidates"] == 2
+    assert counts["freeze"]["frozen_legs"] == 2
+    assert counts["freeze"]["frozen_parlays"] == 1
+
+
+def test_cycle_uses_the_delivery_ratio_published_by_the_endpoint(repo):
+    """El ratio congelado con el parlay es el que publicó el endpoint."""
+
+    from src.parlay_settlement import run_prospective_cycle
+
+    future = datetime.now(timezone.utc) + timedelta(hours=5)
+    matches = [_menu_match(f"f{i}", future + timedelta(minutes=i))
+               for i in range(2)]
+    run_prospective_cycle(_Gateway(matches), repo, None)
+
+    assert repo.frozen_parlays()[0].declared_delivery_ratio == pytest.approx(0.97)
 
 
 def test_cycle_freezes_only_matches_that_have_not_started(repo):
@@ -401,9 +434,8 @@ def test_cycle_freezes_only_matches_that_have_not_started(repo):
     future = datetime.now(timezone.utc) + timedelta(hours=5)
     past = datetime.now(timezone.utc) - timedelta(hours=5)
     matches = [_menu_match("f1", future), _menu_match("f2", past)]
-    view = _View(matches)
 
-    counts = run_prospective_cycle(_Gateway(matches), view, repo, None)
+    counts = run_prospective_cycle(_Gateway(matches), repo, None)
 
     assert counts["freeze"]["frozen_legs"] == 1
     assert counts["freeze"]["skipped_started"] == 1
@@ -417,26 +449,22 @@ def test_cycle_is_idempotent_within_the_same_day(repo):
     future = datetime.now(timezone.utc) + timedelta(hours=5)
     matches = [_menu_match(f"f{i}", future + timedelta(minutes=i))
                for i in range(2)]
-    view = _View(matches)
     gateway = _Gateway(matches)
 
-    first = run_prospective_cycle(gateway, view, repo, None)
-    second = run_prospective_cycle(gateway, view, repo, None)
+    first = run_prospective_cycle(gateway, repo, None)
+    second = run_prospective_cycle(gateway, repo, None)
 
     assert first["freeze"]["frozen_legs"] == 2
-    assert first["freeze"]["frozen_parlays"] == 1
     assert second["freeze"]["frozen_legs"] == 0
     assert second["freeze"]["frozen_parlays"] == 0
 
 
-def test_cycle_without_settlement_store_still_freezes(repo):
-    """Sin `DATABASE_URL` se congela igual y no se liquida: degradación segura."""
+def test_cycle_degrades_when_the_menu_is_unavailable(repo):
+    """Un menú caído no congela nada y no revienta el ciclo."""
 
     from src.parlay_settlement import run_prospective_cycle
 
-    future = datetime.now(timezone.utc) + timedelta(hours=5)
-    matches = [_menu_match("f1", future)]
-    counts = run_prospective_cycle(_Gateway(matches), _View(matches), repo, None)
+    counts = run_prospective_cycle(_Gateway([], status="unavailable"), repo, None)
 
-    assert counts["freeze"]["frozen_legs"] == 1
-    assert counts["settle"]["settled_legs"] == 0
+    assert counts["freeze"]["frozen_legs"] == 0
+    assert counts["freeze"]["candidates"] == 0

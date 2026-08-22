@@ -134,7 +134,7 @@ def _run(args: argparse.Namespace) -> int:
     gateway = DikamahaHttpGateway(telegram_config_from_env())
     try:
         counts = run_prospective_cycle(
-            gateway, view, repository, _settlements(args.dry_run),
+            gateway, repository, _settlements(args.dry_run),
             args.date, args.limit)
     except PredictionGatewayError:
         LOGGER.error("no se pudo leer el menú del día", exc_info=True)

@@ -274,7 +274,7 @@ def _parlay_cycle(dry_run: bool) -> dict[str, Any] | None:
     if repository is None:
         return None
     result = run_parlay_cycle(
-        DikamahaHttpGateway(telegram_config_from_env()), view, repository,
+        DikamahaHttpGateway(telegram_config_from_env()), repository,
         _settlements(dry_run), None)
     LOGGER.info("phase136_cycle_completed counts=%s", result)
     return result

@@ -574,10 +574,16 @@ def settle_ready_parlays(
 
 
 def run_freeze_cycle(
-    gateway: Any, view: Any, repository: ParlayRepository,
+    gateway: Any, repository: ParlayRepository,
     date: str | None, limit: int, now: datetime,
 ) -> dict[str, int]:
     """Congela las piernas elegibles del día y sus parlays de referencia.
+
+    Consume la salida de `/v1/parlay/menu` **tal cual**: ese endpoint ya aplicó
+    el gate de Fase 135 y es la autoridad sobre qué es elegible. Volver a
+    pasarla por `ParlayEligibilityView.menu` la trataría como predicciones
+    crudas -que traen `experimental_team_markets`- cuando ya son partidos con
+    sus piernas resueltas, y el gate no encontraría nada que filtrar.
 
     Compartida por el runner de Fase 136 y por la integración dentro del
     proceso del publicador del canal, igual que `run_freeze_cycle` de Fase 123:
@@ -586,14 +592,18 @@ def run_freeze_cycle(
     alguien comparase las dos cohortes.
     """
 
-    menu = view.menu(_predictions(gateway, date, limit))
-    if menu["status"] != "available":
+    menu = gateway.parlay_menu(date=date, limit=limit)
+    if str(menu.get("status")) != "ok":
+        LOGGER.warning(
+            "phase136_menu_unavailable status=%s reason=%s",
+            menu.get("status"), menu.get("reason"))
         return {"frozen_legs": 0, "frozen_parlays": 0, "skipped_started": 0,
                 "skipped_invalid": 0, "candidates": 0}
-    sha = str(menu["criteria_sha256"])
+    sha = str(menu.get("criteria_sha256") or "")
     frozen = skipped_started = skipped_invalid = 0
-    for match in menu["matches"]:
-        for leg in match["legs"]:
+    matches = menu.get("matches")
+    for match in matches if isinstance(matches, list) else []:
+        for leg in match.get("legs") or []:
             try:
                 record = freeze_from_leg(leg, match, sha, now)
             except (KeyError, TypeError, ValueError):
@@ -607,32 +617,15 @@ def run_freeze_cycle(
             if repository.freeze_leg_if_absent(record):
                 frozen += 1
     pool = repository.legs_frozen_today(now.date().isoformat())
-    parlays = reference_parlays(pool, _delivery(view), sha, now) if pool else []
+    delivery = {str(k): float(v) for k, v in (menu.get("delivery") or {}).items()}
+    parlays = reference_parlays(pool, delivery, sha, now) if pool else []
     frozen_parlays = sum(
         1 for parlay in parlays if repository.freeze_parlay_if_absent(parlay))
     return {
         "frozen_legs": frozen, "frozen_parlays": frozen_parlays,
         "skipped_started": skipped_started, "skipped_invalid": skipped_invalid,
-        "candidates": menu["legs"],
+        "candidates": int(menu.get("legs") or 0),
     }
-
-
-def _predictions(gateway: Any, date: str | None, limit: int) -> list[dict[str, Any]]:
-    """Lee las predicciones del día desde el menú ya filtrado por el gate."""
-
-    response = gateway.parlay_menu(date=date, limit=limit)
-    matches = response.get("matches")
-    return matches if isinstance(matches, list) else []
-
-
-def _delivery(view: Any) -> dict[str, float]:
-    """Ratio de entrega histórico por número de piernas, para congelarlo."""
-
-    try:
-        config = view._load()  # noqa: SLF001 - gate ya validado por `available`
-    except (OSError, ValueError, KeyError, TypeError):
-        return {}
-    return {legs: value["ratio"] for legs, value in config["delivery"].items()}
 
 
 def run_settle_cycle(
@@ -681,7 +674,7 @@ def run_settle_cycle(
 
 
 def run_prospective_cycle(
-    gateway: Any, view: Any, repository: ParlayRepository,
+    gateway: Any, repository: ParlayRepository,
     settlements: Any, date: str | None = None, limit: int = 30,
 ) -> dict[str, Any]:
     """Ejecuta congelación y liquidación con instante UTC explícito.
@@ -692,7 +685,7 @@ def run_prospective_cycle(
 
     now = datetime.now(timezone.utc)
     return {
-        "freeze": run_freeze_cycle(gateway, view, repository, date, limit, now),
+        "freeze": run_freeze_cycle(gateway, repository, date, limit, now),
         "settle": run_settle_cycle(gateway, repository, settlements, now),
     }
 
