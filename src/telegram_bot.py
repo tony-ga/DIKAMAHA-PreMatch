@@ -123,6 +123,14 @@ class PredictionGateway(ABC):
 
         return {"picks": [], "fixtures_scanned": 0, "fixtures_catalog_size": 0}
 
+    def parlay_menu(
+        self, date: str | None = None, limit: int = 30,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Consulta las piernas elegibles del Constructor de Parlays (Fase 135)."""
+
+        return {"status": "unavailable", "matches": [], "legs": 0}
+
     def predict_live_fixture(
         self, payload: dict[str, Any],
     ) -> dict[str, Any]:
@@ -473,6 +481,24 @@ class DikamahaHttpGateway(PredictionGateway):
             params["leagues"] = leagues
         return self._get(
             "/v1/high-probability", params, timeout_multiplier=3.0)
+
+    def parlay_menu(
+        self, date: str | None = None, limit: int = 30,
+        leagues: str | None = None,
+    ) -> dict[str, Any]:
+        """Obtiene las piernas del día que superan el gate de Fase 135.
+
+        Mismo multiplicador de tiempo que `high_probability`: el costo dominante
+        es idéntico -una inferencia completa por fixture- y el barrido comparte
+        catálogo, concurrencia y presupuesto con aquel.
+        """
+
+        params: dict[str, Any] = {"limit": max(1, min(limit, 50))}
+        if date:
+            params["date"] = date
+        if leagues:
+            params["leagues"] = leagues
+        return self._get("/v1/parlay/menu", params, timeout_multiplier=3.0)
 
     def models(self) -> dict[str, Any]:
         """Obtiene el inventario operativo de la API."""

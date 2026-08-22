@@ -354,3 +354,89 @@ def test_settle_window_prioritises_recent_legs_over_dead_ones(repo):
     assert len(window) == SETTLE_WINDOW, "la ventana debe estar acotada"
     assert reachable.leg_key in {row.leg_key for row in window}, (
         "la pierna más reciente quedó fuera: las muertas bloquean la cola")
+
+
+# --- ciclo prospectivo compartido -----------------------------------------
+
+class _Gateway:
+    """Gateway falso con la forma exacta que devuelve `/v1/parlay/menu`."""
+
+    def __init__(self, matches, statistics=None):
+        self._matches = matches
+        self._statistics = statistics or {}
+
+    def parlay_menu(self, date=None, limit=30):
+        return {"status": "ok", "matches": self._matches, "legs": 99}
+
+    def explorer_statistics(self, league_slug, match_id, competition_id):
+        return self._statistics
+
+
+class _View:
+    """Vista de elegibilidad falsa, ya validada."""
+
+    def __init__(self, matches):
+        self._matches = matches
+
+    def available(self):
+        return True
+
+    def menu(self, predictions):
+        return {"status": "available", "criteria_sha256": "a" * 64,
+                "matches": predictions, "legs": 99}
+
+    def _load(self):
+        return {"delivery": {"2": {"ratio": 0.97}}}
+
+
+def _menu_match(name, kickoff):
+    return {**_fixture(name, kickoff), "legs": [_leg_payload()]}
+
+
+def test_cycle_freezes_only_matches_that_have_not_started(repo):
+    """Congelar después del kickoff destruiría la causalidad de la medición."""
+
+    from src.parlay_settlement import run_prospective_cycle
+
+    future = datetime.now(timezone.utc) + timedelta(hours=5)
+    past = datetime.now(timezone.utc) - timedelta(hours=5)
+    matches = [_menu_match("f1", future), _menu_match("f2", past)]
+    view = _View(matches)
+
+    counts = run_prospective_cycle(_Gateway(matches), view, repo, None)
+
+    assert counts["freeze"]["frozen_legs"] == 1
+    assert counts["freeze"]["skipped_started"] == 1
+
+
+def test_cycle_is_idempotent_within_the_same_day(repo):
+    """Repetir el ciclo no duplica piernas ni parlays."""
+
+    from src.parlay_settlement import run_prospective_cycle
+
+    future = datetime.now(timezone.utc) + timedelta(hours=5)
+    matches = [_menu_match(f"f{i}", future + timedelta(minutes=i))
+               for i in range(2)]
+    view = _View(matches)
+    gateway = _Gateway(matches)
+
+    first = run_prospective_cycle(gateway, view, repo, None)
+    second = run_prospective_cycle(gateway, view, repo, None)
+
+    assert first["freeze"]["frozen_legs"] == 2
+    assert first["freeze"]["frozen_parlays"] == 1
+    assert second["freeze"]["frozen_legs"] == 0
+    assert second["freeze"]["frozen_parlays"] == 0
+
+
+def test_cycle_without_settlement_store_still_freezes(repo):
+    """Sin `DATABASE_URL` se congela igual y no se liquida: degradación segura."""
+
+    from src.parlay_settlement import run_prospective_cycle
+
+    future = datetime.now(timezone.utc) + timedelta(hours=5)
+    matches = [_menu_match("f1", future)]
+    counts = run_prospective_cycle(_Gateway(matches), _View(matches), repo, None)
+
+    assert counts["freeze"]["frozen_legs"] == 1
+    assert counts["settle"]["settled_legs"] == 0

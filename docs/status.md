@@ -2,6 +2,34 @@
 
 **Actualizado:** 2026-08-21
 
+## El "pendiente grande" ya estaba resuelto, y el runner de parlays ya corre (DEC-225)
+
+Dejé anotado en DEC-224 que sólo 119 partidos llegaban a
+`prediction_settlements` y que probablemente fuera mayor que los dos defectos
+juntos. **Me equivocaba, y conviene que quede escrito.** Investigado:
+
+- De los 255 partidos que el canal congeló, **121 ya liquidaron y cero están
+  vencidos**: los 134 restantes son partidos que aún no se juegan. La
+  liquidación del canal funciona perfectamente.
+- Lo que fallaba era la *cobertura* del canal, y ya la arregló DEC-206. El
+  patrón es inequívoco: del 12 al 17 de agosto congelaba **exactamente 3
+  partidos al día** (`LITE_FIXTURE_LIMIT=3`) mientras los picks cubrían entre 9
+  y 51; desde el 18 congela **todos**. Cobertura antes del 18: `10.5%`. Desde el
+  18: **`100%`**, con cero picks muertos.
+
+Queda un residuo histórico de **3,107 picks** de la era *lite* que nunca podrán
+liquidarse porque su partido jamás entró al canal. No requiere acción: el orden
+descendente de DEC-224 los deja sedimentar sin bloquear a nadie.
+
+**El runner de Fase 136 ya corre.** Se integró al bucle del publicador del
+canal, junto al de Fase 123 y con el mismo patrón: intervalo propio
+(`PARLAY_PROSPECTIVE_POLL_SECONDS`, 30 min), `try/except` que impide que un
+fallo suyo tumbe el canal, y misma `DATABASE_URL`. La lógica del ciclo se movió
+a `src/parlay_settlement.py` para que el runner standalone y la integración
+compartan **una sola implementación** -dos definiciones de "qué se congela"
+acabarían divergiendo, y la divergencia sería invisible hasta comparar las dos
+cohortes-. El runner bajó de 244 a 159 líneas.
+
 ## Dos defectos que llevaban meses liquidando de menos (DEC-224)
 
 Los logs de producción mostraban `phase123_settle_failed reason=unresolved` de

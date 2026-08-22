@@ -573,6 +573,130 @@ def settle_ready_parlays(
     return {"settled": settled, "still_pending": pending}
 
 
+def run_freeze_cycle(
+    gateway: Any, view: Any, repository: ParlayRepository,
+    date: str | None, limit: int, now: datetime,
+) -> dict[str, int]:
+    """Congela las piernas elegibles del día y sus parlays de referencia.
+
+    Compartida por el runner de Fase 136 y por la integración dentro del
+    proceso del publicador del canal, igual que `run_freeze_cycle` de Fase 123:
+    misma regla, un solo lugar. Dos implementaciones distintas de "qué se
+    congela" acabarían divergiendo, y la divergencia sería invisible hasta que
+    alguien comparase las dos cohortes.
+    """
+
+    menu = view.menu(_predictions(gateway, date, limit))
+    if menu["status"] != "available":
+        return {"frozen_legs": 0, "frozen_parlays": 0, "skipped_started": 0,
+                "skipped_invalid": 0, "candidates": 0}
+    sha = str(menu["criteria_sha256"])
+    frozen = skipped_started = skipped_invalid = 0
+    for match in menu["matches"]:
+        for leg in match["legs"]:
+            try:
+                record = freeze_from_leg(leg, match, sha, now)
+            except (KeyError, TypeError, ValueError):
+                skipped_invalid += 1
+                continue
+            # Congelar después del kickoff destruiría la causalidad que hace
+            # creíble la medición: la probabilidad ya no sería pre-partido.
+            if record.kickoff_ts <= now:
+                skipped_started += 1
+                continue
+            if repository.freeze_leg_if_absent(record):
+                frozen += 1
+    pool = repository.legs_frozen_today(now.date().isoformat())
+    parlays = reference_parlays(pool, _delivery(view), sha, now) if pool else []
+    frozen_parlays = sum(
+        1 for parlay in parlays if repository.freeze_parlay_if_absent(parlay))
+    return {
+        "frozen_legs": frozen, "frozen_parlays": frozen_parlays,
+        "skipped_started": skipped_started, "skipped_invalid": skipped_invalid,
+        "candidates": menu["legs"],
+    }
+
+
+def _predictions(gateway: Any, date: str | None, limit: int) -> list[dict[str, Any]]:
+    """Lee las predicciones del día desde el menú ya filtrado por el gate."""
+
+    response = gateway.parlay_menu(date=date, limit=limit)
+    matches = response.get("matches")
+    return matches if isinstance(matches, list) else []
+
+
+def _delivery(view: Any) -> dict[str, float]:
+    """Ratio de entrega histórico por número de piernas, para congelarlo."""
+
+    try:
+        config = view._load()  # noqa: SLF001 - gate ya validado por `available`
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    return {legs: value["ratio"] for legs, value in config["delivery"].items()}
+
+
+def run_settle_cycle(
+    gateway: Any, repository: ParlayRepository, settlements: Any,
+    now: datetime,
+) -> dict[str, int]:
+    """Liquida piernas reconciliadas y cierra los parlays completos.
+
+    Cada pierna se aísla con su propio `try/except` por la lección de
+    DEC-189/191: sin eso, una excepción en la primera aborta el bucle y las de
+    detrás no se evalúan en ningún ciclo mientras el fallo persista.
+    """
+
+    settled = still_pending = failed = 0
+    if settlements is not None:
+        for leg in repository.unsettled_legs(now):
+            try:
+                settlement = settlements.get(leg.fixture_key)
+                if settlement is None:
+                    still_pending += 1
+                    continue
+                statistics = gateway.explorer_statistics(
+                    leg.league_slug, str(leg.match_id),
+                    settlement.competition_id)
+                record = resolve_leg(leg, statistics, settlement.settled_at)
+                if record is None:
+                    failed += 1
+                    LOGGER.warning(
+                        "phase136_settle_failed leg_key=%s reason=unresolved "
+                        "metric=%s team_side=%s period=%s",
+                        leg.leg_key, leg.metric, leg.team_side, leg.period)
+                    continue
+                if repository.settle_leg_if_absent(record):
+                    settled += 1
+            except Exception:  # noqa: BLE001 - una pierna rota no bloquea al resto
+                failed += 1
+                LOGGER.warning(
+                    "phase136_settle_row_failed leg_key=%s", leg.leg_key,
+                    exc_info=True)
+    counts = settle_ready_parlays(repository, now)
+    return {
+        "settled_legs": settled, "legs_still_pending": still_pending,
+        "failed_legs": failed, "settled_parlays": counts["settled"],
+        "parlays_still_pending": counts["still_pending"],
+    }
+
+
+def run_prospective_cycle(
+    gateway: Any, view: Any, repository: ParlayRepository,
+    settlements: Any, date: str | None = None, limit: int = 30,
+) -> dict[str, Any]:
+    """Ejecuta congelación y liquidación con instante UTC explícito.
+
+    `settlements=None` congela igual pero omite la liquidación -degradación
+    segura cuando no hay `DATABASE_URL`, igual que Fase 118 y 123-.
+    """
+
+    now = datetime.now(timezone.utc)
+    return {
+        "freeze": run_freeze_cycle(gateway, view, repository, date, limit, now),
+        "settle": run_settle_cycle(gateway, repository, settlements, now),
+    }
+
+
 def prospective_delivery(
     frozen: list[ParlayFreezeRecord], settled: list[ParlaySettlementRecord],
     minimum_sample: int = 30,

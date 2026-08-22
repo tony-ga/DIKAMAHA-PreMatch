@@ -55,6 +55,13 @@ from src.high_probability_settlement import (  # noqa: E402
     build_repository as build_pick_repository,
     run_prospective_cycle,
 )
+from src.parlay_eligibility_v1 import ParlayEligibilityView  # noqa: E402
+from src.parlay_settlement import (  # noqa: E402
+    ParlayBase,
+    ParlayRepository,
+    SqlAlchemyParlayRepository,
+    run_prospective_cycle as run_parlay_cycle,
+)
 from src.runtime_logging import configure_runtime_logging  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
@@ -226,6 +233,53 @@ def _pick_repository(dry_run: bool) -> HighProbabilityPickRepository:
     return build_pick_repository(f"sqlite+pysqlite:///{PICK_DATABASE}")
 
 
+def _parlay_repository(dry_run: bool) -> ParlayRepository:
+    """Crea el store de parlays de Fase 136 en el mismo proceso.
+
+    Mismo criterio que `_pick_repository`: comparte contenedor, cadencia y
+    `DATABASE_URL` con el publicador en vez de un servicio Railway nuevo. El
+    caso dry-run exige `StaticPool` porque sin él cada conexión SQLite en
+    memoria ve una base distinta, y congelar seguido de liquidar operaría
+    sobre datos que ya no están.
+    """
+
+    if dry_run:
+        engine = create_engine(
+            "sqlite+pysqlite://", future=True,
+            connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    else:
+        database_url = os.getenv("DATABASE_URL", "").strip()
+        if not database_url:
+            LOGGER.warning(
+                "phase136_parlay_store_unavailable reason=DATABASE_URL_missing")
+            return None
+        engine = create_engine(database_url, future=True, pool_pre_ping=True)
+    ParlayBase.metadata.create_all(engine)
+    return SqlAlchemyParlayRepository(
+        sessionmaker(bind=engine, expire_on_commit=False, class_=Session))
+
+
+def _parlay_cycle(dry_run: bool) -> dict[str, Any] | None:
+    """Ejecuta un ciclo de Fase 136 con la configuración del canal.
+
+    Reutiliza `run_prospective_cycle` del módulo -la misma que usa el runner
+    standalone- para que no puedan divergir dos definiciones de qué se congela.
+    """
+
+    view = ParlayEligibilityView()
+    if not view.available():
+        LOGGER.warning("phase136_gate_unavailable: no se congela nada")
+        return None
+    repository = _parlay_repository(dry_run)
+    if repository is None:
+        return None
+    result = run_parlay_cycle(
+        DikamahaHttpGateway(telegram_config_from_env()), view, repository,
+        _settlements(dry_run), None)
+    LOGGER.info("phase136_cycle_completed counts=%s", result)
+    return result
+
+
 def _high_probability_cycle(dry_run: bool) -> dict[str, Any]:
     """Ejecuta un ciclo de Fase 123 reutilizando la configuración del canal.
 
@@ -258,8 +312,11 @@ def _run(args: argparse.Namespace) -> int:
     interval = max(60, int(os.getenv("TELEGRAM_CHANNEL_POLL_SECONDS", "300")))
     hp_interval = max(
         60, int(os.getenv("HIGH_PROBABILITY_PROSPECTIVE_POLL_SECONDS", "1800")))
+    parlay_interval = max(
+        60, int(os.getenv("PARLAY_PROSPECTIVE_POLL_SECONDS", "1800")))
     publisher: TelegramChannelPublisher | None = None
     next_hp_cycle = time.monotonic()
+    next_parlay_cycle = time.monotonic()
     while True:
         try:
             if publisher is None:
@@ -285,6 +342,14 @@ def _run(args: argparse.Namespace) -> int:
                     "phase123_cycle_failed error_type=%s error=%s",
                     type(error).__name__, error)
             next_hp_cycle = time.monotonic() + hp_interval
+        if time.monotonic() >= next_parlay_cycle:
+            try:
+                _parlay_cycle(args.dry_run)
+            except Exception as error:  # noqa: BLE001 - Fase 136 nunca tumba el canal
+                LOGGER.warning(
+                    "phase136_cycle_failed error_type=%s error=%s",
+                    type(error).__name__, error)
+            next_parlay_cycle = time.monotonic() + parlay_interval
         if args.once:
             return 0
         time.sleep(interval)

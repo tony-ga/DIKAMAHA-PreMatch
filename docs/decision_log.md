@@ -6772,3 +6772,53 @@ llegan a `prediction_settlements`**, y 68 de esos 119 tienen picks. Que la
 mayoría de partidos nunca se reconcilie es un problema de cobertura de Fase 118,
 anterior e independiente de estos dos defectos, y merece su propia
 investigación.
+
+
+DEC-225
+Fecha: 2026-08-21
+Problema: DEC-224 dejó dos pendientes. (1) Sólo 119 partidos llegaban a
+`prediction_settlements` de los miles con picks congelados, anotado como
+"probablemente más grande que ambos defectos". (2) El runner de Fase 136 existía
+pero no corría, así que la cohorte prospectiva que puede confirmar el gate de
+Fase 135 no se estaba recolectando.
+Hallazgo sobre (1): **la valoración era equivocada y el problema ya estaba
+resuelto.** De los 255 partidos congelados por el canal, 121 liquidaron y
+**cero están vencidos** -los 134 restantes aún no se juegan-, de modo que la
+liquidación de Fase 118 funciona sin fallos. Lo que faltaba era cobertura del
+canal, y la arregló DEC-206: del 12 al 17 de agosto congelaba exactamente 3
+partidos al día (`LITE_FIXTURE_LIMIT=3`) mientras los picks cubrían entre 9 y
+51; desde el 18 congela todos. Cobertura medida: `10.5%` antes del 18-ago,
+**`100%` desde el 18-ago con cero picks muertos**. Queda un residuo de 3,107
+picks de la era lite, estructuralmente irrecuperables porque su partido nunca
+entró al canal.
+Decisión sobre (1): no actuar sobre el residuo. El orden descendente que
+introdujo DEC-224 ya los deja sedimentar al fondo de la cola sin bloquear a los
+vivos, y darlos de baja exigiría una columna de estado y una migración para
+resolver un problema que ya no se reproduce.
+Decisión sobre (2): integrar el ciclo de Fase 136 al bucle del publicador del
+canal, con el mismo patrón que Fase 123 -intervalo propio
+`PARLAY_PROSPECTIVE_POLL_SECONDS` (30 min por defecto), `try/except` que impide
+que un fallo suyo tumbe el canal, misma `DATABASE_URL` y mismo contenedor-.
+Motivo: es la decisión del cierre del proyecto para Fase 123 -cero
+infraestructura adicional- y no hay razón para que Fase 136 estrene un servicio
+Railway propio antes de tener siquiera evidencia prospectiva.
+La lógica del ciclo se movió de `scripts/run_phase_136_parlay_prospective.py` a
+`src/parlay_settlement.py` (`run_freeze_cycle`, `run_settle_cycle`,
+`run_prospective_cycle`), de modo que el runner standalone y la integración en
+proceso compartan una sola implementación: dos definiciones de qué se congela
+acabarían divergiendo, y la divergencia sería invisible hasta comparar las dos
+cohortes. El runner pasó de 244 a 159 líneas.
+`DikamahaHttpGateway` gana `parlay_menu`, con el mismo multiplicador de tiempo
+que `high_probability` porque el costo dominante es idéntico -una inferencia
+completa por fixture- y ambos comparten catálogo, concurrencia y presupuesto.
+Estado: congelada
+Impacto en contratos/fases: ninguno sobre modelos, router ni probabilidad
+servida. El menú sigue `experimental_shadow_not_promoted`.
+Evidencia: 3 pruebas nuevas del ciclo compartido -no congela después del
+kickoff, es idempotente dentro del mismo día, y degrada a sólo congelar sin
+store de liquidación-. Suite 1,048 aprobadas con los mismos 18 fallos conocidos
+de contención.
+Pendiente: hasta reunir ≥30 parlays liquidados por tamaño no hay ratio
+prospectivo publicable, y `prospective_delivery` lo oculta hasta entonces. El
+menú comunica el ratio histórico fuera de muestra, nunca uno prospectivo que no
+existe todavía.
